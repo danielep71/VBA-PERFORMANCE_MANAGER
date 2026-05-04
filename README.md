@@ -168,7 +168,7 @@ The report can then be exported as:
 ## 📁 Repository contents
 
 <p align="left">
-  <img alt="Layout" src="https://img.shields.io/badge/Layout-Src Demo Test-blue">
+  <img alt="Layout" src="https://img.shields.io/badge/Layout-Src+Demo+Test-blue">
 </p>
 
 ```text
@@ -209,7 +209,7 @@ These files are optional but useful:
 ## 🧭 Typical use cases
 
 <p align="left">
-  <img alt="Use" src="https://img.shields.io/badge/Use-benchmarking %2B automation-217346">
+  <img alt="Use" src="https://img.shields.io/badge/Use-Benchmarking %2B Automation-217346">
 </p>
 
 ### 📊 Performance benchmarking
@@ -254,8 +254,7 @@ Use shared “time-waster” suppression even when elapsed time is not being mea
 ## 🧩 Requirements
 
 <p align="left">
-  <img alt="Section" src="https://img.shields.io/badge/section-requirements-6f42c1">
-  <img alt="Host" src="https://img.shields.io/badge/host-windows_excel_vba-217346">
+  <img alt="Host" src="https://img.shields.io/badge/Host-Wndows Excel VBA-217346">
 </p>
 
 - ✅ Microsoft Excel with VBA enabled
@@ -270,8 +269,7 @@ Use shared “time-waster” suppression even when elapsed time is not being mea
 ## 🛠️ Installation
 
 <p align="left">
-  <img alt="Section" src="https://img.shields.io/badge/section-installation-6f42c1">
-  <img alt="Flow" src="https://img.shields.io/badge/flow-import_compile_run-brightgreen">
+  <img alt="Flow" src="https://img.shields.io/badge/Flow-Import Compile Run-brightgreen">
 </p>
 
 1. Open the target workbook, add-in, or VBA project
@@ -295,8 +293,7 @@ Optional:
 ## ⚡ Quick start
 
 <p align="left">
-  <img alt="Section" src="https://img.shields.io/badge/section-quick_start-6f42c1">
-  <img alt="Examples" src="https://img.shields.io/badge/examples-timing_checkpoints_tw-217346">
+  <img alt="Examples" src="https://img.shields.io/badge/Examples-Timing+Checkpoints+TW-217346">
 </p>
 
 ### 1️⃣ Basic timing (default QPC backend)
