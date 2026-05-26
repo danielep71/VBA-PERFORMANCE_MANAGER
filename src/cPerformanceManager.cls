@@ -1389,8 +1389,7 @@ End Function
 
 Public Property Get OverheadMeasurement_Text( _
     Optional ByVal iMethod As Integer = 5, _
-    Optional ByVal Iterations As Long = 1000, _
-    Optional ByVal OverheadSecondsIn As Variant) _
+    Optional ByVal Iterations As Long = 1000) _
     As String
 '
 '==============================================================================
@@ -1406,9 +1405,6 @@ Public Property Get OverheadMeasurement_Text( _
 '   This property exists as the presentation-oriented companion for diagnostics,
 '   logs, and quick inspection
 '
-'   When an already measured overhead value is supplied, this routine formats
-'   that value directly without taking a second measurement
-'
 ' INPUTS
 '   iMethod (optional)
 '     Timing backend whose near-empty average measurement overhead should be
@@ -1418,17 +1414,14 @@ Public Property Get OverheadMeasurement_Text( _
 '     Number of near-empty timing cycles to average
 '     Values less than 1 are coerced to 1 by OverheadMeasurement_Seconds()
 '
-'   OverheadSecondsIn (optional)
-'     Optional already measured overhead value to format directly
-'
 ' RETURNS
 '   String
 '     A human-readable measurement-overhead report
 '
 ' BEHAVIOR
 '   - Normalizes and validates the requested timer method
-'   - If OverheadSecondsIn is omitted, measures average near-empty overhead
-'   - If OverheadSecondsIn is supplied, formats that value directly
+'   - Calls OverheadMeasurement_Seconds() using the requested backend and
+'     iteration count
 '   - Returns a readable string containing the backend name and average
 '     measurement overhead in seconds
 '
@@ -1441,12 +1434,14 @@ Public Property Get OverheadMeasurement_Text( _
 '   - MethodName
 '
 ' NOTES
-'   This property mirrors the design of ElapsedTime:
-'     - measure when no numeric value is supplied
-'     - format directly when a numeric value is supplied
+'   - This property is diagnostic/reporting-oriented
+'   - It is intentionally separate from OverheadMeasurement_Seconds(), which
+'     should remain the machine-readable API for programmatic use
+'   - Defaulting to method 5 (QPC) is appropriate here because this routine is
+'     backend-diagnostic rather than session-bound
 '
 ' UPDATED
-'   2026-04-19
+'   2026-04-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1460,17 +1455,8 @@ Public Property Get OverheadMeasurement_Text( _
 '------------------------------------------------------------------------------
     'Normalize and validate the timer method
         ResolvedMethod = Method_NormalizeStart(iMethod)
-
-'------------------------------------------------------------------------------
-' RESOLVE NUMERIC OVERHEAD VALUE
-'------------------------------------------------------------------------------
-    'Use the supplied numeric overhead value when provided
-        If Not IsMissing(OverheadSecondsIn) Then
-            AvgS = CDbl(OverheadSecondsIn)
-    'Otherwise measure average near-empty overhead now
-        Else
-            AvgS = OverheadMeasurement_Seconds(ResolvedMethod, Iterations)
-        End If
+    'Measure average near-empty overhead
+        AvgS = OverheadMeasurement_Seconds(ResolvedMethod, Iterations)
 
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
@@ -1479,8 +1465,8 @@ Public Property Get OverheadMeasurement_Text( _
         OverheadMeasurement_Text = "Average measurement overhead - " & _
                                    MethodName(ResolvedMethod) & " - " & _
                                    Format$(AvgS, "0.000000000") & " seconds"
-
 End Property
+
 Public Property Get Get_SystemTickInterval() As String
 '
 '==============================================================================
@@ -2363,14 +2349,11 @@ Public Sub Checkpoint( _
 '------------------------------------------------------------------------------
     'Resolve the next checkpoint sequence number
         NextSeq = m_CheckpointCount + 1
-
     'Compute elapsed seconds since the previous checkpoint
         DeltaS = CurrentS - m_LastCheckpointS
-
     'Defensively clamp negative jitter
-        If DeltaS < 0# Then
-            DeltaS = 0#
-        End If
+        If DeltaS < 0# Then DeltaS = 0#
+
 
 '------------------------------------------------------------------------------
 ' ENSURE STORAGE CAPACITY
@@ -2534,6 +2517,7 @@ Public Function ReportAsArray() As Variant
 End Function
 
 Public Function ReportAsText() As String
+
 '
 '==============================================================================
 '                                REPORT AS TEXT
@@ -2556,21 +2540,47 @@ Public Function ReportAsText() As String
 '     Multiline text report
 '
 ' BEHAVIOR
-'   - Returns a short message when no checkpoints exist
-'   - Otherwise returns a readable multiline checkpoint report
+'   Returns a short message when no checkpoints exist
+'
+'   Otherwise returns a fixed-width multiline checkpoint report containing:
+'     - sequence number
+'     - checkpoint name
+'     - delta seconds
+'     - cumulative seconds
+'     - method name
+'     - note
 '
 ' ERROR POLICY
 '   Raises errors normally
 '
+' DEPENDENCIES
+'   m_CheckpointCount
+'   m_Checkpoints
+'   m_RunLabel
+'   ReportPadRight
+'   ReportSingleLine
+'
+' NOTES
+'   The report is optimized by building a line array and joining it once,
+'   instead of repeatedly concatenating the full report string inside the loop
+'
 ' UPDATED
-'   2026-04-18
+'   2026-05-17
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim S       As String       'Accumulated report text
-    Dim i       As Long         'Checkpoint loop index
+    Const COL_CHECKPOINT_WIDTH      As Long = 29        'Checkpoint column width
+    Const COL_DELTA_WIDTH           As Long = 18        'Delta seconds column width
+    Const COL_CUMULATIVE_WIDTH      As Long = 17        'Cumulative seconds column width
+    Const COL_METHOD_WIDTH          As Long = 12        'Method name column width
+    Const COL_NOTE_WIDTH            As Long = 50        'Note column width
+    Const SECONDS_FORMAT            As String = "0.000:000:000" 'Seconds display format
+
+    Dim Lines()                     As String           'Report lines
+    Dim LineIndex                   As Long             'Current report line index
+    Dim i                           As Long             'Checkpoint loop index
 
 '------------------------------------------------------------------------------
 ' HANDLE EMPTY REPORT
@@ -2582,37 +2592,177 @@ Public Function ReportAsText() As String
         End If
 
 '------------------------------------------------------------------------------
-' BUILD HEADER
+' INITIALIZE LINE BUFFER
 '------------------------------------------------------------------------------
+    'Allocate one title line, one header line, and one line per checkpoint
+        ReDim Lines(1 To m_CheckpointCount + 2)
+
+'------------------------------------------------------------------------------
+' BUILD TITLE
+'------------------------------------------------------------------------------
+    'Move to the first report line
+        LineIndex = 1
     'Start the report title
-        S = "CHECKPOINT REPORT"
+        Lines(LineIndex) = "CHECKPOINT REPORT"
     'Append the optional run label when present
-        If Len(m_RunLabel) > 0 Then
-            S = S & " | RunLabel=" & m_RunLabel
+        If VBA.Len(m_RunLabel) > 0 Then
+            Lines(LineIndex) = Lines(LineIndex) & " | RunLabel=" & ReportSingleLine(m_RunLabel)
         End If
-    'Append the column legend line
-        S = S & vbCrLf & _
-            "Seq | Checkpoint | DeltaSeconds | CumulativeSeconds | MethodName | Note"
+
+'------------------------------------------------------------------------------
+' BUILD COLUMN HEADER
+'------------------------------------------------------------------------------
+    'Move to the header line
+        LineIndex = LineIndex + 1
+    'Build the fixed-width column header
+        Lines(LineIndex) = _
+            "Seq | " & _
+            ReportPadRight("Checkpoint", COL_CHECKPOINT_WIDTH) & "| " & _
+            ReportPadRight("DeltaSeconds", COL_DELTA_WIDTH) & "| " & _
+            ReportPadRight("CumulativeSeconds", COL_CUMULATIVE_WIDTH) & "| " & _
+            ReportPadRight("MethodName", COL_METHOD_WIDTH) & "| " & _
+            ReportPadRight("Note", COL_NOTE_WIDTH) & "|"
 
 '------------------------------------------------------------------------------
 ' BUILD DATA LINES
 '------------------------------------------------------------------------------
     'Append one readable line per checkpoint
         For i = 1 To m_CheckpointCount
-            S = S & vbCrLf & _
-                CStr(m_Checkpoints(i).Seq) & " | " & _
-                m_Checkpoints(i).NameText & " | " & _
-                Format$(m_Checkpoints(i).DeltaSecondsValue, "0.000000000") & " | " & _
-                Format$(m_Checkpoints(i).ElapsedSecondsValue, "0.000000000") & " | " & _
-                m_Checkpoints(i).MethodNameText & " | " & _
-                m_Checkpoints(i).NoteText
+            'Move to the next report line
+                LineIndex = LineIndex + 1
+            'Build the fixed-width checkpoint line
+                Lines(LineIndex) = _
+                    " " & VBA.Format$(m_Checkpoints(i).Seq, "00") & " | " & _
+                    ReportPadRight(ReportSingleLine(m_Checkpoints(i).NameText), COL_CHECKPOINT_WIDTH) & "| " & _
+                    ReportPadRight(VBA.Format$(m_Checkpoints(i).DeltaSecondsValue, SECONDS_FORMAT), COL_DELTA_WIDTH) & "| " & _
+                    ReportPadRight(VBA.Format$(m_Checkpoints(i).ElapsedSecondsValue, SECONDS_FORMAT), COL_CUMULATIVE_WIDTH) & "| " & _
+                    ReportPadRight(ReportSingleLine(m_Checkpoints(i).MethodNameText), COL_METHOD_WIDTH) & "| " & _
+                    ReportPadRight(ReportSingleLine(m_Checkpoints(i).NoteText), COL_NOTE_WIDTH) & "|"
         Next i
 
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
     'Return the readable structured report text
-        ReportAsText = S
+        ReportAsText = VBA.Join(Lines, VBA.vbCrLf)
+
+End Function
+
+Private Function ReportPadRight( _
+    ByVal ValueText As String, _
+    ByVal TargetWidth As Long) As String
+
+'
+'==============================================================================
+'                                REPORT PAD RIGHT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Pads or truncates text to a fixed report-column width
+'
+' WHY THIS EXISTS
+'   ReportAsText uses fixed-width columns. Centralizing padding keeps the report
+'   layout consistent and removes repeated Left / Space expressions
+'
+' INPUTS
+'   ValueText
+'     Text to format
+'
+'   TargetWidth
+'     Required fixed width
+'
+' RETURNS
+'   String
+'     Text padded or truncated to TargetWidth
+'
+' BEHAVIOR
+'   Returns an empty string when TargetWidth is not positive
+'
+'   Otherwise truncates text longer than TargetWidth and pads shorter text with
+'   spaces on the right
+'
+' ERROR POLICY
+'   Raises errors normally
+'
+' DEPENDENCIES
+'   None
+'
+' NOTES
+'   This helper is intentionally private because it exists only for text-report
+'   layout
+'
+' UPDATED
+'   2026-05-17
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' HANDLE INVALID WIDTH
+'------------------------------------------------------------------------------
+    'Return an empty string when the requested width is not usable
+        If TargetWidth <= 0 Then
+            ReportPadRight = VBA.vbNullString
+            Exit Function
+        End If
+
+'------------------------------------------------------------------------------
+' PAD OR TRUNCATE TEXT
+'------------------------------------------------------------------------------
+    'Pad or truncate the supplied text to the requested width
+        ReportPadRight = VBA.Left$(ValueText & VBA.Space$(TargetWidth), TargetWidth)
+
+End Function
+
+Private Function ReportSingleLine(ByVal ValueText As String) As String
+
+'
+'==============================================================================
+'                                REPORT SINGLE LINE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Converts report text to a single-line value
+'
+' WHY THIS EXISTS
+'   Checkpoint names, method names, and notes may contain tabs or line breaks.
+'   Those characters would break the fixed-width multiline report layout
+'
+' INPUTS
+'   ValueText
+'     Text to normalize
+'
+' RETURNS
+'   String
+'     Single-line text with tabs and line breaks replaced by spaces
+'
+' BEHAVIOR
+'   Replaces carriage returns, line feeds, and tabs with spaces
+'
+' ERROR POLICY
+'   Raises errors normally
+'
+' DEPENDENCIES
+'   None
+'
+' NOTES
+'   The function does not trim the result because padding is handled separately
+'
+' UPDATED
+'   2026-05-17
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' NORMALIZE TEXT
+'------------------------------------------------------------------------------
+    'Replace carriage returns with spaces
+        ValueText = VBA.Replace(ValueText, VBA.vbCr, " ")
+    'Replace line feeds with spaces
+        ValueText = VBA.Replace(ValueText, VBA.vbLf, " ")
+    'Replace tabs with spaces
+        ValueText = VBA.Replace(ValueText, VBA.vbTab, " ")
+
+'------------------------------------------------------------------------------
+' RETURN RESULT
+'------------------------------------------------------------------------------
+    'Return the normalized single-line text
+        ReportSingleLine = ValueText
 
 End Function
 
