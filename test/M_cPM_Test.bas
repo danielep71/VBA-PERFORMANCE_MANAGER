@@ -65,7 +65,8 @@ Option Explicit     'Force explicit declaration of all variables
 '------------------------------------------------------------------------------
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
-    Private Const cPM_SHEET_LOG    As String = "REGRESSION_cPM"
+    Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
+    Private Const TotalSteps        As Long = 41    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -169,8 +170,6 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     Dim CurrentStep             As Long                 'Current regression-step counter
 
-    Const TotalSteps            As Long = 40            'Total number of executed regression cases
-
 '------------------------------------------------------------------------------
 ' INITIALIZE
 '------------------------------------------------------------------------------
@@ -200,7 +199,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         DEMO_Build_DemoTemplate _
             cPM_SHEET_LOG, _
             "CLASS PERFORMANCE MANAGER", _
-            "REGRESSION TESTS", , 6, , , , "C:O", , , , , , , , , , 47
+            "REGRESSION TESTS", , 6, , , , "C:O", , , , , , , , , , TotalSteps + 7
     'Resolve the prepared regression worksheet
         Set WS_Test = WB.Worksheets(cPM_SHEET_LOG)
     'Initialize the dedicated worksheet log
@@ -257,6 +256,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Raw/cached accessors after QPC"
         Test_Accessors_QPC
+    
+    'Validate method 4 timeGetSystemTime low-level timestamp behavior
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Method 4 timeGetSystemTime"
+        Test_Method4_TimeGetSystemTime_NonZeroAndAdvances
 
 '------------------------------------------------------------------------------
 ' RUN VALIDATION / FALLBACK REGRESSION CASES
@@ -664,7 +668,7 @@ Private Sub Suite_InitLogSheet()
 ' APPLY BASE ALIGNMENT
 '------------------------------------------------------------------------------
     'Apply center alignment to the structured log block by default
-        With WS.Range("C6:O50")
+        With WS.Range("C6:O100")
             .HorizontalAlignment = xlCenter
             .VerticalAlignment = xlCenter
             .Font.Size = 9
@@ -708,7 +712,7 @@ Private Sub Suite_InitLogSheet()
     ' APPLY VISUAL FRAME
     '--------------------------------------------------------------------------
         'Apply a border around the visible case-summary block
-            DEMO_Set_RangeBorder WS.Range("C4:H45")
+            DEMO_Set_RangeBorder WS.Range("C4:H" & TotalSteps + 5)
 
 '------------------------------------------------------------------------------
 ' BUILD FAILURE DETAILS AREA
@@ -743,7 +747,7 @@ Private Sub Suite_InitLogSheet()
     ' APPLY VISUAL FRAME
     '--------------------------------------------------------------------------
         'Apply a border around the visible failure-detail block
-            DEMO_Set_RangeBorder WS.Range("I4:O45")
+            DEMO_Set_RangeBorder WS.Range("I4:O" & TotalSteps + 5)
 
 '------------------------------------------------------------------------------
 ' INITIALIZE ROW POINTERS
@@ -3524,6 +3528,133 @@ CleanFail:
         Resume CleanExit
 
 End Sub
+
+Private Sub Test_Method4_TimeGetSystemTime_NonZeroAndAdvances()
+'
+'==============================================================================
+'              TEST METHOD 4 TIMEGETSYSTEMTIME NONZERO AND ADVANCES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that method 4 obtains real timeGetSystemTime timestamps rather than
+'   returning a zero fallback.
+'
+' WHY THIS EXISTS
+'   Method 4 depends on the MMTIME structure layout. A wrong layout can cause
+'   timeGetSystemTime to fail or return unusable data. This test verifies that
+'   method 4 captures a nonzero start timestamp, advances after a real delay,
+'   and produces a positive elapsed-time value.
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Starts a method 4 timing session.
+'   - Verifies that the raw start timestamp is greater than zero.
+'   - Pauses briefly using the class Pause method.
+'   - Reads elapsed seconds using method 4.
+'   - Verifies that the end timestamp is greater than the start timestamp.
+'   - Verifies that elapsed seconds is positive and reasonable.
+'
+' ERROR POLICY
+'   Records unexpected errors through the suite logging helper.
+'
+' DEPENDENCIES
+'   - cPerformanceManager
+'   - DelayForTimingMethod
+'   - Test_Assert_True
+'   - Test_Assert_InRangeDouble
+'   - Case_Begin
+'   - Case_Finalize
+'   - RecordUnexpectedError
+'
+' NOTES
+'   This test intentionally uses Pause method 1 so the delay mechanism is not
+'   itself dependent on method 4.
+'
+' UPDATED
+'   2026-06-13
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Class under test
+    Dim DelayS      As Double                 'Requested delay in seconds
+    Dim ElapsedS    As Double                 'Measured elapsed seconds
+
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Route unexpected failures to the suite logger
+        On Error GoTo Err_Handler
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the test case
+        Case_Begin "Method 4 timeGetSystemTime nonzero and advances"
+    'Create the class under test
+        Set cPM = New cPerformanceManager
+    'Use the timing-method-specific delay from the test harness
+        DelayS = DelayForTimingMethod(4)
+    'Enforce a practical minimum delay for millisecond counter advancement
+        If DelayS < 0.05 Then DelayS = 0.05
+
+'------------------------------------------------------------------------------
+' ASSERT METHOD 4 REAL TIMESTAMP
+'------------------------------------------------------------------------------
+    'Start a method 4 session
+        cPM.StartTimer 4, False
+    'Assert that method 4 did not return a zero fallback start timestamp
+        Test_Assert_True cPM.T1 > 0#, _
+                         "Method 4 start timestamp is greater than zero"
+    'Pause using Sleep-based pause method 1
+        cPM.Pause DelayS, 1
+    'Measure elapsed seconds using method 4
+        ElapsedS = cPM.ElapsedSeconds(4)
+    'Assert that method 4 produced a nonzero end timestamp
+        Test_Assert_True cPM.T2 > 0#, _
+                         "Method 4 end timestamp is greater than zero"
+    'Assert that method 4 advanced after the deliberate delay
+        Test_Assert_True cPM.T2 > cPM.T1, _
+                         "Method 4 end timestamp is greater than start timestamp"
+    'Assert that elapsed time is positive and reasonable
+        Test_Assert_InRangeDouble 0.001, 10#, ElapsedS, _
+                                  "Method 4 elapsed seconds positive and reasonable"
+
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Reset class environment explicitly
+        If Not cPM Is Nothing Then cPM.ResetEnvironment
+    'Release object reference
+        Set cPM = Nothing
+    'Finalize the test case
+        Case_Finalize
+    'Exit normally
+        Exit Sub
+
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+Err_Handler:
+    'Record the unexpected error
+        RecordUnexpectedError "Test_Method4_TimeGetSystemTime_NonZeroAndAdvances"
+    'Attempt cleanup
+        On Error Resume Next
+        If Not cPM Is Nothing Then cPM.ResetEnvironment
+        Set cPM = Nothing
+        On Error GoTo 0
+    'Finalize the test case
+        Case_Finalize
+
+End Sub
+
+
+
 
 Private Sub Test_TW_BlankKeyValidation()
 '
