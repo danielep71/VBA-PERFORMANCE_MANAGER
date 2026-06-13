@@ -173,8 +173,8 @@ The report can then be exported as:
 
 ```text
 /README.md
-/src/cPerformanceManager.cls
-/src/M_cPM_TIMEWASTERS.bas
+/src/classes/cPerformanceManager.cls
+/src/modules/M_cPM_TIMEWASTERS.bas
 /demo/M_cPM_DEMO.bas
 /demo/M_cPM_USAGE_EXAMPLES.bas
 /demo/M_DEMO_BUILDER.bas
@@ -185,8 +185,8 @@ The report can then be exported as:
 
 These two files are required for normal use:
 
-- `src/cPerformanceManager.cls`
-- `src/M_cPM_TIMEWASTERS.bas`
+- `src/classes/cPerformanceManager.cls`
+- `src/modules/M_cPM_TIMEWASTERS.bas`
 
 ### 🧰 Optional companion files
 
