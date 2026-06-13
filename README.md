@@ -275,8 +275,8 @@ Use shared “time-waster” suppression even when elapsed time is not being mea
 1. Open the target workbook, add-in, or VBA project
 2. Open the VBA Editor (`ALT + F11`)
 3. Import:
-   - `src/cPerformanceManager.cls`
-   - `src/M_cPM_TIMEWASTERS.bas`
+   - `src/classes/cPerformanceManager.cls`
+   - `src/modules/M_cPM_TIMEWASTERS.bas`
 4. Save as macro-enabled (`.xlsm` or `.xlam`)
 5. Compile the project (`Debug` → `Compile VBAProject`)
 6. Run a smoke test
