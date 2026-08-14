@@ -1,3 +1,5 @@
 *.xlsm
 *.xlsb
 ~$*
+*.xlam
+*.bak
