@@ -1,620 +1,682 @@
-<img width="1766" height="296" alt="performance_manager_banner2" src="https://github.com/user-attachments/assets/8e1d69a6-f867-489a-b388-6760457bc838" />
+<div align="center">
 
 # ⚙️ Class Performance Manager
 
-> High-precision timing, checkpoint reporting, and Excel runtime control for VBA
+### A session-bound, benchmark-grade timing and execution-control class for pure Excel VBA
+
+**Six timing backends · Monotonic high-resolution QPC · Session-bound validation · Distribution-aware statistics · Structured checkpoints · Shared Excel state suppression**
+
+<br>
+
+[![Excel VBA](https://img.shields.io/badge/Excel_VBA-32%20%2F%2064--bit-217346?style=for-the-badge&logo=microsoft-excel&logoColor=white)](https://github.com/danielep71/vba-performance_manager)
+[![Pure VBA](https://img.shields.io/badge/Implementation-Pure_VBA-00599C?style=for-the-badge)](https://github.com/danielep71/vba-performance_manager)
+[![No External DLL](https://img.shields.io/badge/External_DLL-None-555555?style=for-the-badge)](#-installation)
+[![QPC](https://img.shields.io/badge/Default_Backend-QueryPerformanceCounter-c2185b?style=for-the-badge)](#-timing-backends)
+[![Regression](https://img.shields.io/badge/Regression-52_Cases_·_288_Assertions-d97706?style=for-the-badge)](#-testing-and-validation)
+[![Statistics](https://img.shields.io/badge/Statistics-Median_·_P95_·_CV-0f766e?style=for-the-badge)](#-measurement-and-statistics)
+[![Version](https://img.shields.io/badge/Version-1.2.0-4c1d95?style=for-the-badge)](CHANGELOG.md)
+
+<br>
+
+[![License](https://img.shields.io/github/license/danielep71/vba-performance_manager?style=flat-square&color=2ea44f)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/danielep71/vba-performance_manager?style=flat-square&logo=github&color=6f42c1)](https://github.com/danielep71/vba-performance_manager/stargazers)
+[![Forks](https://img.shields.io/github/forks/danielep71/vba-performance_manager?style=flat-square&logo=github&color=0969da)](https://github.com/danielep71/vba-performance_manager/network/members)
+[![Issues](https://img.shields.io/github/issues/danielep71/vba-performance_manager?style=flat-square&color=d73a49)](https://github.com/danielep71/vba-performance_manager/issues)
+[![Last commit](https://img.shields.io/github/last-commit/danielep71/vba-performance_manager?style=flat-square&color=orange)](https://github.com/danielep71/vba-performance_manager/commits/main)
+
+<br>
+
+**No add-in · No installer · No COM reference · Two files to import**
+
+[Read the Wiki](https://github.com/danielep71/vba-performance_manager/wiki)
+&nbsp;·&nbsp;
+[Quick start](#-quick-start)
+&nbsp;·&nbsp;
+[Measurement and statistics](#-measurement-and-statistics)
+&nbsp;·&nbsp;
+[Public API](#-public-api)
+&nbsp;·&nbsp;
+[Changelog](CHANGELOG.md)
+
+</div>
 
 ---
 
 <p align="center">
-  <img alt="Platform" src="https://img.shields.io/badge/Platform-Excel_VBA-217346">
-  <img alt="Layer" src="https://img.shields.io/badge/Layer-Execution Engine-6f42c1">
-  <img alt="Office" src="https://img.shields.io/badge/Office-32%2F64--bit-blue">
-  <img alt="Benchmarking" src="https://img.shields.io/badge/Benchmarking-Supported-brightgreen">
-  <img alt="Status" src="https://img.shields.io/badge/Status-FINAL-brightgreen">
-  <img alt="License" src="https://img.shields.io/badge/License-MIT-green">
+  <img src="images/performance_manager_banner.png"
+       alt="Class Performance Manager — benchmark-grade timing for Excel VBA"
+       width="100%">
 </p>
 
 ---
 
-## 🧩 Part of a larger framework
+> [!IMPORTANT]
+> **This is a timing *session manager*, not a `Timer()` wrapper.**
+>
+> A backend is bound when the session starts, and every elapsed-time read is validated against that same backend. Rollover arithmetic, backwards-clock detection, unsigned 32-bit conversion, timer-resolution lifecycle, and shared Excel state coordination are all handled explicitly rather than left to the caller.
 
-<p align="left">
-  <img alt="Role" src="https://img.shields.io/badge/Role-Eexecution Engine-217346">
-</p>
+<div align="center">
 
-This component is part of the **Excel VBA Runtime Framework**.
+### 📐 At a glance
 
-Within that framework, `cPerformanceManager` acts as the **execution and performance engine**.
+| | |
+|---:|:---|
+| **6** | timing backends behind one session-bound interface |
+| **41** | public members — 24 methods and 18 properties |
+| **52** | regression cases running **288** deterministic assertions |
+| **23** | named error constants; **zero** magic numbers in the codebase |
+| **76 %** | of the class is documentation, at procedure level |
+| **2** | files to import. No reference, no add-in, no DLL |
 
-It provides the foundation for:
-
-- ⚡ performance instrumentation
-- 🧭 runtime control
-- 📊 repeatable benchmarking
-- 🧱 structured checkpoint reporting
-- 🚀 Excel environment optimization
-
-Framework home:
-
-[Excel VBA Runtime Framework](https://github.com/danielep71/excel-vba-runtime-framework)
+</div>
 
 ---
 
-<img width="1536" height="1024" alt="cPM_Home_reduced" src="https://github.com/user-attachments/assets/c4137fcb-2886-4d38-9cb8-e3349112c258" />
+## ✨ What this project is
 
-## ✨ Overview
+**Class Performance Manager** (`cPerformanceManager`) is a self-contained timing and execution-control component for Excel VBA on Windows.
 
-<p align="left">
-  <img alt="Focus" src="https://img.shields.io/badge/Focus-Timing %2B Runtime Control-217346">
-</p>
+It provides:
 
-`cPerformanceManager` is a **high-precision timing and execution-control component for Excel VBA on Windows**.
+- six timing backends under one consistent, session-bound interface;
+- low-overhead numeric elapsed-time measurement;
+- human-readable elapsed-time formatting, with or without a second timing sample;
+- a repeated-measurement harness returning the **full per-run sample vector**;
+- distribution-aware statistics — median, minimum, percentiles, spread, contamination detection;
+- structured named checkpoints with delta and cumulative reporting;
+- shared, reference-counted suppression of expensive Excel Application behaviour;
+- explicit diagnostics for QPC frequency, tick interval, and measurement overhead.
 
-It wraps multiple timing backends behind a single, session-bound interface and adds a practical runtime-control layer for Excel automation.
+It is designed for:
 
-The class supports:
+- ⏱️ benchmarking VBA procedures and comparing optimisation strategies;
+- 📊 instrumenting long-running workbook automation;
+- 🧪 controlled execution environments that need deterministic Excel state;
+- 🚀 general workbook performance work, *even when nothing is being timed*;
+- 🎓 teaching how Windows timing sources actually behave.
 
-- ⏱️ precise elapsed-time measurement
-- 🧾 human-readable elapsed-time diagnostics
-- 🔁 formatting of an already measured elapsed value without taking a second timing sample
-- 📉 benchmark-overhead estimation
-- ⏳ pause / wait helpers
-- 🧱 structured checkpoints and reporting
-- 🧹 shared Excel “time-waster” suppression
-
-Importantly, the suppression features are **not limited to timed benchmarks**. They can also be used as a **general-purpose Excel/VBA performance aid** in procedures that do not measure elapsed time, reducing avoidable overhead from screen refresh, events, alerts, calculation-mode churn, and cursor updates during heavy operations.
-
-This makes `cPerformanceManager` more than a timer utility: it is a **runtime execution controller** for structured and performance-aware VBA solutions.
-
----
-
-## 🎯 Why this exists
-
-<p align="left">
-  <img alt="Problem" src="https://img.shields.io/badge/Problem-VBA Timing Limits-orange">
-</p>
-
-VBA’s native timing options are often not ideal for instrumentation and benchmarking:
-
-- ⏲️ `Timer` has limited resolution and rolls over at midnight
-- 🕰️ `Now()` is wall-clock based and is not a preferred monotonic benchmark source
-- 🪟 Windows exposes better monotonic and high-resolution counters, such as `QueryPerformanceCounter`
-
-`cPerformanceManager` provides a consistent abstraction over those timing sources and complements them with execution and environment controls that are highly useful in real Excel/VBA projects.
+> **Positioning**
+>
+> A production-oriented timing component for pure Excel VBA, built for correctness within an explicitly documented domain. It emphasises session safety, honest statistics, and predictable failure behaviour rather than attempting to match the resolution or tooling of compiled profilers.
 
 ---
 
-## 🚀 Core capabilities
+## 🌟 Why this repository is different
 
-<p align="left">
-  <img alt="Scope" src="https://img.shields.io/badge/Scope-Timing Reporting TW-brightgreen">
-</p>
-
-- ⏱️ multiple timing methods behind one interface
-- 🔒 session-bound timing model
-- ⚡ low-overhead numeric elapsed-time measurement
-- 🧾 human-readable elapsed-time formatting
-- 🔁 formatting of an already measured elapsed value without taking a second timing sample
-- 📉 benchmark-overhead measurement helpers
-- 🔍 timing/source diagnostics
-- ⏳ pause / wait helper
-- 🧱 structured checkpoint capture within one timing session
-- 📦 machine-readable checkpoint export
-- 📝 human-readable checkpoint reporting
-- 🧹 shared Excel “time-waster” suppression for both benchmarking and general Excel/VBA performance improvement
-- 🛡️ strict-mode validation for safer usage
-
----
-
-## 🧹 What are “time-wasters”?
-
-<p align="left">
-  <img alt="Control" src="https://img.shields.io/badge/Control-Excel Application State-217346">
-</p>
-
-“Time-wasters” are Excel application behaviors that can degrade performance during execution, especially in heavy procedures or repeated loops.
-
-Typical examples include:
-
-- 🖥️ screen updating
-- ⚡ event firing
-- 🚨 display alerts
-- 🧮 automatic calculation churn
-- 🖱️ cursor state changes
-
-`cPerformanceManager` provides centralized control over these elements so they can be suppressed during intensive procedures and restored cleanly afterward.
-
-This is useful both for:
-
-- 📊 cleaner benchmark runs
-- 🚀 faster ordinary workbook automation, even when no elapsed-time measurement is being taken
+| Capability | `Timer()` inline | Typical VBA timer helper | This project |
+|---|:---:|:---:|:---:|
+| Multiple timing backends | — | Sometimes | ✅ |
+| Backend bound to the session and validated on read | — | — | ✅ |
+| High-resolution monotonic QPC as the default | — | Sometimes | ✅ |
+| Correct unsigned 32-bit counter conversion | — | Rarely | ✅ |
+| Rollover-safe elapsed arithmetic | — | Rarely | ✅ |
+| Backwards-clock detection | — | — | ✅ |
+| Transactional session start | — | — | ✅ |
+| `timeBeginPeriod` lifecycle balanced and guarded | — | Rarely | ✅ |
+| Repeated measurement returning every sample | — | Rarely | ✅ |
+| Median, percentile, and spread statistics | — | — | ✅ |
+| Explicit contamination warning on noisy runs | — | — | ✅ |
+| Structured named checkpoints | — | Rarely | ✅ |
+| Overlapping instances cannot corrupt Excel state | — | — | ✅ |
+| Exact Application-state restore on the last session | — | Rarely | ✅ |
+| Strict and non-strict error policies | — | — | ✅ |
+| Named error constants throughout | — | Rarely | ✅ |
+| Deterministic regression suite | — | Rarely | ✅ |
+| No external dependency | Excel runtime | Usually | ✅ |
 
 ---
 
-## 🧱 Structured checkpoints and reporting
+## 🧭 Core ideas
 
-<p align="left">
-  <img alt="Output" src="https://img.shields.io/badge/Output-Array %2B Text Reports-brightgreen">
-</p>
+<table>
+<tr>
+<td width="33%" valign="top">
 
-A single elapsed-time value is often not enough.
+### ⏱️ Session-bound timing
 
-`cPerformanceManager` also supports **named checkpoints** inside a timing session so you can break a workflow into meaningful measured phases such as:
+`StartTimer` binds a backend. Every elapsed read is validated against it.
 
-- 📥 loading data
-- 🧮 building arrays
-- ✍️ writing formulas
-- 🔄 recalculating
-- 📤 exporting results
+Measuring with one clock and reading with another — the most common VBA timing bug — is structurally impossible.
 
-For each checkpoint the class stores:
+</td>
+<td width="33%" valign="top">
 
-- 🔢 sequence number
-- 🏷️ checkpoint name
-- 📝 optional note
-- Δ delta seconds since the previous checkpoint
-- Σ cumulative elapsed seconds since `StartTimer`
-- ⏱️ timing method metadata
-- 🏁 optional run label
+### 📊 Honest statistics
 
-The report can then be exported as:
+One sample tells you nothing about stability.
 
-- 📦 a **2D array** through `ReportAsArray()`
-- 📝 a **readable multiline text block** through `ReportAsText()`
+The harness returns every run, reports **median and minimum first**, and warns when variance says the number should not be trusted.
+
+</td>
+<td width="33%" valign="top">
+
+### 🧹 Shared state safety
+
+Excel Application settings are process-global.
+
+A reference-counted scope manager aggregates every instance's request, so overlapping instances coexist and the original state is restored exactly once.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 🛡️ Explicit contracts
+
+Every procedure documents its purpose, inputs, behaviour, and error policy.
+
+Strict mode raises. Non-strict mode falls back predictably. Nothing fails silently.
+
+</td>
+<td width="33%" valign="top">
+
+### 🧱 Structured checkpoints
+
+Name the phases of a workflow and get delta and cumulative timings per phase.
+
+Export as a 2-D array, readable text, or straight to a worksheet range.
+
+</td>
+<td width="33%" valign="top">
+
+### 📦 Frictionless deployment
+
+Two files. Import, compile, use.
+
+No add-in, no installer, no COM reference, no external numerical runtime.
+
+</td>
+</tr>
+</table>
 
 ---
 
-## 📁 Repository contents
+# ⏰ Timing backends
 
-<p align="left">
-  <img alt="Layout" src="https://img.shields.io/badge/Layout-Src+Demo+Test-blue">
-</p>
+Select a backend with the first argument to `StartTimer`. The default is **5 (QPC)**.
+
+| # | Backend | Resolution | Monotonic | Notes |
+|:-:|---|---|:-:|---|
+| **1** | `Timer` | ~10 ms | — | Seconds since midnight; wraps every 24 h |
+| **2** | `GetTickCount` / `GetTickCount64` | ~10–16 ms | ✅ | Win64 uses the 64-bit variant; Win32 wraps at ≈49.7 days |
+| **3** | `timeGetTime` | 1 ms | ✅ | Requests 1 ms multimedia resolution; wraps at ≈49.7 days |
+| **4** | `timeGetSystemTime` | 1 ms | ✅ | `MMTIME` / `TIME_MS`; wraps at ≈49.7 days |
+| **5** | **`QueryPerformanceCounter`** | **sub-µs** | ✅ | **Default and recommended** |
+| **6** | `Now() * 86400` | ~1 s | — | Wall clock; diagnostics only |
+
+> [!TIP]
+> Use **5 (QPC)** unless you have a specific reason not to. It is the only backend with sub-microsecond resolution, and it is the one path the class optimises for.
+
+<details>
+<summary><strong>Why the rollover handling matters</strong></summary>
+
+<br>
+
+Backends 2, 3 and 4 are 32-bit millisecond counters on Win32. VBA stores them in a signed `Long`, so once the counter passes 2³¹ ms — roughly **24.9 days of uptime** — the value reads as negative.
+
+`UInt32ToDouble` maps those values back into the logical unsigned range, and `RolloverSeconds` supplies the correct wrap period per backend. On Win64, backend 2 uses `GetTickCount64` and reports no rollover at all.
+
+This is the class of bug that appears only on machines with long uptime, which is precisely when nobody is testing. Both functions are covered by dedicated boundary tests.
+
+</details>
+
+<details>
+<summary><strong>Why negative elapsed times raise</strong></summary>
+
+<br>
+
+After rollover correction, a negative elapsed time can only mean the timing source moved backwards. That makes the measurement invalid, not merely imprecise.
+
+`Elapsed_Validate` raises in strict mode and clamps to zero otherwise. Backend 5 skips the check deliberately — QPC is monotonic, and it is the default hot path.
+
+</details>
+
+---
+
+# ⚡ Quick start
+
+## 1. Import the two required files
+
+| File | Path | Required |
+|---|---|:-:|
+| `M_cPM_TimeWasters` | `src/modules/M_cPM_TIMEWASTERS.bas` | ✅ |
+| `cPerformanceManager` | `src/classes/cPerformanceManager.cls` | ✅ |
+
+> [!WARNING]
+> Import the **module first**. The class calls `PM_TW_NewInstanceKey`, so importing the class alone will not compile.
+
+## 2. Time a block of code
+
+```vb
+Dim cPM As cPerformanceManager
+Set cPM = New cPerformanceManager
+
+cPM.StartTimer 5                       'QPC
+    '... your workload ...
+Debug.Print cPM.ElapsedTime
+
+cPM.ResetEnvironment
+Set cPM = Nothing
+```
 
 ```text
-/README.md
-/src/classes/cPerformanceManager.cls
-/src/modules/M_cPM_TIMEWASTERS.bas
-/demo/M_cPM_DEMO.bas
-/demo/M_cPM_USAGE_EXAMPLES.bas
-/demo/M_DEMO_BUILDER.bas
-/test/M_cPM_TEST.bas
+0:00:02 - 431 milliseconds - 908 microseconds - 200 nanoseconds
 ```
 
-### ✅ Required files
-
-These two files are required for normal use:
-
-- `src/classes/cPerformanceManager.cls`
-- `src/modules/M_cPM_TIMEWASTERS.bas`
-
-### 🧰 Optional companion files
-
-These files are optional but useful:
-
-- `demo/M_cPM_USAGE_EXAMPLES.bas`  
-  Compact usage examples and recommended integration patterns
-
-- `demo/M_cPM_DEMO.bas`  
-  Interactive demo-sheet builder and runnable demo scenarios
-
-- `demo/M_DEMO_BUILDER.bas`  
-  Shared worksheet/demo layout helpers used by the demo environment
-
-- `test/M_cPM_TEST.bas`  
-  Regression test harness covering timing, fallback, TW lifecycle, cleanup, and checkpoint/reporting behavior
-
----
-
-## 🧭 Typical use cases
-
-<p align="left">
-  <img alt="Use" src="https://img.shields.io/badge/Use-Benchmarking %2B Automation-217346">
-</p>
-
-### 📊 Performance benchmarking
-
-Measure execution time with high precision using a consistent API and a preferred high-resolution backend.
-
-### 📚 Large dataset processing
-
-Suppress unnecessary Excel overhead during intensive procedures to improve runtime performance.
-
-### 🧪 Controlled execution environments
-
-Run procedures under predictable application-state conditions, then restore the Excel environment cleanly.
-
-### 🧱 Workflow instrumentation
-
-Capture named checkpoints and export structured delta/cumulative timing for multi-step procedures.
-
-### 🚀 General workbook performance improvement
-
-Use shared “time-waster” suppression even when elapsed time is not being measured.
-
----
-
-## ⏱️ Timer methods
-
-<p align="left">
-  <img alt="Backends" src="https://img.shields.io/badge/Backends-1 to 6-blue">
-</p>
-
-| ID | Method | Notes |
-|---:|---|---|
-| 1 | `Timer` | Seconds since midnight; rolls over every 24 hours |
-| 2 | `GetTickCount / GetTickCount64` | Milliseconds since boot; 32-bit path wraps at ~49.7 days |
-| 3 | `timeGetTime` | Millisecond counter with 32-bit rollover semantics |
-| 4 | `timeGetSystemTime (MMTIME / TIME_MS)` | Millisecond source treated with 32-bit rollover semantics |
-| 5 | `QueryPerformanceCounter (QPC)` | Default and recommended high-resolution benchmark source |
-| 6 | `Now() * 86400` | Wall-clock seconds; mainly useful for diagnostics |
-
----
-
-## 🧩 Requirements
-
-<p align="left">
-  <img alt="Host" src="https://img.shields.io/badge/Host-Wndows Excel VBA-217346">
-</p>
-
-- ✅ Microsoft Excel with VBA enabled
-- 🪟 Windows host environment for API-backed timing methods (`2..5`)
-- 🧱 `VBA7` / `Win64` conditional compilation support as required by the host
-- 📦 required source files:
-  - `cPerformanceManager.cls`
-  - `M_cPM_TIMEWASTERS.bas`
-
----
-
-## 🛠️ Installation
-
-<p align="left">
-  <img alt="Flow" src="https://img.shields.io/badge/Flow-Import Compile Run-brightgreen">
-</p>
-
-1. Open the target workbook, add-in, or VBA project
-2. Open the VBA Editor (`ALT + F11`)
-3. Import:
-   - `src/classes/cPerformanceManager.cls`
-   - `src/modules/M_cPM_TIMEWASTERS.bas`
-4. Save as macro-enabled (`.xlsm` or `.xlam`)
-5. Compile the project (`Debug` → `Compile VBAProject`)
-6. Run a smoke test
-
-Optional:
-
-- import `demo/M_cPM_USAGE_EXAMPLES.bas`
-- import `demo/M_cPM_DEMO.bas`
-- import `demo/M_DEMO_BUILDER.bas`
-- import `test/M_cPM_TEST.bas`
-
----
-
-## ⚡ Quick start
-
-<p align="left">
-  <img alt="Examples" src="https://img.shields.io/badge/Examples-Timing + Checkpoints + TW-217346">
-</p>
-
-### 1️⃣ Basic timing (default QPC backend)
+## 3. Benchmark properly, with statistics
 
 ```vb
-Sub Example_BasicTiming()
+Dim cPM As cPerformanceManager
+Dim S() As Double
 
-    Dim cPM As cPerformanceManager
-    Dim ElapsedS As Double
+Set cPM = New cPerformanceManager
 
-    Set cPM = New cPerformanceManager
+S = cPM.MeasureProcedure("RebuildPivotCache", 30, 3)
+Debug.Print cPM.Stats_Text(S, "Pivot rebuild")
 
-    cPM.StartTimer
-
-    Range("A1:A10000").Value = 1
-
-    ElapsedS = cPM.ElapsedSeconds
-    Debug.Print "Elapsed seconds: " & Format$(ElapsedS, "0.000000000")
-
-    cPM.ResetEnvironment
-    Set cPM = Nothing
-
-End Sub
+cPM.ResetEnvironment
+Set cPM = Nothing
 ```
 
-### 2️⃣ Format an already measured elapsed value
-
-```vb
-Sub Example_FormatExistingElapsed()
-
-    Dim cPM As cPerformanceManager
-    Dim ElapsedS As Double
-    Dim ElapsedT As String
-
-    Set cPM = New cPerformanceManager
-
-    cPM.StartTimer 5, False
-    Application.Calculate
-
-    ElapsedS = cPM.ElapsedSeconds
-    ElapsedT = cPM.ElapsedTime(, ElapsedS)
-
-    Debug.Print "Elapsed seconds: " & Format$(ElapsedS, "0.000000000")
-    Debug.Print "Elapsed time   : " & ElapsedT
-
-    cPM.ResetEnvironment
-    Set cPM = Nothing
-
-End Sub
+```text
+TIMING STATISTICS | Pivot rebuild
+Samples           : 30
+Median            : 0.412883100 s
+Min               : 0.401220400 s
+P95               : 0.498771300 s
+Max               : 0.612004900 s
+Mean              : 0.421994700 s
+StdDev            : 0.038112600 s
+CoeffOfVariation  : 0.0903
 ```
 
-### 3️⃣ Structured checkpoints
+## 4. Instrument a workflow with checkpoints
 
 ```vb
-Sub Example_Checkpoints()
+cPM.StartTimer 5, False, "Import run"
 
-    Dim cPM As cPerformanceManager
-    Dim ReportArr As Variant
+LoadSourceData
+cPM.Checkpoint "Load"
 
-    Set cPM = New cPerformanceManager
+TransformRecords
+cPM.Checkpoint "Transform", "22 400 rows"
 
-    cPM.StartTimer 5, False
-    cPM.SetRunLabel "ImportWorkflow"
+WriteResults
+cPM.Checkpoint "Write back"
 
-    Range("A1:A10000").Value = 1
-    cPM.Checkpoint "LoadValues"
-
-    Range("B1:B10000").Formula = "=ROW()"
-    cPM.Checkpoint "WriteFormulas"
-
-    Application.Calculate
-    cPM.Checkpoint "Recalculate", "Full workbook calculation pass"
-
-    Debug.Print cPM.ReportAsText
-
-    ReportArr = cPM.ReportAsArray
-
-    cPM.ResetEnvironment
-    Set cPM = Nothing
-
-End Sub
+Debug.Print cPM.ReportAsText
 ```
 
-### 4️⃣ Improve performance without measuring elapsed time
-
-```vb
-Sub Example_PerformanceOnly()
-
-    Dim cPM As cPerformanceManager
-
-    Set cPM = New cPerformanceManager
-
-    cPM.TW_Turn_OFF
-
-    Range("A1:A50000").Formula = "=ROW()"
-    Application.Calculate
-
-    cPM.TW_Turn_ON
-    cPM.ResetEnvironment
-    Set cPM = Nothing
-
-End Sub
+```text
+CHECKPOINT REPORT | RunLabel=Import run
+Seq | Checkpoint | DeltaSeconds | CumulativeSeconds | MethodName | Note
+1 | Load | 1.204881200 | 1.204881200 | QPC |
+2 | Transform | 3.771003400 | 4.975884600 | QPC | 22 400 rows
+3 | Write back | 0.918224100 | 5.894108700 | QPC |
 ```
 
-### 5️⃣ Benchmark with Excel TW suppression
+## 5. Speed up a heavy procedure without timing anything
 
 ```vb
-Sub Example_BenchmarkWithSuppression()
+cPM.TW_Turn_OFF                        'suppress Excel time-wasters
+    '... heavy workbook automation ...
+cPM.TW_Turn_ON                         'restore exactly as found
+```
 
-    Dim cPM As cPerformanceManager
-    Dim ElapsedS As Double
+Exempt anything you still need:
 
-    Set cPM = New cPerformanceManager
-
-    cPM.TW_Turn_OFF
-    cPM.StartTimer 5
-
-    Range("A1:A50000").Formula = "=ROW()"
-
-    ElapsedS = cPM.ElapsedSeconds
-    Debug.Print "Elapsed seconds: " & Format$(ElapsedS, "0.000000000")
-
-    cPM.TW_Turn_ON
-    cPM.ResetEnvironment
-    Set cPM = Nothing
-
-End Sub
+```vb
+cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Cursor
 ```
 
 ---
 
-## 🧬 Core public API
+# 📊 Measurement and statistics
 
-<p align="left">
-  <img alt="Surface" src="https://img.shields.io/badge/Surface-Timing TW Reporting-blue">
-</p>
+> [!IMPORTANT]
+> **Report the median and the minimum. Treat the mean with suspicion.**
+>
+> Timing distributions are right-skewed with fat tails. A single OS scheduler preemption during a run inflates the mean while barely moving the median. A mean on its own cannot distinguish a clean measurement from a contaminated one.
 
-### ⏱️ Timing
+## The harness
 
-- `StartTimer(Optional iMethod As Integer = 5, Optional AlignToNextTick As Boolean = False)`
-- `ElapsedSeconds(Optional iMethod As Integer = 0) As Double`
-- `ElapsedTime(Optional iMethod As Integer = 0, Optional ElapsedSecondsIn As Variant) As String`
+| Member | Returns | Purpose |
+|---|---|---|
+| `MeasureProcedure(Name, Iterations, Warmup, Method)` | `Double()` | Runs a named `Public Sub` N times via `Application.Run`; returns every per-run elapsed value |
+| `MeasureOverhead_Samples(Iterations, Warmup, Method)` | `Double()` | Per-cycle overhead of the backend itself; its **minimum is your resolution floor** |
 
-### 🔎 Session / state inspection
+## The statistics
 
-- `T1 As Double`
-- `T2 As Double`
-- `ET As Double`
-- `ActiveMethodID As Integer`
-- `HasActiveSession As Boolean`
-- `MethodName(ByVal Idx As Integer) As String`
-- `StrictMode As Boolean` (Get/Let)
-- `RunLabel As String`
+All routines accept any `Double()` vector, so you can keep and post-process the raw samples.
 
-### 📉 Diagnostics / benchmarking
+| Member | Returns |
+|---|---|
+| `Stats_Median(S)` | Median — the headline statistic |
+| `Stats_Min(S)` / `Stats_Max(S)` | Best and worst observed run |
+| `Stats_Percentile(S, P)` | Nearest-rank percentile; every value returned was actually observed |
+| `Stats_Mean(S)` | Arithmetic mean, retained for continuity |
+| `Stats_StdDev(S)` | Sample standard deviation (N−1 divisor) |
+| `Stats_CoefficientOfVariation(S)` | Dimensionless spread, comparable across benchmarks |
+| `Stats_IsContaminated(S, [Threshold])` | `True` when CV exceeds 0.25 — re-run before trusting the result |
+| `Stats_Count(S)` | Element count; returns 0 for an uninitialised array |
+| `Stats_Text(S, [Caption])` | Formatted multiline summary |
 
-- `OverheadMeasurement_Seconds(Optional iMethod As Integer = 5, Optional Iterations As Long = 1000) As Double`
-- `OverheadMeasurement_Text(Optional iMethod As Integer = 5, Optional Iterations As Long = 1000, Optional OverheadSecondsIn As Variant) As String`
-- `Get_SystemTickInterval As String`
-- `QPC_Get_SystemTickInterval As String`
-- `QPC_FrequencyPerSecond As String`
-- `QPC_FrequencyPerSecond_Value As Double`
+<details>
+<summary><strong>Reading the numbers</strong></summary>
 
-### 🧭 Execution control / environment
+<br>
 
-- `Pause(ByVal dSeconds As Double, Optional ByVal iMethod As Integer = 1)`
-- `ResetEnvironment()`
+| CV | Interpretation |
+|---|---|
+| **< 0.05** | Clean run. Trust the median. |
+| **0.05 – 0.25** | Normal for real workloads. Compare medians, not means. |
+| **> 0.25** | Contaminated. `Stats_IsContaminated` returns `True`. Close background work and re-run. |
 
-### 🧹 Shared time-waster control
+Compare **P95 against the median** to see the tail. If P95 is close to the median, the run was stable. If it is several multiples higher, something interrupted you.
 
-- `TW_Turn_OFF(Optional ByVal Except As TW_Enum = TW_Enum.None)`
-- `TW_Turn_ON()`
-- `TW_IsActive As Boolean`
-- `TW_ActiveSessionCount As Long`
+</details>
 
-### 🧱 Checkpoints / reporting
+<details>
+<summary><strong>Constraints of the harness</strong></summary>
 
-- `SetRunLabel(ByVal RunLabel As String)`
-- `ClearCheckpoints()`
-- `Checkpoint(ByVal CheckpointName As String, Optional ByVal NoteText As String = vbNullString)`
-- `CheckpointCount As Long`
-- `ReportAsArray() As Variant`
-- `ReportAsText() As String`
+<br>
+
+- `Application.Run` reaches only **Public procedures in standard modules**. It cannot call class methods, `Private` procedures, or anything in a module declared `Option Private Module`.
+- `Application.Run` itself costs tens of microseconds per call, and that cost is included in every sample. The harness suits work measured in milliseconds or longer. For faster work, subtract a baseline obtained from `MeasureOverhead_Samples`.
+- Measurement runs on an isolated worker instance, so your own session, checkpoints, and run label are never disturbed.
+
+</details>
 
 ---
 
-## 🧹 `TW_Enum` flags
+# 🧹 Time-waster suppression
 
-<p align="left">
-  <img alt="Type" src="https://img.shields.io/badge/Type-Bitmask Flags-217346">
-</p>
+Excel Application settings are **global to the process**, not to your object. Suppressing them naively from two places corrupts state for both.
 
-Use with `TW_Turn_OFF Except:=...` as bitmask flags:
+`cPerformanceManager` delegates to a shared, reference-counted scope manager:
 
-- `TW_Enum.None`
-- `TW_Enum.ScreenUpdating`
-- `TW_Enum.EnableEvents`
-- `TW_Enum.DisplayAlerts`
-- `TW_Enum.Calculation`
-- `TW_Enum.Cursor`
+1. the **first** active session captures the original Application baseline;
+2. each instance registers its own disable-mask;
+3. the effective state is the **OR** of every active mask;
+4. the **last** session to end restores the original baseline, exactly once.
 
-Example:
+| Flag | `TW_Enum` | Suppressed value |
+|---|---|---|
+| Screen updating | `ScreenUpdating` | `False` |
+| Event handling | `EnableEvents` | `False` |
+| Alert dialogs | `DisplayAlerts` | `False` |
+| Recalculation | `Calculation` | `xlCalculationManual` |
+| Mouse cursor | `Cursor` | `xlWait` |
 
 ```vb
-cPM.TW_Turn_OFF TW_Enum.ScreenUpdating Or TW_Enum.EnableEvents
+cPM.TW_Turn_OFF                                    'suppress everything
+cPM.TW_Turn_OFF Except:=TW_Enum.ScreenUpdating     'keep the screen live
+cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Calculation
 ```
 
----
-
-## 🛡️ Strict mode behavior
-
-<p align="left">
-  <img alt="Validation" src="https://img.shields.io/badge/Validation-Fail Fast-orange">
-</p>
-
-- default: `StrictMode = True`
-- strict mode raises on:
-  - invalid timer method
-  - `ElapsedSeconds` before `StartTimer`
-  - explicit elapsed method mismatch versus active session
-  - `SetRunLabel` after checkpoint capture has already begun
-  - `Checkpoint` before `StartTimer`
-- non-strict mode attempts fallback or coercion where supported
+> [!NOTE]
+> A hard `End` statement clears module globals without running `Class_Terminate`, which can leave Excel visibly suppressed. Run `PM_TW_EndAllSessions` to recover.
 
 ---
 
-## 🧠 Design notes
+# 🧬 Public API
 
-<p align="left">
-  <img alt="Guidance" src="https://img.shields.io/badge/Guidance-Best practices-217346">
-</p>
+<details open>
+<summary><strong>⏱️ Core timing</strong></summary>
 
-- Prefer method `5` (`QueryPerformanceCounter`) for benchmark-grade timing
-- Use `ElapsedSeconds` for numeric logic and machine-readable results
-- Use `ElapsedTime` for user-facing display
-- When you already have a numeric elapsed value, prefer `ElapsedTime(, ElapsedSecondsIn)` to avoid taking a second timing sample
-- When you already have a numeric overhead value, prefer `OverheadMeasurement_Text(, , OverheadSecondsIn)` to avoid taking a second overhead measurement
-- Use checkpoints when a workflow needs phase-level timing rather than only one final elapsed value
-- Always call `ResetEnvironment` in normal flows and in error-cleanup paths
-- “Time-waster” suppression is useful both for cleaner benchmarks and for improving performance in ordinary Excel/VBA procedures, even when no elapsed-time measurement is being taken
+<br>
+
+| Member | Description |
+|---|---|
+| `StartTimer([Method], [AlignToNextTick], [RunLabel])` | Starts a session and binds the backend |
+| `ElapsedSeconds([Method])` | Numeric elapsed seconds. The low-overhead primitive |
+| `ElapsedTime([Method], [ElapsedSecondsIn])` | Formatted elapsed time; formats an existing value when supplied |
+
+</details>
+
+<details>
+<summary><strong>📊 Measurement and statistics</strong></summary>
+
+<br>
+
+| Member | Description |
+|---|---|
+| `MeasureProcedure(Name, [Iterations], [Warmup], [Method])` | Repeated measurement of a named procedure |
+| `MeasureOverhead_Samples([Iterations], [Warmup], [Method])` | Per-cycle backend overhead samples |
+| `Stats_Median` · `Stats_Min` · `Stats_Max` · `Stats_Mean` | Central tendency and extremes |
+| `Stats_Percentile` · `Stats_StdDev` · `Stats_CoefficientOfVariation` | Distribution shape |
+| `Stats_IsContaminated` · `Stats_Count` · `Stats_Text` | Quality signal, size, summary |
+
+</details>
+
+<details>
+<summary><strong>🧱 Checkpoints and reporting</strong></summary>
+
+<br>
+
+| Member | Description |
+|---|---|
+| `Checkpoint(Name, [Note])` | Captures one named checkpoint |
+| `CheckpointCount` | Number captured in the current session |
+| `SetRunLabel(Label)` | Labels the run — call **after** `StartTimer` |
+| `RunLabel` | Current run label |
+| `ClearCheckpoints` | Clears checkpoint state without ending the session |
+| `ReportAsArray` | 2-D array with header row |
+| `ReportAsText` | Readable multiline report |
+
+</details>
+
+<details>
+<summary><strong>🔎 Session and state inspection</strong></summary>
+
+<br>
+
+| Member | Description |
+|---|---|
+| `T1` · `T2` · `ET` | Raw start, raw end, cached elapsed |
+| `ActiveMethodID` · `HasActiveSession` | Current session binding |
+| `MethodName(Index)` | Human-readable backend label |
+| `StrictMode` | Get/Let the error policy |
+
+</details>
+
+<details>
+<summary><strong>📉 Diagnostics</strong></summary>
+
+<br>
+
+| Member | Description |
+|---|---|
+| `OverheadMeasurement_Seconds([Method], [Iterations])` | Mean near-empty overhead |
+| `OverheadMeasurement_Text([Method], [Iterations], [In])` | Formatted overhead report |
+| `QPC_FrequencyPerSecond` · `QPC_FrequencyPerSecond_Value` | QPC frequency, text and numeric |
+| `QPC_Get_SystemTickInterval` · `Get_SystemTickInterval` | Tick interval diagnostics |
+
+</details>
+
+<details>
+<summary><strong>🧭 Execution control and environment</strong></summary>
+
+<br>
+
+| Member | Description |
+|---|---|
+| `Pause(Seconds, [Method])` | Four pause strategies; capped at 3 600 s |
+| `ResetEnvironment` | Releases timer resolution and ends this instance's TW session |
+| `TW_Turn_OFF([Except])` · `TW_Turn_ON` | Shared suppression control |
+| `TW_IsActive` · `TW_ActiveSessionCount` | Suppression state |
+
+</details>
 
 ---
 
-## 🧪 Running examples and tests
+# 🛡️ Strict mode
 
-<p align="left">
-  <img alt="Coverage" src="https://img.shields.io/badge/Coverage-Regression Suite-brightgreen">
-</p>
+`StrictMode` defaults to **`True`**.
 
-- Import `demo/M_cPM_USAGE_EXAMPLES.bas` for compact usage examples
-- Import `demo/M_cPM_DEMO.bas` and `demo/M_DEMO_BUILDER.bas` for the interactive demo workbook surface
+| Condition | Strict | Non-strict |
+|---|---|---|
+| Invalid method passed to `StartTimer` | Raises | Falls back to 5 |
+| QPC requested but unavailable | Raises | Falls back to 2 |
+| `ElapsedSeconds` before `StartTimer` | Raises | Returns 0 |
+| Read method ≠ session method | Raises | Uses the session method |
+| Negative elapsed after rollover correction | Raises | Clamps to 0 |
+| QPC read failure | Raises | Returns 0 |
+| Tick alignment exceeds the spin guard | Raises | Returns a current timestamp |
 
-<img width="1917" height="915" alt="cPM Demo Control Panel" src="https://github.com/user-attachments/assets/efb40917-51d5-4494-87a5-bcd8fb2c97da" />
+All 23 raised error numbers are declared as named constants. There are no magic numbers in the codebase.
 
-- Import `test/M_cPM_TEST.bas` and run:
+---
+
+# 🧪 Testing and validation
 
 ```vb
 Run_cPerformanceManager_RegressionSuite
 ```
 
-<img width="1918" height="919" alt="cPM Test Results" src="https://github.com/user-attachments/assets/876bfa0d-c678-45a7-a925-80ec76febefb" />
+**52 cases · 288 assertions**, written to a dedicated worksheet log and summarised in the Immediate Window.
 
-The regression suite covers:
+Coverage includes:
 
-- 🧱 constructor/default state
-- 🧭 method mapping and fallback behavior
-- ⏱️ elapsed-time behavior across all timing backends
-- 🧾 formatted elapsed-time behavior
-- ⏳ pause methods
-- 📉 overhead helpers and diagnostics
-- 🧹 TW lifecycle and cleanup
-- 🧱 checkpoint/reporting behavior
-
----
-
-## 🏗️ Position in the framework
-
-<p align="left">
-  <img alt="Layer" src="https://img.shields.io/badge/Layer-Execution Engine-217346">
-</p>
-
-Within the **Excel VBA Runtime Framework**, `cPerformanceManager` is the component responsible for **execution performance, checkpoint instrumentation, and runtime environment control**.
-
-It is intended to work alongside complementary components for:
-
-- 🖥️ UI management
-- ⚡ event-driven interaction
-- 🏛️ broader Excel application architecture
-
-Framework home:
-
-[Excel VBA Runtime Framework](https://github.com/danielep71/excel-vba-runtime-framework)
+- every backend across start, elapsed, aligned-start, and formatted output;
+- strict and non-strict behaviour on every failure path;
+- `UInt32ToDouble` at all four 32-bit boundaries;
+- `RolloverSeconds` per backend, with the Win64 branch handled conditionally;
+- checkpoint storage integrity across 1 000 captures and ~10 `ReDim Preserve` cycles;
+- `Class_Terminate` releasing a shared TW session with all five Application flags restored;
+- 75 instance create/destroy cycles proving no stale TW registration survives;
+- statistics against a hand-computed vector, plus order independence and boundary behaviour.
 
 ---
 
-## 📚 Wiki
+# 🏗️ Repository contents
 
-<p align="left">
-  <img alt="Docs" src="https://img.shields.io/badge/Docs-Extended Guidance-blue">
-</p>
+```text
+src/classes/cPerformanceManager.cls      Required — the class
+src/modules/M_cPM_TIMEWASTERS.bas        Required — shared TW manager
+test/M_cPM_Test.bas                      Regression suite
+demo/M_cPM_DEMO.bas                      Interactive demo
+demo/M_cPM_USAGE_EXAMPLES.bas            Worked examples
+demo/M_DEMO_BUILDER.bas                  Presentation helpers
+CHANGELOG.md                             Version history
+```
 
-For additional examples, notes, and repository-level guidance, see the project wiki:
-
-[cPerformanceManager Wiki](https://github.com/danielep71/VBA-Performance_Manager/wiki)
+> [!NOTE]
+> The demo workbook is distributed as a **[Release asset](https://github.com/danielep71/vba-performance_manager/releases)** rather than versioned in the repository.
 
 ---
+
+# 🧩 Requirements
+
+| Requirement | Detail |
+|---|---|
+| Host | Microsoft Excel on **Windows** |
+| Bitness | 32-bit and 64-bit, via `VBA7` / `Win64` conditional compilation |
+| References | **None.** `Scripting.Dictionary` is late-bound |
+| Dependencies | **None.** No add-in, installer, or COM component |
+
+---
+
+# 🛠️ Installation
+
+1. Open the VBE with <kbd>Alt</kbd> + <kbd>F11</kbd>
+2. **File → Import File…** → `src/modules/M_cPM_TIMEWASTERS.bas`
+3. **File → Import File…** → `src/classes/cPerformanceManager.cls`
+4. **Debug → Compile VBAProject**
+
+Optionally import `test/M_cPM_Test.bas` and the `demo/` modules to run the suite and the examples.
+
+---
+
+# 🧠 Design notes
+
+<details>
+<summary><strong>Transactional session start</strong></summary>
+
+<br>
+
+`StartTimer` captures every timestamp into locals first and commits class state only after all fallible operations succeed. A failed QPC read under strict mode therefore leaves the previous session completely untouched.
+
+</details>
+
+<details>
+<summary><strong>Collision-proof instance keys</strong></summary>
+
+<br>
+
+Shared TW keys are issued by a module-level counter, not derived from `ObjPtr`. VBA reuses heap addresses, so an address-based key could let a new instance silently inherit a session left behind by a destroyed one.
+
+The counter and the session store share a module-global lifetime, so a project reset clears both together and a key can never be reissued while a stale registration survives.
+
+</details>
+
+<details>
+<summary><strong>Currency arithmetic for QPC</strong></summary>
+
+<br>
+
+QPC ticks and frequency are stored as `Currency`, which VBA holds as a scaled 64-bit integer. Because both the tick delta and the frequency carry the same scaling, it cancels in the division and the elapsed value is exact.
+
+</details>
+
+<details>
+<summary><strong>Single-site backend dispatch</strong></summary>
+
+<br>
+
+All elapsed-time dispatch lives in one private reader. `ElapsedSeconds` delegates and caches; `Checkpoint` delegates without caching, so taking a checkpoint never overwrites an explicit measurement you are still holding.
+
+</details>
+
+---
+
+# ⚠️ Known limitations
+
+- **Windows only** for backends 2–5. Backends 1 and 6 are conceptually portable.
+- **`Application.Run` overhead** is included in every `MeasureProcedure` sample.
+- **`timeBeginPeriod(1)`** affects system-wide timer resolution while held and is released by `ResetEnvironment`, with `Class_Terminate` as the fallback.
+- **A hard `End` statement** bypasses `Class_Terminate`; recover with `PM_TW_EndAllSessions`.
+- **Nanosecond display precision** is presentational and does not imply measurement resolution at that scale.
+
+---
+
+# 📚 Wiki
+
+Full technical documentation lives in the **[Wiki](https://github.com/danielep71/vba-performance_manager/wiki)**:
+
+| Page | Contents |
+|---|---|
+| [Installation and Import](https://github.com/danielep71/vba-performance_manager/wiki/Installation-and-Import) | Import order and setup |
+| [Quick Start](https://github.com/danielep71/vba-performance_manager/wiki/Quick-start) | First measurement in five minutes |
+| [Timer Methods](https://github.com/danielep71/vba-performance_manager/wiki/Timer-Methods) | Backend characteristics and selection |
+| [Core API](https://github.com/danielep71/vba-performance_manager/wiki/Core-API) | Session model and the main members |
+| [Statistics and Measurement](https://github.com/danielep71/vba-performance_manager/wiki/Statistics-and-Measurement) | The harness and reading the numbers |
+| [Checkpoint and Reporting](https://github.com/danielep71/vba-performance_manager/wiki/Checkpoint-and-Reporting) | Structured instrumentation |
+| [Time-Waster Suppression](https://github.com/danielep71/vba-performance_manager/wiki/Time-Waster-Suppression) | The shared scope model |
+| [Benchmarking Guidance](https://github.com/danielep71/vba-performance_manager/wiki/Benchmarking-Guidance) | Getting trustworthy numbers |
+| [Architecture and Internal Design](https://github.com/danielep71/vba-performance_manager/wiki/Architecture-and-Internal-Design) | How it works inside |
+| [Testing and Validation](https://github.com/danielep71/vba-performance_manager/wiki/Testing-and-Validation) | The regression suite |
+| [Known Limitations](https://github.com/danielep71/vba-performance_manager/wiki/Known-Limitations) | Documented boundaries |
+| [Version History](https://github.com/danielep71/vba-performance_manager/wiki/Version-History) | Release record |
+
+---
+
+<div align="center">
 
 ## 📄 License
 
-<p align="left">
-  <img alt="License" src="https://img.shields.io/badge/License-MIT-green">
-</p>
-
-This project is licensed under the terms in `LICENSE`.
-
----
+Released under the [MIT License](LICENSE).
 
 ## 👤 Author
 
-<p align="left">
-  <img alt="Maintainer" src="https://img.shields.io/badge/Maintainer-Daniele Penza-217346">
-</p>
+**Daniele Penza**
 
-Daniele Penza
+[![GitHub](https://img.shields.io/badge/GitHub-danielep71-181717?style=for-the-badge&logo=github)](https://github.com/danielep71)
+
+<br>
+
+*If this component saved you time, consider starring the repository.*
+
+⭐
+
+</div>
