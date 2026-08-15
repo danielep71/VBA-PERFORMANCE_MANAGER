@@ -43,7 +43,7 @@
 ---
 
 <p align="center">
-  <img src="images/performance_manager_banner.png"
+  <img src="images/performance_manager_banner2.png"
        alt="Class Performance Manager — benchmark-grade timing for Excel VBA"
        width="100%">
 </p>
