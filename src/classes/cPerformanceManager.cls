@@ -354,6 +354,13 @@ Attribute VB_Exposed = False
         Private Const ERR_CPM_CHECKPOINT_NO_SESSION     As Long = vbObjectError + 1020
         Private Const ERR_CPM_RUNLABEL_AFTER_CAPTURE    As Long = vbObjectError + 1021
 
+    'Statistics / measurement-harness errors
+        Private Const ERR_CPM_STATS_NO_SAMPLES          As Long = vbObjectError + 1030
+        Private Const ERR_CPM_STATS_BAD_PERCENTILE      As Long = vbObjectError + 1031
+        Private Const ERR_CPM_MEASURE_BLANK_PROC        As Long = vbObjectError + 1032
+
+    'Coefficient-of-variation above which a sample set is reported as noisy
+        Private Const CPM_CV_CONTAMINATION_THRESHOLD    As Double = 0.25
 '------------------------------------------------------------------------------
 ' STATE
 '------------------------------------------------------------------------------
@@ -763,32 +770,23 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Dou
 '
 ' BEHAVIOR
 '   - Resolves and validates the timing method against the active session.
-'   - Reads the end timestamp from the resolved backend.
-'   - Applies rollover correction for the 32-bit millisecond counters.
-'   - Validates the result through Elapsed_Validate for methods 1/2/3/4/6.
-'   - Caches m_T2 and m_ET as a side effect.
+'   - Delegates the arithmetic to Elapsed_ComputeSeconds.
+'   - Caches m_T2, m_qpcEnd and m_ET as a side effect.
 '
 ' ERROR POLICY
-'   - Session and method validation is delegated to Method_ResolveElapsed.
-'   - Raises in strict mode when QPC cannot be read.
-'   - Raises in strict mode when the resolved method is invalid.
-'   - Raises in strict mode when the computed elapsed time is negative.
-'   - Returns 0 in non-strict mode for the failure paths above.
+'   Delegated to Method_ResolveElapsed and Elapsed_ComputeSeconds.
 '
 ' DEPENDENCIES
 '   - Method_ResolveElapsed
-'   - Get_TickCountSeconds
-'   - EnsureTimerResolution1ms
-'   - Get_SystemTimeMs
-'   - QPC_TryReadTick
-'   - RolloverSeconds
-'   - Elapsed_Validate
+'   - Elapsed_ComputeSeconds
 '
 ' NOTES
-'   - Method 5 (QPC) deliberately skips Elapsed_Validate. QPC is monotonic and
-'     method 5 is the default hot path, so the extra call is not justified.
-'   - This property mutates m_T2 and m_ET. Callers that need a non-mutating read
-'     should use the cached ET property instead of calling this again.
+'   This property caches. Callers that need a measurement WITHOUT disturbing the
+'   cached T2 / ET values should call Elapsed_ComputeSeconds directly, as
+'   Checkpoint now does.
+'
+'   Behavior is unchanged from the pre-refactor version. All backend dispatch
+'   now lives in one place instead of being duplicated across procedures.
 '
 ' UPDATED
 '   2026-08-14
@@ -798,6 +796,9 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Dou
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim ResolvedMethod  As Integer      'Validated method bound to the active session
+    Dim EndStamp        As Double       'Raw end timestamp reported by the backend
+    Dim QpcEnd          As Currency     'Raw QPC end tick reported by the backend
+    Dim Seconds         As Double       'Computed elapsed seconds
 
 '------------------------------------------------------------------------------
 ' RESOLVE METHOD
@@ -806,78 +807,22 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Dou
         ResolvedMethod = Method_ResolveElapsed(iMethod)
 
 '------------------------------------------------------------------------------
-' DISPATCH
+' MEASURE
 '------------------------------------------------------------------------------
-    Select Case ResolvedMethod
+    'Compute elapsed seconds through the single shared backend reader
+        Seconds = Elapsed_ComputeSeconds(ResolvedMethod, EndStamp, QpcEnd)
 
-        Case 1
-                m_T2 = Timer
-                m_ET = m_T2 - m_T1
-                'Correct midnight rollover for Timer()
-                    If m_ET < 0# Then m_ET = m_ET + 86400#
-                m_ET = Elapsed_Validate(m_ET)
-                ElapsedSeconds = m_ET
+'------------------------------------------------------------------------------
+' CACHE AND ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Cache the raw endpoints and the computed elapsed value
+        m_T2 = EndStamp
+        m_qpcEnd = QpcEnd
+        m_ET = Seconds
 
-        Case 2
-                m_T2 = Get_TickCountSeconds()
-                m_ET = m_T2 - m_T1
-                'Correct 32-bit millisecond-counter rollover where applicable
-                    If m_ET < 0# Then m_ET = m_ET + RolloverSeconds(2)
-                m_ET = Elapsed_Validate(m_ET)
-                ElapsedSeconds = m_ET
+    'Return the computed elapsed seconds
+        ElapsedSeconds = Seconds
 
-        Case 3
-                EnsureTimerResolution1ms
-                m_T2 = UInt32ToDouble(timeGetTime()) / 1000#
-                m_ET = m_T2 - m_T1
-                'Correct 32-bit millisecond-counter rollover
-                    If m_ET < 0# Then m_ET = m_ET + RolloverSeconds(3)
-                m_ET = Elapsed_Validate(m_ET)
-                ElapsedSeconds = m_ET
-
-        Case 4
-                m_T2 = Get_SystemTimeMs() / 1000#
-                m_ET = m_T2 - m_T1
-                'Correct 32-bit millisecond-counter rollover
-                    If m_ET < 0# Then m_ET = m_ET + RolloverSeconds(4)
-                m_ET = Elapsed_Validate(m_ET)
-                ElapsedSeconds = m_ET
-
-        Case 5
-                'QPC is the monotonic high-resolution path and skips validation
-                If Not QPC_TryReadTick(m_qpcEnd) Then
-                    If m_StrictMode Then
-                        Err.Raise ERR_CPM_QPC_READ_FAILED, _
-                                  "cPerformanceManager.ElapsedSeconds", _
-                                  "QueryPerformanceCounter failed while reading the elapsed-time endpoint."
-                    Else
-                        m_ET = 0#
-                        ElapsedSeconds = 0#
-                        Exit Property
-                    End If
-                End If
-                'Currency scaling cancels between numerator and denominator
-                m_ET = CDbl((m_qpcEnd - m_qpcStart) / m_qpcFreq)
-                m_T2 = CDbl(m_qpcEnd)
-                ElapsedSeconds = m_ET
-
-        Case 6
-                m_T2 = Now() * 86400#
-                m_ET = m_T2 - m_T1
-                m_ET = Elapsed_Validate(m_ET)
-                ElapsedSeconds = m_ET
-
-        Case Else
-                If m_StrictMode Then
-                    Err.Raise ERR_CPM_RESOLVED_METHOD_INVALID, _
-                              "cPerformanceManager.ElapsedSeconds", _
-                              "Resolved timer method is invalid."
-                Else
-                    m_ET = 0#
-                    ElapsedSeconds = 0#
-                End If
-
-    End Select
 End Property
 
 Public Function ElapsedTime( _
@@ -2446,17 +2391,18 @@ Public Sub Checkpoint( _
 '
 ' BEHAVIOR
 '   - Requires an active timing session
-'   - Captures cumulative elapsed seconds once
+'   - Captures cumulative elapsed seconds once, without disturbing cached state
 '   - Computes delta seconds versus the previous checkpoint
 '   - Appends one structured checkpoint row
 '   - Updates the last checkpoint marker
 '
 ' ERROR POLICY
 '   Raises when no timing session is active
-'   Otherwise delegates timing validation behavior to ElapsedSeconds
+'   Otherwise delegates timing validation behavior to Method_ResolveElapsed
 '
 ' DEPENDENCIES
-'   - ElapsedSeconds
+'   - Method_ResolveElapsed
+'   - Elapsed_ComputeSeconds
 '   - MethodName
 '   - Checkpoint_EnsureCapacity
 '   - Checkpoint_DefaultName
@@ -2464,9 +2410,10 @@ Public Sub Checkpoint( _
 ' NOTES
 '   - This routine intentionally captures numeric timing only.
 '     It does not call ElapsedTime and therefore avoids formatting overhead.
-'   - Capturing a checkpoint calls ElapsedSeconds internally, which updates the
-'     cached m_T2 and m_ET values. Callers that need to preserve an earlier
-'     explicit measurement should read ET before taking a checkpoint.
+'   - Taking a checkpoint no longer overwrites the cached T2 / ET values. An
+'     explicit ElapsedSeconds measurement therefore survives any number of
+'     subsequent checkpoints.
+'   - It also avoids the vtable cost of the previous Me.ElapsedSeconds call.
 '
 ' UPDATED
 '   2026-08-14
@@ -2479,6 +2426,9 @@ Public Sub Checkpoint( _
     Dim DeltaS              As Double       'Elapsed seconds since previous checkpoint
     Dim NextSeq             As Long         'Next checkpoint sequence number
     Dim EffectiveName       As String       'Normalized checkpoint label
+    Dim ResolvedMethod      As Integer      'Validated method bound to the session
+    Dim DiscardEndStamp     As Double       'Raw endpoint, discarded by design
+    Dim DiscardQpcEnd       As Currency     'Raw QPC endpoint, discarded by design
 
 '------------------------------------------------------------------------------
 ' VALIDATE SESSION
@@ -2491,10 +2441,11 @@ Public Sub Checkpoint( _
         End If
 
 '------------------------------------------------------------------------------
-' MEASURE
+' MEASURE WITHOUT MUTATING CACHED STATE
 '------------------------------------------------------------------------------
-    'Capture cumulative elapsed seconds once for this checkpoint
-        CurrentS = Me.ElapsedSeconds
+    'Resolve the session method and read elapsed seconds directly
+        ResolvedMethod = Method_ResolveElapsed(0)
+        CurrentS = Elapsed_ComputeSeconds(ResolvedMethod, DiscardEndStamp, DiscardQpcEnd)
 
 '------------------------------------------------------------------------------
 ' NORMALIZE LABEL
@@ -4087,3 +4038,1452 @@ Private Function Checkpoint_DefaultName( _
         Checkpoint_DefaultName = "Checkpoint " & CStr(Seq)
 
 End Function
+
+'
+'------------------------------------------------------------------------------
+'
+'                 PUBLIC: MEASUREMENT HARNESS / STATISTICS
+'
+'------------------------------------------------------------------------------
+'
+'   Statistics are computed over a plain Double() sample vector so callers can
+'   keep, export, or post-process the raw per-run values.
+'
+'   Typical use:
+'
+'       Dim S() As Double
+'       S = cPM.MeasureProcedure("RebuildPivotCache", 30, 3)
+'       Debug.Print cPM.Stats_Text(S)
+'
+'   Report MEDIAN and MIN in preference to MEAN. Timing distributions are
+'   right-skewed: one scheduler preemption inflates the mean while leaving the
+'   median almost untouched.
+'
+
+Public Function MeasureProcedure( _
+    ByVal ProcedureName As String, _
+    Optional ByVal Iterations As Long = 30, _
+    Optional ByVal WarmupIterations As Long = 3, _
+    Optional ByVal iMethod As Integer = 5) _
+    As Double()
+'
+'==============================================================================
+'                              MEASURE PROCEDURE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Runs a named VBA procedure repeatedly and returns the per-run elapsed times
+'
+' WHY THIS EXISTS
+'   A single timing sample cannot show whether a result is stable. Benchmarking
+'   requires repeated runs and the full vector of per-run values, so the caller
+'   can inspect the distribution rather than trusting one number
+'
+'   Building that loop by hand in every caller is exactly the duplicated,
+'   error-prone code this class exists to remove
+'
+' INPUTS
+'   ProcedureName
+'     Name of a Public Sub in a standard module, as accepted by Application.Run
+'
+'   Iterations (optional)
+'     Number of measured runs. Coerced to a minimum of 1
+'
+'   WarmupIterations (optional)
+'     Number of discarded runs executed before measurement begins.
+'     Coerced to a minimum of 0
+'
+'   iMethod (optional)
+'     Timing backend to use
+'
+' RETURNS
+'   Double()
+'     1-based vector of per-run elapsed seconds, one element per iteration
+'
+' BEHAVIOR
+'   - Validates the procedure name and coerces the loop counts
+'   - Normalizes and validates the requested timer method
+'   - Runs the warm-up iterations and discards their timings
+'   - Runs the measured iterations, recording each elapsed value
+'   - Always attempts to clean up the isolated worker instance
+'
+' ERROR POLICY
+'   - Raises on a blank procedure name
+'   - Propagates any error raised by the measured procedure, after cleanup
+'   - Timer validation is delegated to Method_NormalizeStart
+'
+' DEPENDENCIES
+'   - Method_NormalizeStart
+'   - Application.Run
+'   - StartTimer
+'   - ElapsedSeconds
+'   - ResetEnvironment
+'
+' NOTES
+'   - Application.Run only reaches Public procedures in standard modules. It
+'     cannot call Private procedures, class methods, or procedures in a module
+'     declared Option Private Module
+'   - Application.Run itself costs roughly tens of microseconds per call. That
+'     cost is included in every sample, so this harness is suited to procedures
+'     measured in milliseconds or longer. For sub-microsecond work, subtract a
+'     baseline measured with MeasureOverhead_Samples
+'   - Measurement runs on an isolated worker instance, so the caller's session
+'     and checkpoint state are untouched
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Samples()           As Double                'Per-run elapsed seconds
+    Dim K                   As Long                  'Loop counter
+    Dim ResolvedMethod      As Integer               'Validated timer method
+    Dim cPM_Work            As cPerformanceManager   'Isolated worker instance
+    Dim DiscardedElapsedS   As Double                'Throwaway warm-up value
+    Dim ErrNumber           As Long                  'Captured error number
+    Dim ErrSource           As String                'Captured error source
+    Dim ErrDescription      As String                'Captured error description
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject a blank procedure name
+        If Len(Trim$(ProcedureName)) = 0 Then
+            Err.Raise ERR_CPM_MEASURE_BLANK_PROC, _
+                      "cPerformanceManager.MeasureProcedure", _
+                      "ProcedureName cannot be blank."
+        End If
+
+    'Coerce the loop counts into a usable range
+        If Iterations < 1 Then Iterations = 1
+        If WarmupIterations < 0 Then WarmupIterations = 0
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Route runtime failures through cleanup
+        On Error GoTo Err_Handler
+
+    'Normalize and validate the timer method using the current instance policy
+        ResolvedMethod = Method_NormalizeStart(iMethod)
+
+    'Size the result vector
+        ReDim Samples(1 To Iterations)
+
+'------------------------------------------------------------------------------
+' INITIALIZE ISOLATED WORKER
+'------------------------------------------------------------------------------
+    'Create an isolated worker instance
+        Set cPM_Work = New cPerformanceManager
+    'Mirror the current strict-mode policy into the isolated worker
+        cPM_Work.StrictMode = m_StrictMode
+
+'------------------------------------------------------------------------------
+' WARM UP
+'------------------------------------------------------------------------------
+    'Run and discard the warm-up iterations
+        For K = 1 To WarmupIterations
+            cPM_Work.StartTimer ResolvedMethod, False
+            Application.Run ProcedureName
+            DiscardedElapsedS = cPM_Work.ElapsedSeconds()
+        Next K
+
+'------------------------------------------------------------------------------
+' MEASURE
+'------------------------------------------------------------------------------
+    'Record one elapsed value per measured iteration
+        For K = 1 To Iterations
+            cPM_Work.StartTimer ResolvedMethod, False
+            Application.Run ProcedureName
+            Samples(K) = cPM_Work.ElapsedSeconds()
+        Next K
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the full per-run sample vector
+        MeasureProcedure = Samples
+
+'------------------------------------------------------------------------------
+' CLEAN UP
+'------------------------------------------------------------------------------
+    'Release the isolated worker instance
+        On Error Resume Next
+        If Not cPM_Work Is Nothing Then cPM_Work.ResetEnvironment
+        Set cPM_Work = Nothing
+        On Error GoTo 0
+        Exit Function
+
+Err_Handler:
+'------------------------------------------------------------------------------
+' CAPTURE ORIGINAL ERROR
+'------------------------------------------------------------------------------
+    'Capture the original error before cleanup
+        ErrNumber = Err.Number
+        ErrSource = Err.Source
+        ErrDescription = Err.Description
+
+'------------------------------------------------------------------------------
+' CLEAN UP AFTER FAILURE
+'------------------------------------------------------------------------------
+    'Cleanup must be best-effort so that we can preserve the original error
+        On Error Resume Next
+        If Not cPM_Work Is Nothing Then cPM_Work.ResetEnvironment
+        Set cPM_Work = Nothing
+        On Error GoTo 0
+
+'------------------------------------------------------------------------------
+' RE-RAISE ORIGINAL ERROR
+'------------------------------------------------------------------------------
+    'Re-raise the original error
+        Err.Raise ErrNumber, ErrSource, ErrDescription
+
+End Function
+
+Public Function MeasureOverhead_Samples( _
+    Optional ByVal Iterations As Long = 1000, _
+    Optional ByVal WarmupIterations As Long = 10, _
+    Optional ByVal iMethod As Integer = 5) _
+    As Double()
+'
+'==============================================================================
+'                          MEASURE OVERHEAD SAMPLES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the per-run near-empty measurement overhead as a sample vector
+'
+' WHY THIS EXISTS
+'   OverheadMeasurement_Seconds returns only the arithmetic mean, which hides
+'   the shape of the distribution. This routine returns every sample so the
+'   caller can report median, minimum, and spread
+'
+'   The minimum of this vector is the practical resolution floor of the selected
+'   backend: intervals shorter than it cannot be measured meaningfully
+'
+' INPUTS
+'   Iterations (optional)
+'     Number of near-empty timing cycles to record. Coerced to a minimum of 1
+'
+'   WarmupIterations (optional)
+'     Number of discarded cycles before measurement. Coerced to a minimum of 0
+'
+'   iMethod (optional)
+'     Timing backend to benchmark
+'
+' RETURNS
+'   Double()
+'     1-based vector of per-cycle overhead in seconds
+'
+' BEHAVIOR
+'   - Coerces the loop counts
+'   - Normalizes and validates the requested timer method
+'   - Runs and discards the warm-up cycles
+'   - Records one elapsed value per measured cycle
+'   - Always attempts to clean up the isolated worker instance
+'
+' ERROR POLICY
+'   Raises validation/runtime errors normally after cleanup has been attempted
+'
+' DEPENDENCIES
+'   - Method_NormalizeStart
+'   - StartTimer
+'   - ElapsedSeconds
+'   - ResetEnvironment
+'
+' NOTES
+'   This is the distribution-aware companion to OverheadMeasurement_Seconds.
+'   The warm-up default is 10 rather than 1, because a single discarded cycle is
+'   not enough to settle code paths and caches
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Samples()           As Double                'Per-cycle overhead in seconds
+    Dim K                   As Long                  'Loop counter
+    Dim ResolvedMethod      As Integer               'Validated timer method
+    Dim cPM_Work            As cPerformanceManager   'Isolated worker instance
+    Dim DiscardedElapsedS   As Double                'Throwaway warm-up value
+    Dim ErrNumber           As Long                  'Captured error number
+    Dim ErrSource           As String                'Captured error source
+    Dim ErrDescription      As String                'Captured error description
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Coerce the loop counts into a usable range
+        If Iterations < 1 Then Iterations = 1
+        If WarmupIterations < 0 Then WarmupIterations = 0
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Route runtime failures through cleanup
+        On Error GoTo Err_Handler
+
+    'Normalize and validate the timer method using the current instance policy
+        ResolvedMethod = Method_NormalizeStart(iMethod)
+
+    'Size the result vector
+        ReDim Samples(1 To Iterations)
+
+'------------------------------------------------------------------------------
+' INITIALIZE ISOLATED WORKER
+'------------------------------------------------------------------------------
+    'Create an isolated worker instance
+        Set cPM_Work = New cPerformanceManager
+    'Mirror the current strict-mode policy into the isolated worker
+        cPM_Work.StrictMode = m_StrictMode
+
+'------------------------------------------------------------------------------
+' WARM UP
+'------------------------------------------------------------------------------
+    'Run and discard the warm-up cycles
+        For K = 1 To WarmupIterations
+            cPM_Work.StartTimer ResolvedMethod, False
+            DiscardedElapsedS = cPM_Work.ElapsedSeconds()
+        Next K
+
+'------------------------------------------------------------------------------
+' MEASURE
+'------------------------------------------------------------------------------
+    'Record one elapsed value per measured cycle
+        For K = 1 To Iterations
+            cPM_Work.StartTimer ResolvedMethod, False
+            Samples(K) = cPM_Work.ElapsedSeconds()
+        Next K
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the full per-cycle sample vector
+        MeasureOverhead_Samples = Samples
+
+'------------------------------------------------------------------------------
+' CLEAN UP
+'------------------------------------------------------------------------------
+    'Release the isolated worker instance
+        On Error Resume Next
+        If Not cPM_Work Is Nothing Then cPM_Work.ResetEnvironment
+        Set cPM_Work = Nothing
+        On Error GoTo 0
+        Exit Function
+
+Err_Handler:
+'------------------------------------------------------------------------------
+' CAPTURE ORIGINAL ERROR
+'------------------------------------------------------------------------------
+    'Capture the original error before cleanup
+        ErrNumber = Err.Number
+        ErrSource = Err.Source
+        ErrDescription = Err.Description
+
+'------------------------------------------------------------------------------
+' CLEAN UP AFTER FAILURE
+'------------------------------------------------------------------------------
+    'Cleanup must be best-effort so that we can preserve the original error
+        On Error Resume Next
+        If Not cPM_Work Is Nothing Then cPM_Work.ResetEnvironment
+        Set cPM_Work = Nothing
+        On Error GoTo 0
+
+'------------------------------------------------------------------------------
+' RE-RAISE ORIGINAL ERROR
+'------------------------------------------------------------------------------
+    'Re-raise the original error
+        Err.Raise ErrNumber, ErrSource, ErrDescription
+
+End Function
+
+Public Function Stats_Count( _
+    ByRef Samples() As Double) _
+    As Long
+'
+'==============================================================================
+'                                 STATS COUNT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the number of elements in a sample vector, or 0 when uninitialized
+'
+' WHY THIS EXISTS
+'   Calling UBound on an uninitialized dynamic array raises. Every statistics
+'   routine needs a safe emptiness test, so that check lives here once
+'
+' INPUTS
+'   Samples
+'     Sample vector to inspect
+'
+' RETURNS
+'   Long
+'     Element count, or 0 when the array has never been dimensioned
+'
+' BEHAVIOR
+'   - Attempts to read the array bounds
+'   - Returns 0 when the bounds read fails
+'
+' ERROR POLICY
+'   Does not raise errors
+'
+' NOTES
+'   This is the only routine in the statistics set that tolerates an
+'   uninitialized array. All others raise through Stats_RequireSamples
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Reading bounds of an uninitialized array raises, so probe defensively
+        On Error Resume Next
+        Stats_Count = UBound(Samples) - LBound(Samples) + 1
+        If Err.Number <> 0 Then
+            Err.Clear
+            Stats_Count = 0
+        End If
+        On Error GoTo 0
+
+End Function
+
+Public Function Stats_Min( _
+    ByRef Samples() As Double) _
+    As Double
+'
+'==============================================================================
+'                                  STATS MIN
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the smallest value in a sample vector
+'
+' WHY THIS EXISTS
+'   The minimum is the single most informative benchmark statistic. It is the
+'   run least disturbed by scheduling, and therefore the closest estimate of the
+'   true cost of the measured work
+'
+' INPUTS
+'   Samples
+'     Sample vector
+'
+' RETURNS
+'   Double
+'     Smallest observed value
+'
+' ERROR POLICY
+'   Raises on an empty sample vector
+'
+' DEPENDENCIES
+'   - Stats_RequireSamples
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim i       As Long     'Loop index
+    Dim Lo      As Double   'Running minimum
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject an empty sample vector
+        Stats_RequireSamples Samples, "Stats_Min"
+
+'------------------------------------------------------------------------------
+' SCAN
+'------------------------------------------------------------------------------
+    'Seed the running minimum from the first element
+        Lo = Samples(LBound(Samples))
+
+    'Retain the smallest observed value
+        For i = LBound(Samples) To UBound(Samples)
+            If Samples(i) < Lo Then Lo = Samples(i)
+        Next i
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the smallest observed value
+        Stats_Min = Lo
+
+End Function
+
+Public Function Stats_Max( _
+    ByRef Samples() As Double) _
+    As Double
+'
+'==============================================================================
+'                                  STATS MAX
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the largest value in a sample vector
+'
+' WHY THIS EXISTS
+'   The maximum shows the worst observed case and, compared against the median,
+'   indicates how badly the run was disturbed
+'
+' INPUTS
+'   Samples
+'     Sample vector
+'
+' RETURNS
+'   Double
+'     Largest observed value
+'
+' ERROR POLICY
+'   Raises on an empty sample vector
+'
+' DEPENDENCIES
+'   - Stats_RequireSamples
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim i       As Long     'Loop index
+    Dim Hi      As Double   'Running maximum
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject an empty sample vector
+        Stats_RequireSamples Samples, "Stats_Max"
+
+'------------------------------------------------------------------------------
+' SCAN
+'------------------------------------------------------------------------------
+    'Seed the running maximum from the first element
+        Hi = Samples(LBound(Samples))
+
+    'Retain the largest observed value
+        For i = LBound(Samples) To UBound(Samples)
+            If Samples(i) > Hi Then Hi = Samples(i)
+        Next i
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the largest observed value
+        Stats_Max = Hi
+
+End Function
+
+Public Function Stats_Mean( _
+    ByRef Samples() As Double) _
+    As Double
+'
+'==============================================================================
+'                                  STATS MEAN
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the arithmetic mean of a sample vector
+'
+' WHY THIS EXISTS
+'   The mean is familiar and is retained for continuity with
+'   OverheadMeasurement_Seconds
+'
+' INPUTS
+'   Samples
+'     Sample vector
+'
+' RETURNS
+'   Double
+'     Arithmetic mean
+'
+' ERROR POLICY
+'   Raises on an empty sample vector
+'
+' DEPENDENCIES
+'   - Stats_RequireSamples
+'
+' NOTES
+'   Prefer Stats_Median for reporting. A single scheduler preemption shifts the
+'   mean materially while barely moving the median
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim i       As Long     'Loop index
+    Dim Total   As Double   'Accumulated sum
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject an empty sample vector
+        Stats_RequireSamples Samples, "Stats_Mean"
+
+'------------------------------------------------------------------------------
+' ACCUMULATE
+'------------------------------------------------------------------------------
+    'Sum every sample
+        For i = LBound(Samples) To UBound(Samples)
+            Total = Total + Samples(i)
+        Next i
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the arithmetic mean
+        Stats_Mean = Total / CDbl(Stats_Count(Samples))
+
+End Function
+
+Public Function Stats_Median( _
+    ByRef Samples() As Double) _
+    As Double
+'
+'==============================================================================
+'                                STATS MEDIAN
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the median of a sample vector
+'
+' WHY THIS EXISTS
+'   The median is the headline statistic for timing work. It is insensitive to
+'   the occasional very slow run that scheduling produces, so it represents the
+'   typical case far better than the mean
+'
+' INPUTS
+'   Samples
+'     Sample vector
+'
+' RETURNS
+'   Double
+'     Median value.
+'     For an even element count, the mean of the two central values
+'
+' BEHAVIOR
+'   - Sorts a private copy of the samples
+'   - Returns the central value, or the mean of the two central values
+'
+' ERROR POLICY
+'   Raises on an empty sample vector
+'
+' DEPENDENCIES
+'   - Stats_RequireSamples
+'   - Stats_SortedCopy
+'
+' NOTES
+'   The caller's array is never reordered
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Sorted()    As Double   'Sorted working copy
+    Dim N           As Long     'Element count
+    Dim Mid         As Long     'Central index
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject an empty sample vector
+        Stats_RequireSamples Samples, "Stats_Median"
+
+'------------------------------------------------------------------------------
+' SORT A PRIVATE COPY
+'------------------------------------------------------------------------------
+    'Work on a 1-based sorted copy so the caller's array is untouched
+        Sorted = Stats_SortedCopy(Samples)
+        N = UBound(Sorted)
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Odd count returns the central value
+        If (N Mod 2) = 1 Then
+            Stats_Median = Sorted((N + 1) \ 2)
+    'Even count returns the mean of the two central values
+        Else
+            Mid = N \ 2
+            Stats_Median = (Sorted(Mid) + Sorted(Mid + 1)) / 2#
+        End If
+
+End Function
+
+Public Function Stats_Percentile( _
+    ByRef Samples() As Double, _
+    ByVal Percent As Double) _
+    As Double
+'
+'==============================================================================
+'                              STATS PERCENTILE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the nearest-rank percentile of a sample vector
+'
+' WHY THIS EXISTS
+'   A high percentile such as P95 shows the tail of the distribution. Comparing
+'   P95 against the median is the quickest way to see whether a benchmark run
+'   was disturbed
+'
+' INPUTS
+'   Samples
+'     Sample vector
+'
+'   Percent
+'     Requested percentile in the range 0 to 100
+'
+' RETURNS
+'   Double
+'     Sample value at the requested nearest rank
+'
+' BEHAVIOR
+'   - Sorts a private copy of the samples
+'   - Computes the nearest rank as Ceiling(Percent / 100 * N)
+'   - Clamps the rank into the valid index range
+'
+' ERROR POLICY
+'   - Raises on an empty sample vector
+'   - Raises when Percent falls outside 0 to 100
+'
+' DEPENDENCIES
+'   - Stats_RequireSamples
+'   - Stats_SortedCopy
+'
+' NOTES
+'   Nearest-rank is used rather than interpolation, so every returned value is
+'   an actually observed measurement rather than a synthetic one
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Sorted()    As Double   'Sorted working copy
+    Dim N           As Long     'Element count
+    Dim Rank        As Long     'Nearest rank index
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject an empty sample vector
+        Stats_RequireSamples Samples, "Stats_Percentile"
+
+    'Reject an out-of-range percentile
+        If (Percent < 0#) Or (Percent > 100#) Then
+            Err.Raise ERR_CPM_STATS_BAD_PERCENTILE, _
+                      "cPerformanceManager.Stats_Percentile", _
+                      "Percent must be between 0 and 100."
+        End If
+
+'------------------------------------------------------------------------------
+' SORT A PRIVATE COPY
+'------------------------------------------------------------------------------
+    'Work on a 1-based sorted copy so the caller's array is untouched
+        Sorted = Stats_SortedCopy(Samples)
+        N = UBound(Sorted)
+
+'------------------------------------------------------------------------------
+' RESOLVE NEAREST RANK
+'------------------------------------------------------------------------------
+    'Ceiling of Percent/100 * N, using -Int(-x) because Int floors toward -inf
+        Rank = CLng(-Int(-((Percent / 100#) * CDbl(N))))
+
+    'Clamp the rank into the valid index range
+        If Rank < 1 Then Rank = 1
+        If Rank > N Then Rank = N
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the sample at the resolved rank
+        Stats_Percentile = Sorted(Rank)
+
+End Function
+
+Public Function Stats_StdDev( _
+    ByRef Samples() As Double) _
+    As Double
+'
+'==============================================================================
+'                                STATS STDDEV
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the sample standard deviation of a sample vector
+'
+' WHY THIS EXISTS
+'   Spread is what distinguishes a stable measurement from a noisy one. Two runs
+'   can share a mean while one is trustworthy and the other is not
+'
+' INPUTS
+'   Samples
+'     Sample vector
+'
+' RETURNS
+'   Double
+'     Sample standard deviation.
+'     Returns 0 when fewer than two samples are present
+'
+' BEHAVIOR
+'   - Computes the mean
+'   - Accumulates squared deviations
+'   - Divides by N-1 and returns the square root
+'
+' ERROR POLICY
+'   Raises on an empty sample vector
+'
+' DEPENDENCIES
+'   - Stats_RequireSamples
+'   - Stats_Mean
+'
+' NOTES
+'   The N-1 divisor is used because these are samples of a process, not a
+'   complete population
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim i           As Long     'Loop index
+    Dim N           As Long     'Element count
+    Dim Avg         As Double   'Arithmetic mean
+    Dim SumSq       As Double   'Accumulated squared deviations
+    Dim Deviation   As Double   'Deviation of the current sample
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject an empty sample vector
+        Stats_RequireSamples Samples, "Stats_StdDev"
+
+    'A single sample has no spread
+        N = Stats_Count(Samples)
+        If N < 2 Then
+            Stats_StdDev = 0#
+            Exit Function
+        End If
+
+'------------------------------------------------------------------------------
+' ACCUMULATE SQUARED DEVIATIONS
+'------------------------------------------------------------------------------
+    'Resolve the mean once
+        Avg = Stats_Mean(Samples)
+
+    'Sum the squared deviations from the mean
+        For i = LBound(Samples) To UBound(Samples)
+            Deviation = Samples(i) - Avg
+            SumSq = SumSq + (Deviation * Deviation)
+        Next i
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the sample standard deviation
+        Stats_StdDev = Sqr(SumSq / CDbl(N - 1))
+
+End Function
+
+Public Function Stats_CoefficientOfVariation( _
+    ByRef Samples() As Double) _
+    As Double
+'
+'==============================================================================
+'                     STATS COEFFICIENT OF VARIATION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the coefficient of variation: standard deviation divided by mean
+'
+' WHY THIS EXISTS
+'   Standard deviation alone cannot be compared across benchmarks of different
+'   magnitudes. Expressing spread relative to the mean gives a dimensionless
+'   noise measure that is comparable between runs
+'
+' INPUTS
+'   Samples
+'     Sample vector
+'
+' RETURNS
+'   Double
+'     Coefficient of variation.
+'     Returns 0 when the mean is zero
+'
+' ERROR POLICY
+'   Raises on an empty sample vector
+'
+' DEPENDENCIES
+'   - Stats_RequireSamples
+'   - Stats_Mean
+'   - Stats_StdDev
+'
+' NOTES
+'   As a rough guide: below 0.05 is a clean run, above
+'   CPM_CV_CONTAMINATION_THRESHOLD the result should not be trusted without
+'   re-running on a quieter machine
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Avg     As Double   'Arithmetic mean
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject an empty sample vector
+        Stats_RequireSamples Samples, "Stats_CoefficientOfVariation"
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Guard against division by a zero mean
+        Avg = Stats_Mean(Samples)
+        If Avg = 0# Then
+            Stats_CoefficientOfVariation = 0#
+            Exit Function
+        End If
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return spread expressed relative to the mean
+        Stats_CoefficientOfVariation = Stats_StdDev(Samples) / Avg
+
+End Function
+
+Public Function Stats_IsContaminated( _
+    ByRef Samples() As Double, _
+    Optional ByVal CvThreshold As Double = CPM_CV_CONTAMINATION_THRESHOLD) _
+    As Boolean
+'
+'==============================================================================
+'                            STATS IS CONTAMINATED
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns TRUE when a sample vector is too noisy to be trusted
+'
+' WHY THIS EXISTS
+'   A benchmark result that looks precise can still be worthless if the machine
+'   was busy during the run. Callers should be told this explicitly rather than
+'   having to infer it from the numbers
+'
+' INPUTS
+'   Samples
+'     Sample vector
+'
+'   CvThreshold (optional)
+'     Coefficient-of-variation threshold above which the run is reported as
+'     contaminated
+'
+' RETURNS
+'   Boolean
+'     TRUE  => spread exceeds the threshold; re-run before trusting the result
+'     FALSE => spread is within the threshold
+'
+' ERROR POLICY
+'   Raises on an empty sample vector
+'
+' DEPENDENCIES
+'   - Stats_CoefficientOfVariation
+'
+' NOTES
+'   This is a heuristic, not a statistical test. It flags runs worth repeating;
+'   it does not prove a result is wrong
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Compare relative spread against the supplied threshold
+        Stats_IsContaminated = (Stats_CoefficientOfVariation(Samples) > CvThreshold)
+
+End Function
+
+Public Function Stats_Text( _
+    ByRef Samples() As Double, _
+    Optional ByVal Caption As String = vbNullString) _
+    As String
+'
+'==============================================================================
+'                                 STATS TEXT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns a readable multiline summary of a sample vector
+'
+' WHY THIS EXISTS
+'   This is the presentation companion to the numeric statistics routines, for
+'   Immediate Window output and quick inspection
+'
+' INPUTS
+'   Samples
+'     Sample vector
+'
+'   Caption (optional)
+'     Optional heading for the summary block
+'
+' RETURNS
+'   String
+'     Multiline statistics summary
+'
+' BEHAVIOR
+'   - Reports N, median, min, P95, max, mean, standard deviation and CV
+'   - Appends a warning line when the run looks contaminated
+'
+' ERROR POLICY
+'   Raises on an empty sample vector
+'
+' DEPENDENCIES
+'   - The Stats_* routines
+'
+' NOTES
+'   Median and minimum are listed first deliberately. They are the statistics
+'   that should drive conclusions; the mean is reported last for continuity
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim S       As String   'Accumulated summary text
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject an empty sample vector
+        Stats_RequireSamples Samples, "Stats_Text"
+
+'------------------------------------------------------------------------------
+' BUILD HEADER
+'------------------------------------------------------------------------------
+    'Start with the optional caption
+        S = "TIMING STATISTICS"
+        If Len(Caption) > 0 Then
+            S = S & " | " & Caption
+        End If
+        S = S & vbCrLf & "Samples           : " & CStr(Stats_Count(Samples))
+
+'------------------------------------------------------------------------------
+' BUILD PRIMARY STATISTICS
+'------------------------------------------------------------------------------
+    'Report the robust statistics first
+        S = S & vbCrLf & "Median            : " & Format$(Stats_Median(Samples), "0.000000000") & " s"
+        S = S & vbCrLf & "Min               : " & Format$(Stats_Min(Samples), "0.000000000") & " s"
+        S = S & vbCrLf & "P95               : " & Format$(Stats_Percentile(Samples, 95#), "0.000000000") & " s"
+        S = S & vbCrLf & "Max               : " & Format$(Stats_Max(Samples), "0.000000000") & " s"
+
+'------------------------------------------------------------------------------
+' BUILD SPREAD STATISTICS
+'------------------------------------------------------------------------------
+    'Report the mean and spread afterwards
+        S = S & vbCrLf & "Mean              : " & Format$(Stats_Mean(Samples), "0.000000000") & " s"
+        S = S & vbCrLf & "StdDev            : " & Format$(Stats_StdDev(Samples), "0.000000000") & " s"
+        S = S & vbCrLf & "CoeffOfVariation  : " & Format$(Stats_CoefficientOfVariation(Samples), "0.0000")
+
+'------------------------------------------------------------------------------
+' APPEND CONTAMINATION WARNING
+'------------------------------------------------------------------------------
+    'Tell the caller explicitly when the run looks too noisy to trust
+        If Stats_IsContaminated(Samples) Then
+            S = S & vbCrLf & "WARNING           : high variance; re-run on a quieter machine."
+        End If
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the assembled summary
+        Stats_Text = S
+
+End Function
+
+'
+'------------------------------------------------------------------------------
+'
+'              PRIVATE: BACKEND READER / STATISTICS HELPERS
+'
+'------------------------------------------------------------------------------
+'
+
+Private Function Elapsed_ComputeSeconds( _
+    ByVal ResolvedMethod As Integer, _
+    ByRef EndStampOut As Double, _
+    ByRef QpcEndOut As Currency) _
+    As Double
+'
+'==============================================================================
+'                          ELAPSED COMPUTE SECONDS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Computes elapsed seconds for an already resolved backend, without writing to
+'   any cached class state
+'
+' WHY THIS EXISTS
+'   Backend dispatch was previously duplicated across several procedures, so
+'   adding or changing a timing backend meant editing every one of them. This
+'   helper is the single place where an elapsed value is produced
+'
+'   Keeping it free of side effects also lets Checkpoint measure without
+'   clobbering the cached T2 and ET values that the caller may still need
+'
+' INPUTS
+'   ResolvedMethod
+'     Backend already validated by Method_ResolveElapsed
+'
+'   EndStampOut
+'     Receives the raw end timestamp. Pre-seeded with the current cached value,
+'     so failure paths that take no reading leave it unchanged
+'
+'   QpcEndOut
+'     Receives the raw QPC end tick. Only meaningful for method 5
+'
+' RETURNS
+'   Double
+'     Elapsed seconds since the session start
+'
+' BEHAVIOR
+'   - Reads the endpoint for the resolved backend
+'   - Applies rollover correction where the backend requires it
+'   - Validates the result through Elapsed_Validate for methods 1/2/3/4/6
+'   - Returns 0 on non-strict failure paths
+'
+' ERROR POLICY
+'   - Raises in strict mode when QPC cannot be read
+'   - Raises in strict mode when the resolved method is invalid
+'   - Raises in strict mode on a negative elapsed value, via Elapsed_Validate
+'
+' DEPENDENCIES
+'   - Get_TickCountSeconds
+'   - EnsureTimerResolution1ms
+'   - Get_SystemTimeMs
+'   - QPC_TryReadTick
+'   - RolloverSeconds
+'   - Elapsed_Validate
+'
+' NOTES
+'   Method 5 deliberately skips Elapsed_Validate. QPC is monotonic and method 5
+'   is the default hot path
+'
+'   For QPC the Currency scaling cancels between the tick delta and the
+'   frequency, so the raw Currency division is already exact
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim QpcNow      As Currency     'Raw QPC tick for the current read
+    Dim Seconds     As Double       'Computed elapsed seconds
+
+'------------------------------------------------------------------------------
+' INITIALIZE OUTPUTS
+'------------------------------------------------------------------------------
+    'Seed the outputs from cached state so untaken readings change nothing
+        EndStampOut = m_T2
+        QpcEndOut = m_qpcEnd
+
+'------------------------------------------------------------------------------
+' DISPATCH
+'------------------------------------------------------------------------------
+    Select Case ResolvedMethod
+
+        Case 1
+                EndStampOut = Timer
+                Seconds = EndStampOut - m_T1
+                'Correct midnight rollover for Timer()
+                    If Seconds < 0# Then Seconds = Seconds + 86400#
+                Seconds = Elapsed_Validate(Seconds)
+
+        Case 2
+                EndStampOut = Get_TickCountSeconds()
+                Seconds = EndStampOut - m_T1
+                'Correct 32-bit millisecond-counter rollover where applicable
+                    If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(2)
+                Seconds = Elapsed_Validate(Seconds)
+
+        Case 3
+                EnsureTimerResolution1ms
+                EndStampOut = UInt32ToDouble(timeGetTime()) / 1000#
+                Seconds = EndStampOut - m_T1
+                'Correct 32-bit millisecond-counter rollover
+                    If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(3)
+                Seconds = Elapsed_Validate(Seconds)
+
+        Case 4
+                EndStampOut = Get_SystemTimeMs() / 1000#
+                Seconds = EndStampOut - m_T1
+                'Correct 32-bit millisecond-counter rollover
+                    If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(4)
+                Seconds = Elapsed_Validate(Seconds)
+
+        Case 5
+                'QPC is the monotonic high-resolution path and skips validation
+                If Not QPC_TryReadTick(QpcNow) Then
+                    QpcEndOut = QpcNow
+                    If m_StrictMode Then
+                        Err.Raise ERR_CPM_QPC_READ_FAILED, _
+                                  "cPerformanceManager.Elapsed_ComputeSeconds", _
+                                  "QueryPerformanceCounter failed while reading the elapsed-time endpoint."
+                    End If
+                    Elapsed_ComputeSeconds = 0#
+                    Exit Function
+                End If
+                'Currency scaling cancels between numerator and denominator
+                Seconds = CDbl((QpcNow - m_qpcStart) / m_qpcFreq)
+                EndStampOut = CDbl(QpcNow)
+                QpcEndOut = QpcNow
+
+        Case 6
+                EndStampOut = Now() * 86400#
+                Seconds = EndStampOut - m_T1
+                Seconds = Elapsed_Validate(Seconds)
+
+        Case Else
+                If m_StrictMode Then
+                    Err.Raise ERR_CPM_RESOLVED_METHOD_INVALID, _
+                              "cPerformanceManager.Elapsed_ComputeSeconds", _
+                              "Resolved timer method is invalid."
+                End If
+                Elapsed_ComputeSeconds = 0#
+                Exit Function
+
+    End Select
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the computed elapsed seconds
+        Elapsed_ComputeSeconds = Seconds
+
+End Function
+
+Private Sub Stats_RequireSamples( _
+    ByRef Samples() As Double, _
+    ByVal SourceProc As String)
+'
+'==============================================================================
+'                            STATS REQUIRE SAMPLES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Raises when a sample vector is empty or uninitialized
+'
+' WHY THIS EXISTS
+'   Every statistics routine needs the same guard. Centralizing it keeps the
+'   error number and message identical across the whole set
+'
+' INPUTS
+'   Samples
+'     Sample vector to validate
+'
+'   SourceProc
+'     Name of the calling procedure, used in the raised error source
+'
+' RETURNS
+'   None
+'
+' ERROR POLICY
+'   Raises ERR_CPM_STATS_NO_SAMPLES on an empty or uninitialized vector
+'
+' DEPENDENCIES
+'   - Stats_Count
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject an empty or uninitialized sample vector
+        If Stats_Count(Samples) < 1 Then
+            Err.Raise ERR_CPM_STATS_NO_SAMPLES, _
+                      "cPerformanceManager." & SourceProc, _
+                      "Statistics require at least one sample."
+        End If
+
+End Sub
+
+Private Function Stats_SortedCopy( _
+    ByRef Samples() As Double) _
+    As Double()
+'
+'==============================================================================
+'                              STATS SORTED COPY
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns an ascending-sorted 1-based copy of a sample vector
+'
+' WHY THIS EXISTS
+'   Median and percentile both need sorted data, and neither should reorder the
+'   caller's array. Copying once here keeps that contract in one place
+'
+' INPUTS
+'   Samples
+'     Sample vector to copy and sort
+'
+' RETURNS
+'   Double()
+'     Ascending-sorted 1-based copy
+'
+' BEHAVIOR
+'   - Copies the samples into a fresh 1-based array
+'   - Sorts the copy in place
+'
+' ERROR POLICY
+'   Raises errors normally
+'
+' DEPENDENCIES
+'   - Stats_QuickSort
+'
+' NOTES
+'   The returned array is always 1-based regardless of the input bounds, so
+'   callers can index it directly
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Copy()  As Double   'Working copy
+    Dim i       As Long     'Source index
+    Dim N       As Long     'Element count
+
+'------------------------------------------------------------------------------
+' COPY
+'------------------------------------------------------------------------------
+    'Rebase the samples into a fresh 1-based array
+        N = UBound(Samples) - LBound(Samples) + 1
+        ReDim Copy(1 To N)
+
+        For i = 1 To N
+            Copy(i) = Samples(LBound(Samples) + i - 1)
+        Next i
+
+'------------------------------------------------------------------------------
+' SORT
+'------------------------------------------------------------------------------
+    'Sort the copy ascending
+        If N > 1 Then
+            Stats_QuickSort Copy, 1, N
+        End If
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the sorted copy
+        Stats_SortedCopy = Copy
+
+End Function
+
+Private Sub Stats_QuickSort( _
+    ByRef A() As Double, _
+    ByVal FirstIdx As Long, _
+    ByVal LastIdx As Long)
+'
+'==============================================================================
+'                              STATS QUICKSORT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Sorts a Double array ascending, in place, between the supplied bounds
+'
+' WHY THIS EXISTS
+'   Median and percentile need sorted data. A quicksort keeps the cost near
+'   N log N, which matters because overhead sampling routinely produces
+'   thousands of values
+'
+' INPUTS
+'   A
+'     Array to sort in place
+'
+'   FirstIdx
+'     Lower bound of the partition
+'
+'   LastIdx
+'     Upper bound of the partition
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Partitions around the middle element
+'   - Recurses into each partition that still holds more than one element
+'
+' ERROR POLICY
+'   Raises errors normally
+'
+' NOTES
+'   Recursion depth stays near log2(N), so even a million samples reaches only
+'   about twenty frames
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim i       As Long     'Ascending scan index
+    Dim j       As Long     'Descending scan index
+    Dim Pivot   As Double   'Partition pivot value
+    Dim Swap    As Double   'Temporary used during exchange
+
+'------------------------------------------------------------------------------
+' PARTITION
+'------------------------------------------------------------------------------
+    'Seed the scan indices and pivot
+        i = FirstIdx
+        j = LastIdx
+        Pivot = A((FirstIdx + LastIdx) \ 2)
+
+    'Exchange out-of-place pairs until the scans cross
+        Do While i <= j
+            Do While A(i) < Pivot
+                i = i + 1
+            Loop
+            Do While A(j) > Pivot
+                j = j - 1
+            Loop
+            If i <= j Then
+                Swap = A(i)
+                A(i) = A(j)
+                A(j) = Swap
+                i = i + 1
+                j = j - 1
+            End If
+        Loop
+
+'------------------------------------------------------------------------------
+' RECURSE
+'------------------------------------------------------------------------------
+    'Sort the lower partition
+        If FirstIdx < j Then
+            Stats_QuickSort A, FirstIdx, j
+        End If
+    'Sort the upper partition
+        If i < LastIdx Then
+            Stats_QuickSort A, i, LastIdx
+        End If
+
+End Sub
+
