@@ -5,7 +5,7 @@ Option Explicit     'Force explicit declaration of all variables
 '
 '==============================================================================
 '
-'                           M_cPM_RegressionTests
+'                                M_cPM_Test
 '
 '==============================================================================
 ' PURPOSE
@@ -39,6 +39,9 @@ Option Explicit     'Force explicit declaration of all variables
 ' DEPENDENCIES
 '   - cPerformanceManager
 '   - M_cPM_TimeWasters
+'   - M_DEMO_BUILDER, for the worksheet and status-bar presentation helpers:
+'       DEMO_Build_DemoTemplate, DEMO_Begin_FastMode, DEMO_End_FastMode,
+'       Demo_SB_SetProgress, Btn_Click and the tDemoFastModeState type
 '   - Excel Application object model
 '
 ' NOTES
@@ -47,16 +50,25 @@ Option Explicit     'Force explicit declaration of all variables
 '   - The companion TW manager module must already be imported and compiled
 '   - Results are written to a dedicated worksheet log and summarized in the
 '     Immediate Window
-'   - This suite assumes the current class surface where:
+'   - Three class members are declared Friend rather than Private so that their
+'     arithmetic can be tested directly: UInt32ToDouble, Elapsed_Validate and
+'     RolloverSeconds
+'   - cPM_Test_Workload must remain Public. Application.Run, used by
+'     MeasureProcedure, cannot reach Private procedures
+'   - This suite assumes the v1.2.0 class surface where:
 '       * MethodName(2) returns "GetTickCount / GetTickCount64"
 '       * ElapsedTime supports formatting an already measured elapsed value
 '       * OverheadMeasurement_Text supports an optional Iterations argument
+'       * StartTimer accepts an optional RunLabel argument
+'       * Checkpoint does not overwrite the cached T2 / ET values
+'       * MeasureProcedure and MeasureOverhead_Samples return Double() vectors
+'       * The Stats_* routines operate on any Double() sample vector
 '
 ' VERSION
-'   1.1.0
+'   1.2.0
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '
 ' AUTHOR
 '   Daniele Penza
@@ -66,7 +78,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 41    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 52    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -150,7 +162,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 '   TotalSteps must be kept aligned with the number of executed regression cases
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -432,6 +444,61 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Pause no-op boundary behavior"
         Test_Pause_Boundary_NoOpBehavior
 
+    'Validate unsigned 32-bit conversion arithmetic
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "UInt32ToDouble boundaries"
+        Test_UInt32ToDouble_Boundaries
+
+    'Validate rollover periods per timing backend
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "RolloverSeconds per method"
+        Test_RolloverSeconds_PerMethod
+
+    'Validate negative-elapsed handling in both strict modes
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Elapsed_Validate strict and non-strict"
+        Test_ElapsedValidate_StrictAndNonStrict
+
+    'Validate checkpoint storage growth across ReDim Preserve boundaries
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Checkpoint capacity growth"
+        Test_Checkpoint_CapacityGrowth
+
+    'Validate that Checkpoint no longer overwrites cached T2/ET
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Checkpoint preserves cached ET"
+        Test_Checkpoint_PreservesCachedElapsed
+
+    'Validate the StartTimer RunLabel argument
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "StartTimer RunLabel argument"
+        Test_StartTimer_RunLabelArgument
+
+    'Validate that Class_Terminate releases a shared TW session
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Class_Terminate releases TW session"
+        Test_Terminate_ReleasesTWSession
+
+    'Validate that a destroyed instance leaves no stale TW registration
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW instance key is not reused"
+        Test_TW_InstanceKey_NoStaleReuse
+
+    'Validate statistics against a hand-computed sample vector
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics on a known vector"
+        Test_Stats_KnownVector
+
+    'Validate statistics error and boundary behavior
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics boundaries and errors"
+        Test_Stats_BoundariesAndErrors
+
+    'Validate the repeated-measurement harness
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "MeasureProcedure and overhead samples"
+        Test_Measure_Harness
+
 Clean_Exit:
 '------------------------------------------------------------------------------
 ' FINALIZE
@@ -530,7 +597,7 @@ Private Sub Suite_ResetCounters()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -607,7 +674,7 @@ Private Sub Suite_InitLogSheet()
 '   suite runner before initialization begins
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -785,7 +852,7 @@ Private Function Suite_GetOrCreateLogSheet() As Worksheet
 '   - cPM_SHEET_LOG
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -809,13 +876,13 @@ Private Function Suite_GetOrCreateLogSheet() As Worksheet
     'Reject a blank regression-sheet name
         If Len(SheetNameText) = 0 Then
             Err.Raise vbObjectError + 2400, _
-                      "M_cPM_RegressionTests.Suite_GetOrCreateLogSheet", _
+                      "M_cPM_Test.Suite_GetOrCreateLogSheet", _
                       "Regression sheet name cannot be blank."
         End If
     'Reject names longer than Excel's worksheet-name limit
         If Len(SheetNameText) > 31 Then
             Err.Raise vbObjectError + 2401, _
-                      "M_cPM_RegressionTests.Suite_GetOrCreateLogSheet", _
+                      "M_cPM_Test.Suite_GetOrCreateLogSheet", _
                       "Regression sheet name cannot exceed 31 characters."
         End If
     'Reject worksheet names containing invalid Excel characters
@@ -827,7 +894,7 @@ Private Function Suite_GetOrCreateLogSheet() As Worksheet
         Or InStr(1, SheetNameText, "[", vbBinaryCompare) > 0 _
         Or InStr(1, SheetNameText, "]", vbBinaryCompare) > 0 Then
             Err.Raise vbObjectError + 2402, _
-                      "M_cPM_RegressionTests.Suite_GetOrCreateLogSheet", _
+                      "M_cPM_Test.Suite_GetOrCreateLogSheet", _
                       "Regression sheet name contains one or more invalid Excel worksheet-name characters."
         End If
 
@@ -877,7 +944,7 @@ Private Sub Suite_PrintHeader()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -918,7 +985,7 @@ Private Sub Suite_PrintFooter()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -978,7 +1045,7 @@ Private Sub Test_Assert_ApproxDouble( _
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1026,7 +1093,7 @@ Private Sub Test_Assert_InRangeDouble( _
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1064,7 +1131,7 @@ Private Sub Test_Assert_NonNegativeDouble( _
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1102,7 +1169,7 @@ Private Sub Test_Assert_True( _
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1151,7 +1218,7 @@ Private Sub Test_Assert_EqualLong( _
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1192,7 +1259,7 @@ Private Sub Test_Assert_EqualBoolean( _
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1220,7 +1287,7 @@ Private Sub Test_Assert_EqualString( _
 '   Method labels and text diagnostics often need exact text comparison
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1260,7 +1327,7 @@ Private Sub Test_Assert_ContainsString( _
 '   exact whole-string equality
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1304,7 +1371,7 @@ Private Sub Case_Begin( _
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1349,7 +1416,7 @@ Private Sub Case_Finalize()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1446,7 +1513,7 @@ Private Sub LogFailureDetail( _
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1519,7 +1586,7 @@ Private Sub RecordUnexpectedError( _
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1569,7 +1636,7 @@ Private Sub CaptureAppState( _
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1610,7 +1677,7 @@ Private Function DelayForTimingMethod( _
 '     Suggested delay in seconds for regression tests
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1654,7 +1721,7 @@ Private Sub Test_DefaultState()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1747,7 +1814,7 @@ Private Sub Test_MethodName_ValidIndices()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1823,7 +1890,7 @@ Private Sub Test_MethodName_InvalidIndices()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1897,7 +1964,7 @@ Private Sub Test_StartTimer_SetsSessionState_AllMethods()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1990,7 +2057,7 @@ Private Sub Test_ElapsedSeconds_AllMethods()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2086,7 +2153,7 @@ Private Sub Test_ElapsedTime_AllMethods()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2178,7 +2245,7 @@ Private Sub Test_ElapsedTime_FormatExistingSeconds()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2296,7 +2363,7 @@ Private Sub Test_AlignedStart_AllMethods()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2383,7 +2450,7 @@ Private Sub Test_Accessors_QPC()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2478,7 +2545,7 @@ Private Sub Test_StrictMode_ElapsedBeforeStart()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2570,7 +2637,7 @@ Private Sub Test_StrictMode_MethodMismatch()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2665,7 +2732,7 @@ Private Sub Test_StrictMode_InvalidStartMethod()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2755,7 +2822,7 @@ Private Sub Test_NonStrictMode_InvalidStartFallback()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2862,7 +2929,7 @@ Private Sub Test_NonStrictMode_MethodMismatchFallback()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2959,7 +3026,7 @@ Private Sub Test_OverheadMeasurement_Seconds()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3041,7 +3108,7 @@ Private Sub Test_OverheadMeasurement_Text()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3131,7 +3198,7 @@ Private Sub Test_Diagnostics_Properties()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3230,7 +3297,7 @@ Private Sub Test_Pause_Method1()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3309,7 +3376,7 @@ Private Sub Test_Pause_Method2()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3389,7 +3456,7 @@ Private Sub Test_Pause_Method3()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3469,7 +3536,7 @@ Private Sub Test_Pause_Method4()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3575,7 +3642,7 @@ Private Sub Test_Method4_TimeGetSystemTime_NonZeroAndAdvances()
 '   itself dependent on method 4.
 '
 ' UPDATED
-'   2026-06-13
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3675,7 +3742,7 @@ Private Sub Test_TW_BlankKeyValidation()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3771,7 +3838,7 @@ Private Sub Test_TW_SingleInstance()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3916,7 +3983,7 @@ Private Sub Test_TW_OverlappingInstances()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4096,7 +4163,7 @@ Private Sub Test_ResetEnvironment_Idempotent()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4211,7 +4278,7 @@ Private Sub Test_Checkpoint_BeforeStart()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4300,7 +4367,7 @@ Private Sub Test_SetRunLabel_BeforeFirstCheckpoint()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4408,7 +4475,7 @@ Private Sub Test_SetRunLabel_AfterFirstCheckpoint()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4507,7 +4574,7 @@ Private Sub Test_Checkpoint_DefaultName_WhenBlank()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4602,7 +4669,7 @@ Private Sub Test_CheckpointCount_And_ReportArray()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4768,7 +4835,7 @@ Private Sub Test_ReportAsText_Empty()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4848,7 +4915,7 @@ Private Sub Test_ReportAsText_WithCheckpoints()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4967,7 +5034,7 @@ Private Sub Test_ClearCheckpoints()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5081,7 +5148,7 @@ Private Sub Test_StartTimer_ClearsCheckpointState()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5203,7 +5270,7 @@ Private Sub Test_ReportAsArray_Empty_Direct()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5315,7 +5382,7 @@ Private Sub Test_Checkpoint_DeltaAndCumulativeSemantics()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5463,7 +5530,7 @@ Private Sub Test_ClearCheckpoints_ThenReuseSession()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5570,7 +5637,7 @@ Private Sub Test_SetRunLabel_AfterClearCheckpoints()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5688,7 +5755,7 @@ Private Sub Test_TW_Turn_ON_WhenInactive()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5793,7 +5860,7 @@ Private Sub Test_Pause_Boundary_NoOpBehavior()
 '   None
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5879,6 +5946,1357 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_Pause_Boundary_NoOpBehavior"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Public Sub cPM_Test_Workload()
+'
+'==============================================================================
+'                             CPM TEST WORKLOAD
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Trivial measurable workload used as the target of MeasureProcedure
+'
+' WHY THIS EXISTS
+'   MeasureProcedure calls its target through Application.Run, which only
+'   reaches Public procedures in standard modules. This routine provides a
+'   deterministic, dependency-free target that always costs a small but nonzero
+'   amount of time
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim i       As Long     'Loop counter
+    Dim Total   As Double   'Accumulator, prevents the loop being optimized away
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Perform a small deterministic amount of arithmetic work
+        For i = 1 To 20000
+            Total = Total + Sqr(CDbl(i))
+        Next i
+
+End Sub
+
+Private Sub Test_UInt32ToDouble_Boundaries()
+'
+'==============================================================================
+'                       TEST UINT32TODOUBLE BOUNDARIES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates signed-to-unsigned conversion at the 32-bit boundaries
+'
+' WHY THIS EXISTS
+'   Methods 3 and 4 depend on this conversion. A sign error here would corrupt
+'   every measurement taken once the underlying counter passes 2^31 milliseconds,
+'   roughly 24.9 days after boot, which is exactly when nobody is testing
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM     As cPerformanceManager    'Class under test
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "UInt32ToDouble boundaries"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' ASSERT NONNEGATIVE RANGE
+'------------------------------------------------------------------------------
+    'Assert that zero maps to zero
+        Test_Assert_ApproxDouble cPM.UInt32ToDouble(0&), 0#, 0.000000001, _
+                                 "UInt32ToDouble maps 0 to 0"
+
+    'Assert that the largest positive Long is unchanged
+        Test_Assert_ApproxDouble cPM.UInt32ToDouble(2147483647), 2147483647#, 0.000000001, _
+                                 "UInt32ToDouble leaves 2147483647 unchanged"
+
+'------------------------------------------------------------------------------
+' ASSERT NEGATIVE RANGE REMAPS ABOVE 2^31
+'------------------------------------------------------------------------------
+    'Assert that the sign-bit boundary maps to 2^31
+        Test_Assert_ApproxDouble cPM.UInt32ToDouble(&H80000000), 2147483648#, 0.000000001, _
+                                 "UInt32ToDouble maps the sign-bit boundary to 2147483648"
+
+    'Assert that all-bits-set maps to 2^32-1
+        Test_Assert_ApproxDouble cPM.UInt32ToDouble(-1&), 4294967295#, 0.000000001, _
+                                 "UInt32ToDouble maps -1 to 4294967295"
+
+'------------------------------------------------------------------------------
+' ASSERT MONOTONICITY ACROSS THE BOUNDARY
+'------------------------------------------------------------------------------
+    'Assert that the mapping stays increasing across the sign-bit boundary
+        Test_Assert_True (cPM.UInt32ToDouble(&H80000000) > cPM.UInt32ToDouble(2147483647)), _
+                         "UInt32ToDouble remains monotonic across the sign-bit boundary"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_UInt32ToDouble_Boundaries"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_RolloverSeconds_PerMethod()
+'
+'==============================================================================
+'                        TEST ROLLOVERSECONDS PER METHOD
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates the rollover period returned for each timing backend
+'
+' WHY THIS EXISTS
+'   ElapsedSeconds adds this value whenever a raw difference comes out negative.
+'   A wrong constant would silently add or omit roughly 49.7 days from a
+'   measurement
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Expected32Bit   As Double                 'Expected 32-bit rollover in seconds
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "RolloverSeconds per method"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+    'Resolve the expected 32-bit millisecond-counter rollover in seconds
+        Expected32Bit = 4294967296# / 1000#
+
+'------------------------------------------------------------------------------
+' ASSERT NON-ROLLOVER BACKENDS
+'------------------------------------------------------------------------------
+    'Assert that Timer, QPC and Now report no central rollover correction
+        Test_Assert_ApproxDouble cPM.RolloverSeconds(1), 0#, 0.000000001, _
+                                 "RolloverSeconds returns 0 for method 1"
+        Test_Assert_ApproxDouble cPM.RolloverSeconds(5), 0#, 0.000000001, _
+                                 "RolloverSeconds returns 0 for method 5"
+        Test_Assert_ApproxDouble cPM.RolloverSeconds(6), 0#, 0.000000001, _
+                                 "RolloverSeconds returns 0 for method 6"
+
+'------------------------------------------------------------------------------
+' ASSERT 32-BIT MILLISECOND BACKENDS
+'------------------------------------------------------------------------------
+    'Assert that methods 3 and 4 always report the 32-bit rollover period
+        Test_Assert_ApproxDouble cPM.RolloverSeconds(3), Expected32Bit, 0.000001, _
+                                 "RolloverSeconds returns the 32-bit period for method 3"
+        Test_Assert_ApproxDouble cPM.RolloverSeconds(4), Expected32Bit, 0.000001, _
+                                 "RolloverSeconds returns the 32-bit period for method 4"
+
+'------------------------------------------------------------------------------
+' ASSERT BITNESS-DEPENDENT BACKEND
+'------------------------------------------------------------------------------
+    'Method 2 depends on whether GetTickCount64 is in use
+        #If VBA7 And Win64 Then
+            Test_Assert_ApproxDouble cPM.RolloverSeconds(2), 0#, 0.000000001, _
+                                     "RolloverSeconds returns 0 for method 2 on Win64"
+        #Else
+            Test_Assert_ApproxDouble cPM.RolloverSeconds(2), Expected32Bit, 0.000001, _
+                                     "RolloverSeconds returns the 32-bit period for method 2 on Win32"
+        #End If
+
+'------------------------------------------------------------------------------
+' ASSERT OUT-OF-RANGE INPUT
+'------------------------------------------------------------------------------
+    'Assert that unsupported method identifiers return zero rather than raising
+        Test_Assert_ApproxDouble cPM.RolloverSeconds(0), 0#, 0.000000001, _
+                                 "RolloverSeconds returns 0 for an unsupported method"
+        Test_Assert_ApproxDouble cPM.RolloverSeconds(99), 0#, 0.000000001, _
+                                 "RolloverSeconds returns 0 for an out-of-range method"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_RolloverSeconds_PerMethod"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_ElapsedValidate_StrictAndNonStrict()
+'
+'==============================================================================
+'                  TEST ELAPSED VALIDATE STRICT AND NON-STRICT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates negative-elapsed handling in both strict and non-strict modes
+'
+' WHY THIS EXISTS
+'   This guard is what stops a backwards-moving clock from being reported as a
+'   real duration, which is the failure mode the Win64 method 2 path previously
+'   allowed through silently
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Class under test
+    Dim Raised      As Boolean                'TRUE when the expected error was raised
+    Dim Returned    As Double                 'Value returned in non-strict mode
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Elapsed_Validate strict and non-strict"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' ASSERT PASS-THROUGH FOR VALID VALUES
+'------------------------------------------------------------------------------
+    'Assert that zero and positive values are returned unchanged
+        Test_Assert_ApproxDouble cPM.Elapsed_Validate(0#), 0#, 0.000000001, _
+                                 "Elapsed_Validate returns 0 unchanged"
+        Test_Assert_ApproxDouble cPM.Elapsed_Validate(1.25), 1.25, 0.000000001, _
+                                 "Elapsed_Validate returns a positive value unchanged"
+
+'------------------------------------------------------------------------------
+' ASSERT NON-STRICT CLAMP
+'------------------------------------------------------------------------------
+    'Switch to non-strict policy
+        cPM.StrictMode = False
+    'Assert that a negative value is clamped to zero
+        Returned = cPM.Elapsed_Validate(-1#)
+        Test_Assert_ApproxDouble Returned, 0#, 0.000000001, _
+                                 "Elapsed_Validate clamps a negative value to 0 in non-strict mode"
+
+'------------------------------------------------------------------------------
+' ASSERT STRICT RAISE
+'------------------------------------------------------------------------------
+    'Switch back to strict policy
+        cPM.StrictMode = True
+
+    'Expect a raise on a negative elapsed value
+        Raised = False
+        On Error Resume Next
+        Returned = cPM.Elapsed_Validate(-0.001)
+        If Err.Number <> 0 Then
+            Raised = True
+            Err.Clear
+        End If
+        On Error GoTo CleanFail
+
+    'Assert that strict mode rejected the negative value
+        Test_Assert_True Raised, _
+                         "Elapsed_Validate raises on a negative value in strict mode"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_ElapsedValidate_StrictAndNonStrict"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Checkpoint_CapacityGrowth()
+'
+'==============================================================================
+'                      TEST CHECKPOINT CAPACITY GROWTH
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates checkpoint storage integrity across many ReDim Preserve cycles
+'
+' WHY THIS EXISTS
+'   Checkpoint storage starts at a capacity of one and doubles. No previous test
+'   crossed a growth boundary, so the ReDim Preserve path had never been
+'   exercised. A lost or reordered row would be invisible in short runs
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Arr             As Variant                'Structured report export
+    Dim i               As Long                   'Loop index
+    Dim TargetCount     As Long                   'Number of checkpoints to capture
+    Dim SeqOk           As Boolean                'TRUE while sequence numbers are correct
+    Dim NamesOk         As Boolean                'TRUE while labels match their sequence
+    Dim MonotonicOk     As Boolean                'TRUE while cumulative time is nondecreasing
+    Dim PrevCumulative  As Double                 'Previous cumulative value
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Checkpoint capacity growth"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+    'Capture enough checkpoints to cross many doubling boundaries
+        TargetCount = 1000
+    'Seed the integrity flags
+        SeqOk = True
+        NamesOk = True
+        MonotonicOk = True
+
+'------------------------------------------------------------------------------
+' CAPTURE CHECKPOINTS
+'------------------------------------------------------------------------------
+    'Start a fresh timing session
+        cPM.StartTimer 5, False
+
+    'Capture a uniquely named checkpoint per iteration
+        For i = 1 To TargetCount
+            cPM.Checkpoint "CP_" & CStr(i)
+        Next i
+
+'------------------------------------------------------------------------------
+' ASSERT COUNT
+'------------------------------------------------------------------------------
+    'Assert that every captured checkpoint was retained
+        Test_Assert_EqualLong cPM.CheckpointCount, TargetCount, _
+                              "CheckpointCount matches the number of captured checkpoints"
+
+'------------------------------------------------------------------------------
+' EXPORT AND VERIFY EVERY ROW
+'------------------------------------------------------------------------------
+    'Export the structured checkpoint report
+        Arr = cPM.ReportAsArray
+
+    'Assert that the export holds one header row plus every checkpoint
+        Test_Assert_EqualLong UBound(Arr, 1), TargetCount + 1, _
+                              "ReportAsArray row count includes the header and every checkpoint"
+
+    'Walk every exported row and verify integrity
+        PrevCumulative = -1#
+        For i = 1 To TargetCount
+            If CLng(Arr(i + 1, 2)) <> i Then SeqOk = False
+            If CStr(Arr(i + 1, 3)) <> "CP_" & CStr(i) Then NamesOk = False
+            If CDbl(Arr(i + 1, 8)) < PrevCumulative Then MonotonicOk = False
+            PrevCumulative = CDbl(Arr(i + 1, 8))
+        Next i
+
+'------------------------------------------------------------------------------
+' ASSERT ROW INTEGRITY
+'------------------------------------------------------------------------------
+    'Assert that no row was lost, reordered, or corrupted during array growth
+        Test_Assert_True SeqOk, _
+                         "Checkpoint sequence numbers survive every capacity growth"
+        Test_Assert_True NamesOk, _
+                         "Checkpoint labels survive every capacity growth"
+        Test_Assert_True MonotonicOk, _
+                         "Cumulative checkpoint time is nondecreasing across every row"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Checkpoint_CapacityGrowth"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Checkpoint_PreservesCachedElapsed()
+'
+'==============================================================================
+'                  TEST CHECKPOINT PRESERVES CACHED ELAPSED
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that capturing a checkpoint does not overwrite the cached T2/ET
+'
+' WHY THIS EXISTS
+'   Checkpoint previously measured through Me.ElapsedSeconds, which cached its
+'   result and silently replaced any earlier explicit measurement the caller was
+'   still holding. This test locks in the corrected behavior
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim ExplicitET      As Double                 'Explicitly measured elapsed value
+    Dim CachedAfter     As Double                 'Cached ET after checkpoint capture
+    Dim CountAfter      As Long                   'Checkpoint count after capture
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Checkpoint preserves cached ET"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' TAKE AN EXPLICIT MEASUREMENT
+'------------------------------------------------------------------------------
+    'Start a fresh timing session
+        cPM.StartTimer 5, False
+    'Allow a measurable interval to accumulate
+        cPM.Pause 0.02, 1
+    'Take and retain an explicit elapsed measurement
+        ExplicitET = cPM.ElapsedSeconds
+
+'------------------------------------------------------------------------------
+' CAPTURE CHECKPOINTS AFTERWARDS
+'------------------------------------------------------------------------------
+    'Allow more time to pass, then capture checkpoints
+        cPM.Pause 0.02, 1
+        cPM.Checkpoint "After explicit measurement"
+        cPM.Pause 0.02, 1
+        cPM.Checkpoint "Second capture"
+
+    'Read the cached elapsed value and the checkpoint count
+        CachedAfter = cPM.ET
+        CountAfter = cPM.CheckpointCount
+
+'------------------------------------------------------------------------------
+' ASSERT CACHE PRESERVATION
+'------------------------------------------------------------------------------
+    'Assert that the cached elapsed value still holds the explicit measurement
+        Test_Assert_ApproxDouble CachedAfter, ExplicitET, 0.000000001, _
+                                 "Cached ET still holds the explicit measurement after checkpoint capture"
+
+'------------------------------------------------------------------------------
+' ASSERT CHECKPOINTS STILL MEASURED CORRECTLY
+'------------------------------------------------------------------------------
+    'Assert that both checkpoints were still captured
+        Test_Assert_EqualLong CountAfter, 2, _
+                              "Both checkpoints were captured"
+
+    'Assert that checkpoint timing advanced beyond the explicit measurement
+        Test_Assert_True (CDbl(cPM.ReportAsArray(3, 8)) > ExplicitET), _
+                         "Checkpoint cumulative time advanced past the explicit measurement"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Checkpoint_PreservesCachedElapsed"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_StartTimer_RunLabelArgument()
+'
+'==============================================================================
+'                     TEST STARTTIMER RUNLABEL ARGUMENT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates the optional RunLabel argument added to StartTimer
+'
+' WHY THIS EXISTS
+'   Starting a session clears the run label, so a label set beforehand through
+'   SetRunLabel was silently discarded. The argument closes that trap, and
+'   omitting it must preserve the historical reset behavior exactly
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM     As cPerformanceManager    'Class under test
+    Dim Arr     As Variant                'Structured report export
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "StartTimer RunLabel argument"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' ASSERT LABEL SUPPLIED THROUGH STARTTIMER
+'------------------------------------------------------------------------------
+    'Start a session with an inline run label
+        cPM.StartTimer 5, False, "Baseline run"
+    'Assert that the supplied label survived the checkpoint reset
+        Test_Assert_EqualString cPM.RunLabel, "Baseline run", _
+                                "StartTimer applies the supplied RunLabel"
+
+'------------------------------------------------------------------------------
+' ASSERT LABEL REACHES THE STRUCTURED REPORT
+'------------------------------------------------------------------------------
+    'Capture a checkpoint and export the report
+        cPM.Checkpoint "Phase 1"
+        Arr = cPM.ReportAsArray
+    'Assert that the label is carried into the exported row
+        Test_Assert_EqualString CStr(Arr(2, 1)), "Baseline run", _
+                                "The supplied RunLabel appears in the structured report"
+
+'------------------------------------------------------------------------------
+' ASSERT OMITTED ARGUMENT PRESERVES THE RESET
+'------------------------------------------------------------------------------
+    'Start a new session without supplying a label
+        cPM.StartTimer 5, False
+    'Assert that the previous label was cleared as before
+        Test_Assert_EqualString cPM.RunLabel, vbNullString, _
+                                "Omitting RunLabel still clears the previous label"
+
+'------------------------------------------------------------------------------
+' ASSERT SETRUNLABEL STILL WORKS AFTER STARTTIMER
+'------------------------------------------------------------------------------
+    'Set a label through the existing API after starting the session
+        cPM.SetRunLabel "Scenario A"
+    'Assert that the label was accepted
+        Test_Assert_EqualString cPM.RunLabel, "Scenario A", _
+                                "SetRunLabel still applies after StartTimer"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_StartTimer_RunLabelArgument"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Terminate_ReleasesTWSession()
+'
+'==============================================================================
+'                    TEST TERMINATE RELEASES TW SESSION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that dropping an instance releases its shared TW session
+'
+' WHY THIS EXISTS
+'   Class_Terminate is the safety net for callers who never call
+'   ResetEnvironment. If it fails, Excel is left suppressed with no active
+'   session to end, which is the worst failure this component can produce
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Before          As T_AppState             'Application state before suppression
+    Dim After           As T_AppState             'Application state after teardown
+    Dim CountDuring     As Long                   'Active TW sessions while suppressed
+    Dim CountAfter      As Long                   'Active TW sessions after teardown
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Class_Terminate releases TW session"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Force a clean shared baseline before the case begins
+        PM_TW_EndAllSessions
+    'Capture the Application state before any suppression
+        CaptureAppState Before
+
+'------------------------------------------------------------------------------
+' SUPPRESS THEN DROP THE INSTANCE WITHOUT CLEANUP
+'------------------------------------------------------------------------------
+    'Create an instance and begin shared TW suppression
+        Set cPM = New cPerformanceManager
+        cPM.TW_Turn_OFF
+    'Record the active session count while suppressed
+        CountDuring = PM_TW_ActiveCount()
+
+    'Drop the instance WITHOUT calling ResetEnvironment
+        Set cPM = Nothing
+
+    'Record the active session count after teardown
+        CountAfter = PM_TW_ActiveCount()
+    'Capture the Application state after teardown
+        CaptureAppState After
+
+'------------------------------------------------------------------------------
+' ASSERT SESSION LIFECYCLE
+'------------------------------------------------------------------------------
+    'Assert that suppression registered exactly one session
+        Test_Assert_EqualLong CountDuring, 1, _
+                              "TW_Turn_OFF registers one shared session"
+
+    'Assert that dropping the instance deregistered it
+        Test_Assert_EqualLong CountAfter, 0, _
+                              "Class_Terminate releases the shared TW session"
+
+'------------------------------------------------------------------------------
+' ASSERT APPLICATION STATE RESTORED
+'------------------------------------------------------------------------------
+    'Assert that every suppressed flag returned to its original value
+        Test_Assert_EqualBoolean After.ScreenUpdating, Before.ScreenUpdating, _
+                                 "ScreenUpdating restored after Class_Terminate"
+        Test_Assert_EqualBoolean After.EnableEvents, Before.EnableEvents, _
+                                 "EnableEvents restored after Class_Terminate"
+        Test_Assert_EqualBoolean After.DisplayAlerts, Before.DisplayAlerts, _
+                                 "DisplayAlerts restored after Class_Terminate"
+        Test_Assert_EqualLong After.Calculation, Before.Calculation, _
+                              "Calculation restored after Class_Terminate"
+        Test_Assert_EqualLong After.Cursor, Before.Cursor, _
+                              "Cursor restored after Class_Terminate"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any surviving instance and force a clean shared baseline
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        PM_TW_EndAllSessions
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Terminate_ReleasesTWSession"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_TW_InstanceKey_NoStaleReuse()
+'
+'==============================================================================
+'                    TEST TW INSTANCE KEY NO STALE REUSE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that a new instance never inherits a destroyed instance's session
+'
+' WHY THIS EXISTS
+'   The previous ObjPtr-based key returned a reusable heap address. This test
+'   creates and destroys instances repeatedly so that address reuse is likely,
+'   and asserts that session accounting stays exact
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Class under test
+    Dim i           As Long                   'Loop index
+    Dim CountsOk    As Boolean                'TRUE while session accounting stays exact
+    Dim cPM_Hold    As cPerformanceManager    'Long-lived instance holding a session
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "TW instance key is not reused"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Force a clean shared baseline before the case begins
+        PM_TW_EndAllSessions
+    'Seed the accounting flag
+        CountsOk = True
+
+'------------------------------------------------------------------------------
+' CYCLE INSTANCES THROUGH THE SAME LIKELY ADDRESS
+'------------------------------------------------------------------------------
+    'Create, register, and destroy repeatedly so heap addresses are reused
+        For i = 1 To 50
+            Set cPM = New cPerformanceManager
+            cPM.TW_Turn_OFF
+            If PM_TW_ActiveCount() <> 1 Then CountsOk = False
+            Set cPM = Nothing
+            If PM_TW_ActiveCount() <> 0 Then CountsOk = False
+        Next i
+
+'------------------------------------------------------------------------------
+' ASSERT EXACT ACCOUNTING
+'------------------------------------------------------------------------------
+    'Assert that every cycle registered and deregistered exactly one session
+        Test_Assert_True CountsOk, _
+                         "Session accounting stays exact across repeated instance reuse"
+
+    'Assert that no registration survived the loop
+        Test_Assert_EqualLong PM_TW_ActiveCount(), 0, _
+                              "No TW session survives after all instances are released"
+
+'------------------------------------------------------------------------------
+' ASSERT A SURVIVING INSTANCE IS NOT DISPLACED
+'------------------------------------------------------------------------------
+    'Hold one session open, then cycle short-lived instances alongside it
+        Set cPM_Hold = New cPerformanceManager
+        cPM_Hold.TW_Turn_OFF
+
+        For i = 1 To 25
+            Set cPM = New cPerformanceManager
+            cPM.TW_Turn_OFF
+            Set cPM = Nothing
+        Next i
+
+    'Assert that only the held session remains
+        Test_Assert_EqualLong PM_TW_ActiveCount(), 1, _
+                              "A held TW session survives repeated short-lived instances"
+
+    'Assert that the held instance still reports itself as active
+        Test_Assert_EqualBoolean cPM_Hold.TW_IsActive, True, _
+                                 "The held instance still owns its shared TW session"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release both instances and force a clean shared baseline
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        If Not cPM_Hold Is Nothing Then
+            cPM_Hold.ResetEnvironment
+            Set cPM_Hold = Nothing
+        End If
+        PM_TW_EndAllSessions
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_TW_InstanceKey_NoStaleReuse"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Stats_KnownVector()
+'
+'==============================================================================
+'                         TEST STATS KNOWN VECTOR
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates every statistic against a hand-computed sample vector
+'
+' WHY THIS EXISTS
+'   Timing-based tests can only assert loose properties. Feeding a fixed vector
+'   with known answers is the only way to prove the arithmetic itself is right
+'
+'   Vector 1..10 gives: min 1, max 10, mean 5.5, median 5.5,
+'   sample StdDev 3.0276503541, CV 0.5504818826
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Class under test
+    Dim Samples(1 To 10) As Double            'Ascending known sample vector
+    Dim Shuffled(1 To 10) As Double           'Same values in a scrambled order
+    Dim i           As Long                   'Loop index
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Statistics on a known vector"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+    'Build the ascending sample vector 1..10
+        For i = 1 To 10
+            Samples(i) = CDbl(i)
+        Next i
+
+    'Build the same values in a deliberately scrambled order
+        Shuffled(1) = 7#: Shuffled(2) = 2#: Shuffled(3) = 10#: Shuffled(4) = 4#
+        Shuffled(5) = 1#: Shuffled(6) = 9#: Shuffled(7) = 3#: Shuffled(8) = 6#
+        Shuffled(9) = 8#: Shuffled(10) = 5#
+
+'------------------------------------------------------------------------------
+' ASSERT COUNT AND EXTREMES
+'------------------------------------------------------------------------------
+    'Assert the element count and the observed extremes
+        Test_Assert_EqualLong cPM.Stats_Count(Samples), 10, _
+                              "Stats_Count returns the element count"
+        Test_Assert_ApproxDouble cPM.Stats_Min(Samples), 1#, 0.000000001, _
+                                 "Stats_Min returns the smallest value"
+        Test_Assert_ApproxDouble cPM.Stats_Max(Samples), 10#, 0.000000001, _
+                                 "Stats_Max returns the largest value"
+
+'------------------------------------------------------------------------------
+' ASSERT CENTRAL TENDENCY
+'------------------------------------------------------------------------------
+    'Assert the mean and the even-count median
+        Test_Assert_ApproxDouble cPM.Stats_Mean(Samples), 5.5, 0.000000001, _
+                                 "Stats_Mean returns the arithmetic mean"
+        Test_Assert_ApproxDouble cPM.Stats_Median(Samples), 5.5, 0.000000001, _
+                                 "Stats_Median averages the two central values for an even count"
+
+'------------------------------------------------------------------------------
+' ASSERT SPREAD
+'------------------------------------------------------------------------------
+    'Assert the sample standard deviation and the coefficient of variation
+        Test_Assert_ApproxDouble cPM.Stats_StdDev(Samples), 3.0276503541, 0.000001, _
+                                 "Stats_StdDev returns the sample standard deviation"
+        Test_Assert_ApproxDouble cPM.Stats_CoefficientOfVariation(Samples), 0.5504818826, 0.000001, _
+                                 "Stats_CoefficientOfVariation returns StdDev divided by mean"
+
+'------------------------------------------------------------------------------
+' ASSERT ORDER INDEPENDENCE
+'------------------------------------------------------------------------------
+    'Assert that input order does not change any order-sensitive statistic
+        Test_Assert_ApproxDouble cPM.Stats_Median(Shuffled), 5.5, 0.000000001, _
+                                 "Stats_Median is independent of input order"
+        Test_Assert_ApproxDouble cPM.Stats_Percentile(Shuffled, 95#), 10#, 0.000000001, _
+                                 "Stats_Percentile is independent of input order"
+
+'------------------------------------------------------------------------------
+' ASSERT THE CALLER ARRAY IS NEVER REORDERED
+'------------------------------------------------------------------------------
+    'Assert that the scrambled array still holds its original first element
+        Test_Assert_ApproxDouble Shuffled(1), 7#, 0.000000001, _
+                                 "Statistics routines do not reorder the caller's array"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Stats_KnownVector"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Stats_BoundariesAndErrors()
+'
+'==============================================================================
+'                    TEST STATS BOUNDARIES AND ERRORS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates percentile bounds, single-sample behavior, and error paths
+'
+' WHY THIS EXISTS
+'   The interesting failures in statistics code are at the edges: an empty
+'   vector, a single sample, and the extreme percentile ranks
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Class under test
+    Dim Samples(1 To 10) As Double            'Ascending known sample vector
+    Dim Single1(1 To 1)  As Double            'Single-element sample vector
+    Dim Empty()     As Double                 'Deliberately uninitialized vector
+    Dim i           As Long                   'Loop index
+    Dim Raised      As Boolean                'TRUE when the expected error was raised
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Statistics boundaries and errors"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+    'Build the ascending sample vector 1..10
+        For i = 1 To 10
+            Samples(i) = CDbl(i)
+        Next i
+
+    'Build a single-element vector
+        Single1(1) = 42#
+
+'------------------------------------------------------------------------------
+' ASSERT PERCENTILE BOUNDS
+'------------------------------------------------------------------------------
+    'Assert that the extreme ranks clamp to real observed values
+        Test_Assert_ApproxDouble cPM.Stats_Percentile(Samples, 0#), 1#, 0.000000001, _
+                                 "Stats_Percentile clamps rank 0 to the smallest value"
+        Test_Assert_ApproxDouble cPM.Stats_Percentile(Samples, 100#), 10#, 0.000000001, _
+                                 "Stats_Percentile returns the largest value at 100"
+        Test_Assert_ApproxDouble cPM.Stats_Percentile(Samples, 50#), 5#, 0.000000001, _
+                                 "Stats_Percentile uses nearest-rank at 50"
+
+'------------------------------------------------------------------------------
+' ASSERT SINGLE-SAMPLE BEHAVIOR
+'------------------------------------------------------------------------------
+    'Assert that a single sample has no spread and reports itself everywhere
+        Test_Assert_ApproxDouble cPM.Stats_Median(Single1), 42#, 0.000000001, _
+                                 "Stats_Median returns the only value for a single sample"
+        Test_Assert_ApproxDouble cPM.Stats_StdDev(Single1), 0#, 0.000000001, _
+                                 "Stats_StdDev returns 0 for a single sample"
+        Test_Assert_EqualBoolean cPM.Stats_IsContaminated(Single1), False, _
+                                 "A single sample is not reported as contaminated"
+
+'------------------------------------------------------------------------------
+' ASSERT EMPTY-VECTOR HANDLING
+'------------------------------------------------------------------------------
+    'Assert that Stats_Count tolerates an uninitialized array
+        Test_Assert_EqualLong cPM.Stats_Count(Empty), 0, _
+                              "Stats_Count returns 0 for an uninitialized array"
+
+    'Expect a raise when statistics are requested for an empty vector
+        Raised = False
+        On Error Resume Next
+        Call cPM.Stats_Mean(Empty)
+        If Err.Number <> 0 Then
+            Raised = True
+            Err.Clear
+        End If
+        On Error GoTo CleanFail
+
+    'Assert that the empty vector was rejected
+        Test_Assert_True Raised, _
+                         "Stats_Mean raises on an empty sample vector"
+
+'------------------------------------------------------------------------------
+' ASSERT INVALID PERCENTILE HANDLING
+'------------------------------------------------------------------------------
+    'Expect a raise for an out-of-range percentile
+        Raised = False
+        On Error Resume Next
+        Call cPM.Stats_Percentile(Samples, 101#)
+        If Err.Number <> 0 Then
+            Raised = True
+            Err.Clear
+        End If
+        On Error GoTo CleanFail
+
+    'Assert that the out-of-range percentile was rejected
+        Test_Assert_True Raised, _
+                         "Stats_Percentile raises for a percentile above 100"
+
+'------------------------------------------------------------------------------
+' ASSERT CONTAMINATION DETECTION
+'------------------------------------------------------------------------------
+    'Assert that the wide 1..10 vector is flagged as noisy
+        Test_Assert_EqualBoolean cPM.Stats_IsContaminated(Samples), True, _
+                                 "A high-variance vector is reported as contaminated"
+
+    'Assert that the summary text names the sample count
+        Test_Assert_ContainsString cPM.Stats_Text(Samples), "Samples", _
+                                   "Stats_Text reports the sample count"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Stats_BoundariesAndErrors"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Measure_Harness()
+'
+'==============================================================================
+'                          TEST MEASURE HARNESS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates MeasureProcedure and MeasureOverhead_Samples
+'
+' WHY THIS EXISTS
+'   The harness is the surface that makes repeated benchmarking possible. It
+'   must return the requested number of samples, leave the caller's session
+'   untouched, and reject a blank procedure name
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Samples()       As Double                 'Per-run measurement samples
+    Dim Overhead()      As Double                 'Per-cycle overhead samples
+    Dim CallerET        As Double                 'Caller elapsed value before measuring
+    Dim Raised          As Boolean                'TRUE when the expected error was raised
+    Dim AllPositive     As Boolean                'TRUE while every sample is positive
+    Dim i               As Long                   'Loop index
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "MeasureProcedure and overhead samples"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+    'Seed the sample-sign flag
+        AllPositive = True
+
+'------------------------------------------------------------------------------
+' ESTABLISH A CALLER SESSION TO PROTECT
+'------------------------------------------------------------------------------
+    'Start a session on the caller instance and take a measurement
+        cPM.StartTimer 5, False, "Harness caller"
+        cPM.Pause 0.02, 1
+        CallerET = cPM.ElapsedSeconds
+
+'------------------------------------------------------------------------------
+' MEASURE A NAMED PROCEDURE
+'------------------------------------------------------------------------------
+    'Run the workload through the harness
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 5, 2)
+
+    'Assert that the requested number of samples came back
+        Test_Assert_EqualLong cPM.Stats_Count(Samples), 5, _
+                              "MeasureProcedure returns one sample per iteration"
+
+    'Verify that every measured run took a positive amount of time
+        For i = LBound(Samples) To UBound(Samples)
+            If Samples(i) <= 0# Then AllPositive = False
+        Next i
+
+    'Assert that the workload was actually measured
+        Test_Assert_True AllPositive, _
+                         "Every MeasureProcedure sample is strictly positive"
+
+'------------------------------------------------------------------------------
+' ASSERT CALLER STATE IS UNDISTURBED
+'------------------------------------------------------------------------------
+    'Assert that the caller's cached measurement survived the harness run
+        Test_Assert_ApproxDouble cPM.ET, CallerET, 0.000000001, _
+                                 "MeasureProcedure leaves the caller's cached ET untouched"
+
+    'Assert that the caller's run label survived the harness run
+        Test_Assert_EqualString cPM.RunLabel, "Harness caller", _
+                                "MeasureProcedure leaves the caller's run label untouched"
+
+'------------------------------------------------------------------------------
+' MEASURE BACKEND OVERHEAD
+'------------------------------------------------------------------------------
+    'Collect a small overhead sample vector
+        Overhead = cPM.MeasureOverhead_Samples(50, 5)
+
+    'Assert that the requested number of cycles came back
+        Test_Assert_EqualLong cPM.Stats_Count(Overhead), 50, _
+                              "MeasureOverhead_Samples returns one sample per cycle"
+
+    'Assert that the reported floor is nonnegative
+        Test_Assert_NonNegativeDouble cPM.Stats_Min(Overhead), _
+                                      "The measured overhead floor is nonnegative"
+
+    'Assert that the median never falls below the observed minimum
+        Test_Assert_True (cPM.Stats_Median(Overhead) >= cPM.Stats_Min(Overhead)), _
+                         "Overhead median is at least the observed minimum"
+
+'------------------------------------------------------------------------------
+' ASSERT BLANK PROCEDURE NAME IS REJECTED
+'------------------------------------------------------------------------------
+    'Expect a raise for a blank procedure name
+        Raised = False
+        On Error Resume Next
+        Samples = cPM.MeasureProcedure(vbNullString, 1, 0)
+        If Err.Number <> 0 Then
+            Raised = True
+            Err.Clear
+        End If
+        On Error GoTo CleanFail
+
+    'Assert that the blank name was rejected
+        Test_Assert_True Raised, _
+                         "MeasureProcedure raises on a blank procedure name"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Measure_Harness"
     'Continue through centralized cleanup
         Resume CleanExit
 
