@@ -1,5 +1,4 @@
 Attribute VB_Name = "M_cPM_Test"
-
 Option Explicit     'Force explicit declaration of all variables
 
 '
@@ -7034,7 +7033,7 @@ Private Sub Test_Stats_BoundariesAndErrors()
     Dim cPM         As cPerformanceManager    'Class under test
     Dim Samples(1 To 10) As Double            'Ascending known sample vector
     Dim Single1(1 To 1)  As Double            'Single-element sample vector
-    Dim Empty()     As Double                 'Deliberately uninitialized vector
+    Dim dEmpty()     As Double                 'Deliberately uninitialized vector
     Dim i           As Long                   'Loop index
     Dim Raised      As Boolean                'TRUE when the expected error was raised
 
@@ -7082,13 +7081,13 @@ Private Sub Test_Stats_BoundariesAndErrors()
 ' ASSERT EMPTY-VECTOR HANDLING
 '------------------------------------------------------------------------------
     'Assert that Stats_Count tolerates an uninitialized array
-        Test_Assert_EqualLong cPM.Stats_Count(Empty), 0, _
+        Test_Assert_EqualLong cPM.Stats_Count(dEmpty), 0, _
                               "Stats_Count returns 0 for an uninitialized array"
 
     'Expect a raise when statistics are requested for an empty vector
         Raised = False
         On Error Resume Next
-        Call cPM.Stats_Mean(Empty)
+        Call cPM.Stats_Mean(dEmpty)
         If Err.Number <> 0 Then
             Raised = True
             Err.Clear
@@ -7301,3 +7300,5 @@ CleanFail:
         Resume CleanExit
 
 End Sub
+
+

@@ -2727,7 +2727,7 @@ End Function
 '------------------------------------------------------------------------------
 '
 
-Private Function UInt32ToDouble( _
+Friend Function UInt32ToDouble( _
     ByVal Value32 As Long) _
     As Double
 '
@@ -2781,7 +2781,7 @@ Private Function UInt32ToDouble( _
 
 End Function
 
-Private Function Elapsed_Validate( _
+Friend Function Elapsed_Validate( _
     ByVal Seconds As Double) _
     As Double
 '
@@ -3419,7 +3419,7 @@ Private Function Get_SystemTimeMs() As Double
 
 End Function
 
-Private Function RolloverSeconds( _
+Friend Function RolloverSeconds( _
     ByVal iMethod As Integer) _
     As Double
 '
