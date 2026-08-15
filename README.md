@@ -17,30 +17,6 @@
 
 ---
 
-## 🧩 Part of a larger framework
-
-<p align="left">
-  <img alt="Role" src="https://img.shields.io/badge/Role-Eexecution Engine-217346">
-</p>
-
-This component is part of the **Excel VBA Runtime Framework**.
-
-Within that framework, `cPerformanceManager` acts as the **execution and performance engine**.
-
-It provides the foundation for:
-
-- ⚡ performance instrumentation
-- 🧭 runtime control
-- 📊 repeatable benchmarking
-- 🧱 structured checkpoint reporting
-- 🚀 Excel environment optimization
-
-Framework home:
-
-[Excel VBA Runtime Framework](https://github.com/danielep71/excel-vba-runtime-framework)
-
----
-
 <img width="1536" height="1024" alt="cPM_Home_reduced" src="https://github.com/user-attachments/assets/c4137fcb-2886-4d38-9cb8-e3349112c258" />
 
 ## ✨ Overview
@@ -569,26 +545,6 @@ The regression suite covers:
 
 ---
 
-## 🏗️ Position in the framework
-
-<p align="left">
-  <img alt="Layer" src="https://img.shields.io/badge/Layer-Execution Engine-217346">
-</p>
-
-Within the **Excel VBA Runtime Framework**, `cPerformanceManager` is the component responsible for **execution performance, checkpoint instrumentation, and runtime environment control**.
-
-It is intended to work alongside complementary components for:
-
-- 🖥️ UI management
-- ⚡ event-driven interaction
-- 🏛️ broader Excel application architecture
-
-Framework home:
-
-[Excel VBA Runtime Framework](https://github.com/danielep71/excel-vba-runtime-framework)
-
----
-
 ## 📚 Wiki
 
 <p align="left">
@@ -617,4 +573,3 @@ This project is licensed under the terms in `LICENSE`.
   <img alt="Maintainer" src="https://img.shields.io/badge/Maintainer-Daniele Penza-217346">
 </p>
 
-Daniele Penza
