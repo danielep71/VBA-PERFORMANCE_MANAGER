@@ -87,13 +87,40 @@ Attribute VB_Exposed = False
 '   - Excel "time-waster" suppression is managed through a shared scope model so
 '     overlapping instances can coexist without corrupting Application state.
 '
+' ELAPSED-TIME VALIDATION POLICY
+'   A computed elapsed time can only be negative when the underlying timing
+'   source moved backwards, which makes the measurement invalid rather than
+'   merely imprecise.
+'
+'   Methods 1, 2, 3, 4 and 6 therefore route their result through
+'   Elapsed_Validate after rollover correction:
+'     - strict mode     => raises ERR_CPM_NEGATIVE_ELAPSED
+'     - non-strict mode => clamps the result to zero
+'
+'   Method 5 (QPC) deliberately skips this check. QPC is monotonic, and method 5
+'   is the default hot path where the extra call is not justified.
+'
+' INSTANCE KEY POLICY
+'   The shared time-waster key for this instance is obtained once from
+'   PM_TW_NewInstanceKey and cached in m_InstanceKey.
+'
+'   Object addresses (ObjPtr) must NOT be used for this purpose. VBA reuses heap
+'   addresses, so a session that outlived its instance could be silently
+'   inherited by an unrelated instance later allocated at the same address.
+'
+' ERROR NUMBERS
+'   All raised error numbers are declared as named constants in the
+'   HARDENING CONSTANTS section. No literal vbObjectError offsets appear in the
+'   body of this class, so the full set of numbers in use can be reviewed in one
+'   place and collisions remain visible.
+'
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '
 ' AUTHOR
 '   Daniele Penza
 '
-' VERSION: 1.1.0
+' VERSION: 1.2.0
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -300,14 +327,32 @@ Attribute VB_Exposed = False
 '------------------------------------------------------------------------------
 ' HARDENING CONSTANTS
 '------------------------------------------------------------------------------
-    Private Const CPM_TIME_MS                       As Long = 1
-    Private Const CPM_ALIGN_MAX_SPINS               As Long = 1000000
-    Private Const ERR_CPM_QPC_READ_FAILED           As Long = vbObjectError + 1007
-    Private Const ERR_CPM_TIMEBEGINPERIOD_FAILED    As Long = vbObjectError + 1008
-    Private Const ERR_CPM_TIMEENDPERIOD_FAILED      As Long = vbObjectError + 1009
-    Private Const ERR_CPM_ALIGN_TICK_TIMEOUT        As Long = vbObjectError + 1010
-    Private Const ERR_CPM_TIMEGETSYSTEMTIME_FAILED  As Long = vbObjectError + 1011
-    Private Const ERR_CPM_TIMEGETSYSTEMTIME_FORMAT  As Long = vbObjectError + 1012
+    'TIME_MS format identifier for MMTIME
+        Private Const CPM_TIME_MS                       As Long = 1
+
+    'Finite-loop guard for tick-alignment polling
+        Private Const CPM_ALIGN_MAX_SPINS               As Long = 1000000
+
+    'Method validation / session-binding errors
+        Private Const ERR_CPM_INVALID_START_METHOD      As Long = vbObjectError + 1000
+        Private Const ERR_CPM_QPC_UNAVAILABLE           As Long = vbObjectError + 1001
+        Private Const ERR_CPM_NO_ACTIVE_SESSION         As Long = vbObjectError + 1002
+        Private Const ERR_CPM_INVALID_ELAPSED_METHOD    As Long = vbObjectError + 1003
+        Private Const ERR_CPM_METHOD_MISMATCH           As Long = vbObjectError + 1004
+        Private Const ERR_CPM_RESOLVED_METHOD_INVALID   As Long = vbObjectError + 1005
+
+    'Timing source / environment errors
+        Private Const ERR_CPM_QPC_READ_FAILED           As Long = vbObjectError + 1007
+        Private Const ERR_CPM_TIMEBEGINPERIOD_FAILED    As Long = vbObjectError + 1008
+        Private Const ERR_CPM_TIMEENDPERIOD_FAILED      As Long = vbObjectError + 1009
+        Private Const ERR_CPM_ALIGN_TICK_TIMEOUT        As Long = vbObjectError + 1010
+        Private Const ERR_CPM_TIMEGETSYSTEMTIME_FAILED  As Long = vbObjectError + 1011
+        Private Const ERR_CPM_TIMEGETSYSTEMTIME_FORMAT  As Long = vbObjectError + 1012
+        Private Const ERR_CPM_NEGATIVE_ELAPSED          As Long = vbObjectError + 1013
+
+    'Checkpoint / structured reporting errors
+        Private Const ERR_CPM_CHECKPOINT_NO_SESSION     As Long = vbObjectError + 1020
+        Private Const ERR_CPM_RUNLABEL_AFTER_CAPTURE    As Long = vbObjectError + 1021
 
 '------------------------------------------------------------------------------
 ' STATE
@@ -366,9 +411,14 @@ Attribute VB_Exposed = False
     '--------------------------------------------------------------------------
     ' SHARED "TIME WASTER" SESSION STATE
     '--------------------------------------------------------------------------
-        Private m_TW_Active As Boolean   'TRUE when this instance is registered in shared TW suppression
-        Private m_Except    As TW_Enum   'Current exemption mask requested by this instance
-    
+        Private m_TW_Active   As Boolean   'TRUE when this instance is registered in shared TW suppression
+        Private m_Except      As TW_Enum   'Current exemption mask requested by this instance
+
+        'Collision-proof shared-TW key for this instance.
+        'Assigned lazily on first use so instances that never request TW
+        'suppression consume no key.
+        Private m_InstanceKey As String
+
     '--------------------------------------------------------------------------
     ' CHECKPOINT / STRUCTURED REPORT STATE
     '--------------------------------------------------------------------------
@@ -414,7 +464,7 @@ Private Sub Class_Initialize()
 '   - Loads the timer method labels used by MethodName().
 '   - Resets timing-session state.
 '   - Resets TW lifecycle flags for this instance.
-'   - Initializes structured checkpoint / report state.
+'   - Delegates checkpoint / report state setup to Checkpoint_ClearState.
 '
 ' ERROR POLICY
 '   Does not raise an error if QPC is unavailable.
@@ -424,12 +474,18 @@ Private Sub Class_Initialize()
 '   - QueryPerformanceFrequency
 '   - MMTIME
 '   - TW_Enum
+'   - Checkpoint_ClearState
 '
 ' NOTES
-'   None.
+'   Checkpoint state is initialized through Checkpoint_ClearState rather than
+'   duplicated here, so there is exactly one definition of a clean checkpoint
+'   baseline.
+'
+'   m_InstanceKey is deliberately left blank. TW_InstanceKey assigns it lazily
+'   on first use.
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -438,33 +494,24 @@ Private Sub Class_Initialize()
     Dim RC      As Long         'Return code from QueryPerformanceFrequency
 
 '------------------------------------------------------------------------------
-' INITIALIZE (HIGH-RES COUNTER + TIMEBASE CONFIG)
+' INITIALIZE (TIMING INFRASTRUCTURE)
 '------------------------------------------------------------------------------
-    'Query the high-resolution performance counter frequency once
+    'Capture the QPC frequency once and record backend availability
         RC = QueryPerformanceFrequency(m_qpcFreq)
-    'Record whether QPC is available and usable
         m_QpcAvailable = (RC <> 0 And m_qpcFreq <> 0)
-    'Configure timeGetSystemTime's MMTIME format to milliseconds
+    'Configure the reusable MMTIME structure for millisecond output
         m_Mmt.wType = CPM_TIME_MS
-        
-'------------------------------------------------------------------------------
-' INITIALIZE (METHOD LABELS)
-'------------------------------------------------------------------------------
-    'Method 1: VBA Timer()
+
+    'Load the human-readable timing backend labels
         m_MethodName(1) = "Timer"
-    'Method 2: kernel32 GetTickCount / GetTickCount64
         m_MethodName(2) = "GetTickCount / GetTickCount64"
-    'Method 3: winmm timeGetTime
         m_MethodName(3) = "timeGetTime"
-    'Method 4: winmm timeGetSystemTime
         m_MethodName(4) = "timeGetSystemTime"
-    'Method 5: kernel32 QueryPerformanceCounter
         m_MethodName(5) = "QPC"
-    'Method 6: VBA Now()
         m_MethodName(6) = "Now()"
 
 '------------------------------------------------------------------------------
-' INITIALIZE (STATE FLAGS / DEFAULTS)
+' INITIALIZE (SESSION / LIFECYCLE STATE)
 '------------------------------------------------------------------------------
     'Guard for timeBeginPeriod/timeEndPeriod lifecycle
         m_TimePeriodOn = False
@@ -485,19 +532,15 @@ Private Sub Class_Initialize()
         m_qpcEnd = 0@
     'Indicates whether this instance currently owns an active shared TW session
         m_TW_Active = False
-        
+    'Leave the shared-TW key unassigned until first use
+        m_InstanceKey = vbNullString
+
 '------------------------------------------------------------------------------
 ' INITIALIZE (CHECKPOINT / REPORT STATE)
 '------------------------------------------------------------------------------
-    'Clear the optional run label
-        m_RunLabel = vbNullString
-    'Initialize the checkpoint counter
-        m_CheckpointCount = 0
-    'Initialize the last checkpoint elapsed-seconds marker
-        m_LastCheckpointS = 0#
-    'Initialize checkpoint storage with a small first capacity
-        ReDim m_Checkpoints(1 To 1)
-        
+    'Establish a clean checkpoint baseline through the single shared helper
+        Checkpoint_ClearState
+
 End Sub
 
 Private Sub Class_Terminate()
@@ -532,8 +575,12 @@ Private Sub Class_Terminate()
 '   ResetEnvironment remains the primary cleanup contract.
 '   Class_Terminate is only the final fallback.
 '
+'   Errors here are necessarily invisible, because a terminator cannot raise.
+'   A hard End statement bypasses this routine entirely, which is why
+'   PM_TW_EndAllSessions exists as the documented manual recovery path.
+'
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
     'Destructor cleanup must be best-effort and non-fatal
@@ -552,9 +599,9 @@ End Sub
 '------------------------------------------------------------------------------
 '
 
-
 Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
-                      Optional ByVal AlignToNextTick As Boolean = False)
+                      Optional ByVal AlignToNextTick As Boolean = False, _
+                      Optional ByVal RunLabel As String = vbNullString)
 '
 '==============================================================================
 '                                  START TIMER
@@ -576,6 +623,18 @@ Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
 '     TRUE  => wait for the next observable tick before capturing the start
 '     FALSE => capture the start timestamp immediately
 '
+'   RunLabel (optional)
+'     Optional run label for the new session.
+'
+'     Starting a session always clears any previously stored run label. Supplying
+'     the label here sets it atomically after that reset, which is the reliable
+'     way to label a run:
+'
+'         cPM.StartTimer 5, False, "Baseline run"
+'
+'     Calling SetRunLabel BEFORE StartTimer has no effect, because the reset
+'     discards it.
+'
 ' RETURNS
 '   None.
 '
@@ -584,6 +643,7 @@ Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
 '   - Captures the requested start timestamp into local variables first.
 '   - Commits class state only after timestamp capture succeeds.
 '   - Starts a fresh structured checkpoint session for the new timing run.
+'   - Applies the optional run label after the checkpoint reset.
 '
 ' ERROR POLICY
 '   Validation behavior is delegated to Method_NormalizeStart.
@@ -601,8 +661,11 @@ Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
 ' NOTES
 '   The routine is intentionally transactional.
 '
+'   Omitting RunLabel preserves the historical behavior exactly: the run label is
+'   cleared by the new session.
+'
 ' UPDATED
-'   2026-06-13
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -666,61 +729,69 @@ Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
     'Start a fresh checkpoint session for the new timing run
         Checkpoint_ClearState
 
+'------------------------------------------------------------------------------
+' APPLY OPTIONAL RUN LABEL
+'------------------------------------------------------------------------------
+    'Apply the supplied run label after the checkpoint reset has cleared it
+        If Len(RunLabel) > 0 Then
+            m_RunLabel = RunLabel
+        End If
+
 End Sub
 
 Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Double
 '
 '==============================================================================
-'                              ELAPSED SECONDS
+'                               ELAPSED SECONDS
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Returns low-overhead numeric elapsed time in seconds, bound to the active
-'   timer session started by StartTimer().
+'   Returns the elapsed time in seconds for the active timing session.
 '
 ' WHY THIS EXISTS
-'   This property is the core elapsed-time reader for the class. It resolves the
-'   backend against the active session and computes elapsed seconds using the
-'   correct timing source and rollover logic.
+'   This is the canonical low-overhead numeric measurement surface. It avoids
+'   the string formatting cost of ElapsedTime and is the recommended primitive
+'   for benchmark loops.
 '
 ' INPUTS
 '   iMethod (optional)
-'     0   => use the active session method
+'     0   => use the active timer session method
 '     1-6 => explicit method to validate against the active session
 '
 ' RETURNS
 '   Double
-'     Elapsed time in seconds.
+'     Elapsed seconds since StartTimer.
 '
 ' BEHAVIOR
-'   - Resolves the requested method against the active timing session.
-'   - Dispatches to the correct backend-specific elapsed-time path.
-'   - Applies rollover correction where needed.
-'   - Stores the computed elapsed value in m_ET and returns it.
+'   - Resolves and validates the timing method against the active session.
+'   - Reads the end timestamp from the resolved backend.
+'   - Applies rollover correction for the 32-bit millisecond counters.
+'   - Validates the result through Elapsed_Validate for methods 1/2/3/4/6.
+'   - Caches m_T2 and m_ET as a side effect.
 '
 ' ERROR POLICY
-'   Method/session validation behavior is delegated to Method_ResolveElapsed.
-'   A defensive fallback is included for impossible resolved-method states.
+'   - Session and method validation is delegated to Method_ResolveElapsed.
+'   - Raises in strict mode when QPC cannot be read.
+'   - Raises in strict mode when the resolved method is invalid.
+'   - Raises in strict mode when the computed elapsed time is negative.
+'   - Returns 0 in non-strict mode for the failure paths above.
 '
 ' DEPENDENCIES
 '   - Method_ResolveElapsed
 '   - Get_TickCountSeconds
-'   - RolloverSeconds
 '   - EnsureTimerResolution1ms
-'   - timeGetTime
 '   - Get_SystemTimeMs
-'   - QueryPerformanceCounter
-'   - Timer
-'   - Now
+'   - QPC_TryReadTick
+'   - RolloverSeconds
+'   - Elapsed_Validate
 '
 ' NOTES
-'   - Method 5 uses Currency-based tick storage; the ratio
-'       (m_qpcEnd - m_qpcStart) / m_qpcFreq
-'     is intentional and valid because the Currency scaling cancels.
-'   - This property is designed to be numeric and low-overhead.
-'     Human-readable formatting belongs in ElapsedTime().
+'   - Method 5 (QPC) deliberately skips Elapsed_Validate. QPC is monotonic and
+'     method 5 is the default hot path, so the extra call is not justified.
+'   - This property mutates m_T2 and m_ET. Callers that need a non-mutating read
+'     should use the cached ET property instead of calling this again.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -739,65 +810,41 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Dou
 '------------------------------------------------------------------------------
     Select Case ResolvedMethod
 
-        '----------------------------------------------------------------------
-        ' METHOD 1: VBA TIMER
-        '----------------------------------------------------------------------
         Case 1
-            'Capture end timestamp
                 m_T2 = Timer
-            'Compute elapsed
                 m_ET = m_T2 - m_T1
-            'Correct midnight rollover
-                If m_ET < 0# Then m_ET = m_ET + 86400#
-            'Return elapsed seconds
+                'Correct midnight rollover for Timer()
+                    If m_ET < 0# Then m_ET = m_ET + 86400#
+                m_ET = Elapsed_Validate(m_ET)
                 ElapsedSeconds = m_ET
 
-        '----------------------------------------------------------------------
-        ' METHOD 2: GetTickCount / GetTickCount64
-        '----------------------------------------------------------------------
         Case 2
-            'Capture end timestamp in seconds
                 m_T2 = Get_TickCountSeconds()
-            'Compute elapsed
                 m_ET = m_T2 - m_T1
-            'Correct rollover only when applicable
-                If m_ET < 0# Then m_ET = m_ET + RolloverSeconds(2)
-            'Return elapsed seconds
+                'Correct 32-bit millisecond-counter rollover where applicable
+                    If m_ET < 0# Then m_ET = m_ET + RolloverSeconds(2)
+                m_ET = Elapsed_Validate(m_ET)
                 ElapsedSeconds = m_ET
 
-        '----------------------------------------------------------------------
-        ' METHOD 3: timeGetTime
-        '----------------------------------------------------------------------
         Case 3
-            'Ensure 1ms timer resolution is enabled
                 EnsureTimerResolution1ms
-            'Capture end timestamp in seconds
                 m_T2 = UInt32ToDouble(timeGetTime()) / 1000#
-            'Compute elapsed
                 m_ET = m_T2 - m_T1
-            'Correct 32-bit millisecond rollover
-                If m_ET < 0# Then m_ET = m_ET + RolloverSeconds(3)
-            'Return elapsed seconds
+                'Correct 32-bit millisecond-counter rollover
+                    If m_ET < 0# Then m_ET = m_ET + RolloverSeconds(3)
+                m_ET = Elapsed_Validate(m_ET)
                 ElapsedSeconds = m_ET
 
-        '----------------------------------------------------------------------
-        ' METHOD 4: timeGetSystemTime
-        '----------------------------------------------------------------------
         Case 4
-            'Capture end timestamp in seconds
                 m_T2 = Get_SystemTimeMs() / 1000#
-            'Compute elapsed
                 m_ET = m_T2 - m_T1
-            'Correct 32-bit millisecond rollover
-                If m_ET < 0# Then m_ET = m_ET + RolloverSeconds(4)
-            'Return elapsed seconds
+                'Correct 32-bit millisecond-counter rollover
+                    If m_ET < 0# Then m_ET = m_ET + RolloverSeconds(4)
+                m_ET = Elapsed_Validate(m_ET)
                 ElapsedSeconds = m_ET
 
-        '----------------------------------------------------------------------
-        ' METHOD 5: QueryPerformanceCounter
-        '----------------------------------------------------------------------
         Case 5
-            'Capture end tick and validate the QPC API return code
+                'QPC is the monotonic high-resolution path and skips validation
                 If Not QPC_TryReadTick(m_qpcEnd) Then
                     If m_StrictMode Then
                         Err.Raise ERR_CPM_QPC_READ_FAILED, _
@@ -809,31 +856,20 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Dou
                         Exit Property
                     End If
                 End If
-            'Compute elapsed seconds from ticks/frequency
+                'Currency scaling cancels between numerator and denominator
                 m_ET = CDbl((m_qpcEnd - m_qpcStart) / m_qpcFreq)
-            'Mirror the raw end tick into the generic end slot
                 m_T2 = CDbl(m_qpcEnd)
-            'Return elapsed seconds
                 ElapsedSeconds = m_ET
 
-        '----------------------------------------------------------------------
-        ' METHOD 6: Now()
-        '----------------------------------------------------------------------
         Case 6
-            'Capture end timestamp in seconds
                 m_T2 = Now() * 86400#
-            'Compute elapsed
                 m_ET = m_T2 - m_T1
-            'Return elapsed seconds
+                m_ET = Elapsed_Validate(m_ET)
                 ElapsedSeconds = m_ET
 
-        '----------------------------------------------------------------------
-        ' DEFENSIVE FALLBACK
-        '----------------------------------------------------------------------
         Case Else
-            'Defensive fallback for impossible/invalid resolved methods
                 If m_StrictMode Then
-                    Err.Raise vbObjectError + 1005, _
+                    Err.Raise ERR_CPM_RESOLVED_METHOD_INVALID, _
                               "cPerformanceManager.ElapsedSeconds", _
                               "Resolved timer method is invalid."
                 Else
@@ -902,9 +938,9 @@ Public Function ElapsedTime( _
 '   - When ElapsedSecondsIn is supplied, no new timing sample is taken
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
-    
+
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
@@ -947,7 +983,7 @@ Public Function ElapsedTime( _
         Frac = Sec - CDbl(WholeS)
     'Defensive clamp for negative fractional jitter
         If Frac < 0# Then Frac = 0#
-        
+
 '------------------------------------------------------------------------------
 ' CONVERT FRACTIONAL SECONDS TO ns/ms/us/nnn
 '------------------------------------------------------------------------------
@@ -965,7 +1001,7 @@ Public Function ElapsedTime( _
         Ms = NS_Total \ 1000000
         Us = (NS_Total \ 1000) Mod 1000
         NN = NS_Total Mod 1000
-        
+
 '------------------------------------------------------------------------------
 ' DECOMPOSE WHOLE-SECOND DURATION
 '------------------------------------------------------------------------------
@@ -1047,7 +1083,7 @@ Public Property Get T1() As Double
 '   - T1 is an inspection/debugging surface, not the primary timing API.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1083,6 +1119,7 @@ Public Property Get T2() As Double
 '   - m_T2 is updated when ElapsedSeconds() is evaluated.
 '   - m_T2 is also updated when ElapsedTime() is called without
 '     ElapsedSecondsIn, because that path internally measures elapsed time.
+'   - m_T2 is also updated by Checkpoint(), which measures internally.
 '   - When ElapsedTime() is called with ElapsedSecondsIn, no new timing sample
 '     is taken and m_T2 is not updated by that formatting step.
 '   - The meaning of the value depends on the timing backend:
@@ -1101,8 +1138,9 @@ Public Property Get T2() As Double
 '   - T2 is an inspection/debugging surface, not the primary timing API.
 '
 ' UPDATED
-'   2026-04-15
+'   2026-08-14
 '==============================================================================
+
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
@@ -1135,6 +1173,7 @@ Public Property Get ET() As Double
 '   - m_ET is set by ElapsedSeconds().
 '   - m_ET is also updated when ElapsedTime() is called without
 '     ElapsedSecondsIn, because that path internally measures elapsed time.
+'   - m_ET is also updated by Checkpoint(), which measures internally.
 '   - When ElapsedTime() is called with ElapsedSecondsIn, the supplied value is
 '     formatted directly and m_ET is not updated by that formatting step.
 '
@@ -1151,7 +1190,7 @@ Public Property Get ET() As Double
 '     primary timing API.
 '
 ' UPDATED
-'   2026-04-15
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1252,7 +1291,7 @@ Public Property Get MethodName( _
 '   timing-method normalization.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1294,7 +1333,7 @@ Public Property Get RunLabel() As String
 '   Does not raise errors
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1359,8 +1398,13 @@ Public Function OverheadMeasurement_Seconds( _
 '   The measurement is performed on an isolated temporary cPerformanceManager
 '   instance so that the caller's checkpoint/report state is not disturbed.
 '
+'   This routine reports the arithmetic MEAN only. Timing distributions are
+'   right-skewed, so a single scheduler preemption during the loop shifts the
+'   result and the caller cannot distinguish a clean run from a contaminated
+'   one. Treat the value as indicative rather than as a reliable floor.
+'
 ' UPDATED
-'   2026-06-13
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1416,37 +1460,45 @@ Public Function OverheadMeasurement_Seconds( _
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
-    'Return the average measurement overhead in seconds
+    'Return the average measured overhead
         OverheadMeasurement_Seconds = TotalS / CDbl(Iterations)
 
 '------------------------------------------------------------------------------
-' CLEANUP
+' CLEAN UP
 '------------------------------------------------------------------------------
-    'Attempt deterministic worker cleanup
+    'Release the isolated worker instance
         On Error Resume Next
         If Not cPM_Work Is Nothing Then cPM_Work.ResetEnvironment
         Set cPM_Work = Nothing
         On Error GoTo 0
-    'Exit normally
         Exit Function
 
-'------------------------------------------------------------------------------
-' ERROR HANDLER
-'------------------------------------------------------------------------------
 Err_Handler:
+'------------------------------------------------------------------------------
+' CAPTURE ORIGINAL ERROR
+'------------------------------------------------------------------------------
     'Capture the original error before cleanup
         ErrNumber = Err.Number
         ErrSource = Err.Source
         ErrDescription = Err.Description
-    'Attempt deterministic worker cleanup without masking the original error
+
+'------------------------------------------------------------------------------
+' CLEAN UP AFTER FAILURE
+'------------------------------------------------------------------------------
+    'Cleanup must be best-effort so that we can preserve the original error
         On Error Resume Next
         If Not cPM_Work Is Nothing Then cPM_Work.ResetEnvironment
         Set cPM_Work = Nothing
         On Error GoTo 0
+
+'------------------------------------------------------------------------------
+' RE-RAISE ORIGINAL ERROR
+'------------------------------------------------------------------------------
     'Re-raise the original error
         Err.Raise ErrNumber, ErrSource, ErrDescription
 
 End Function
+
 Public Property Get OverheadMeasurement_Text( _
     Optional ByVal iMethod As Integer = 5, _
     Optional ByVal Iterations As Long = 1000, _
@@ -1505,8 +1557,11 @@ Public Property Get OverheadMeasurement_Text( _
 '     - measure when no numeric value is supplied
 '     - format directly when a numeric value is supplied
 '
+'   The reported figure is a mean. See the note on OverheadMeasurement_Seconds
+'   regarding its sensitivity to scheduler outliers.
+'
 ' UPDATED
-'   2026-04-19
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1583,7 +1638,7 @@ Public Property Get Get_SystemTickInterval() As String
 '     scheduling precision.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1649,7 +1704,7 @@ Public Property Get QPC_Get_SystemTickInterval() As String
 '   Use numeric helpers when machine-readable values are required.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1713,7 +1768,7 @@ Public Property Get QPC_FrequencyPerSecond() As String
 '   required.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1776,7 +1831,7 @@ Public Property Get QPC_FrequencyPerSecond_Value() As Double
 '   Use QPC_FrequencyPerSecond() when human-readable text is desired.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1848,6 +1903,8 @@ Public Sub Pause( _
 '   - DoEvents
 '
 ' NOTES
+'   - The iMethod values here are pause mechanisms and are NOT the same
+'     numbering as the timing backends used by StartTimer.
 '   - Method 2 is midnight-safe because it measures elapsed delta rather than
 '     comparing Timer() against an absolute target.
 '   - Methods 3 and 4 use a Timer()-based guard loop specifically because
@@ -1857,7 +1914,7 @@ Public Sub Pause( _
 '     class-level m_ET timing cache.
 '
 ' UPDATED
-'   2026-03-30
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1984,6 +2041,7 @@ Public Sub Pause( _
 
     End Select
 End Sub
+
 Public Sub ResetEnvironment()
 '
 '==============================================================================
@@ -2022,14 +2080,19 @@ Public Sub ResetEnvironment()
 ' NOTES
 '   This routine remains idempotent.
 '
+'   TW cleanup is deliberately performed BEFORE any strict-mode raise, so a
+'   timer-resolution failure cannot leave Excel suppressed.
+'
 ' UPDATED
-'   2026-06-13
+'   2026-08-14
 '==============================================================================
+
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim RC              As Long     'Return code from timeEndPeriod
     Dim ReleaseFailed   As Boolean  'TRUE when timeEndPeriod fails
+
 '------------------------------------------------------------------------------
 ' BALANCE timeBeginPeriod(1) IF IT WAS ENABLED
 '------------------------------------------------------------------------------
@@ -2042,6 +2105,7 @@ Public Sub ResetEnvironment()
                 ReleaseFailed = True
             End If
         End If
+
 '------------------------------------------------------------------------------
 ' END THIS INSTANCE'S SHARED TW SESSION IF ACTIVE
 '------------------------------------------------------------------------------
@@ -2051,6 +2115,7 @@ Public Sub ResetEnvironment()
             m_TW_Active = False
             m_Except = TW_Enum.None
         End If
+
 '------------------------------------------------------------------------------
 ' REPORT TIMER-RELEASE FAILURE AFTER OTHER CLEANUP
 '------------------------------------------------------------------------------
@@ -2095,10 +2160,9 @@ Public Sub TW_Turn_OFF( _
 '   None.
 '
 ' BEHAVIOR
-'   - Persists this instance's exemption mask.
 '   - Registers this instance in the shared TW manager if not already active.
 '   - Updates this instance's effective mask if already active.
-'   - Marks this instance as actively participating in the shared TW scope.
+'   - Commits local instance state only after the shared manager succeeds.
 '
 ' ERROR POLICY
 '   Raises errors normally.
@@ -2116,28 +2180,28 @@ Public Sub TW_Turn_OFF( _
 '       * subsequent calls => update this instance's exemption mask
 '   - The effective Excel state is determined by the shared manager from the
 '     aggregate disable-mask of all active instances.
+'   - Local state is committed AFTER PM_TW_BeginSession returns. A failed
+'     registration therefore cannot leave this instance reporting an exemption
+'     mask that was never applied.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
-
-'------------------------------------------------------------------------------
-' INITIALIZE
-'------------------------------------------------------------------------------
-    'Persist this instance's current exemption mask
-        m_Except = Except
 
 '------------------------------------------------------------------------------
 ' BEGIN / UPDATE SHARED SESSION
 '------------------------------------------------------------------------------
     'Register or update this instance in the shared TW manager
-        PM_TW_BeginSession TW_InstanceKey(), CLng(m_Except)
+        PM_TW_BeginSession TW_InstanceKey(), CLng(Except)
 
 '------------------------------------------------------------------------------
-' UPDATE INSTANCE STATE
+' COMMIT INSTANCE STATE
 '------------------------------------------------------------------------------
-    'Mark this instance as actively participating in the shared TW scope.
+    'Persist this instance's exemption mask only after successful registration
+        m_Except = Except
+    'Mark this instance as actively participating in the shared TW scope
         m_TW_Active = True
+
 End Sub
 
 Public Sub TW_Turn_ON()
@@ -2186,7 +2250,7 @@ Public Sub TW_Turn_ON()
 '     That responsibility belongs to the shared TW manager.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2222,7 +2286,6 @@ Public Property Get TW_ActiveSessionCount() As Long
     'Return the global active shared TW session count.
         TW_ActiveSessionCount = PM_TW_ActiveCount()
 End Property
-
 
 '
 '------------------------------------------------------------------------------
@@ -2269,8 +2332,17 @@ Public Sub SetRunLabel( _
 '   Raises when the caller attempts to change the run label after checkpoint
 '   capture has already begun in the current timing session
 '
+' NOTES
+'   This routine must be called AFTER StartTimer. Starting a session clears the
+'   run label, so a label set beforehand is discarded.
+'
+'   To set the label as part of starting the session, use the RunLabel argument
+'   of StartTimer instead:
+'
+'       cPM.StartTimer 5, False, "Baseline run"
+'
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2278,7 +2350,7 @@ Public Sub SetRunLabel( _
 '------------------------------------------------------------------------------
     'Reject run-label changes after checkpoint capture has already begun
         If m_CheckpointCount > 0 Then
-            Err.Raise vbObjectError + 1011, _
+            Err.Raise ERR_CPM_RUNLABEL_AFTER_CAPTURE, _
                       "cPerformanceManager.SetRunLabel", _
                       "RunLabel must be set before the first checkpoint of the current timing session."
         End If
@@ -2290,6 +2362,7 @@ Public Sub SetRunLabel( _
         m_RunLabel = RunLabel
 
 End Sub
+
 Public Sub ClearCheckpoints()
 '
 '==============================================================================
@@ -2321,8 +2394,12 @@ Public Sub ClearCheckpoints()
 ' DEPENDENCIES
 '   - Checkpoint_ClearState
 '
+' NOTES
+'   This does NOT end the active timing session. Cumulative checkpoint times
+'   captured afterwards are still measured from the original StartTimer.
+'
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2385,11 +2462,14 @@ Public Sub Checkpoint( _
 '   - Checkpoint_DefaultName
 '
 ' NOTES
-'   This routine intentionally captures numeric timing only
-'   It does not call ElapsedTime and therefore avoids formatting overhead
+'   - This routine intentionally captures numeric timing only.
+'     It does not call ElapsedTime and therefore avoids formatting overhead.
+'   - Capturing a checkpoint calls ElapsedSeconds internally, which updates the
+'     cached m_T2 and m_ET values. Callers that need to preserve an earlier
+'     explicit measurement should read ET before taking a checkpoint.
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2401,55 +2481,51 @@ Public Sub Checkpoint( _
     Dim EffectiveName       As String       'Normalized checkpoint label
 
 '------------------------------------------------------------------------------
-' VALIDATE SESSION STATE
+' VALIDATE SESSION
 '------------------------------------------------------------------------------
-    'Reject checkpoint capture when no timing session is active
+    'Reject checkpoint capture without an active timing session
         If Not m_HasActiveSession Then
-            Err.Raise vbObjectError + 1010, _
+            Err.Raise ERR_CPM_CHECKPOINT_NO_SESSION, _
                       "cPerformanceManager.Checkpoint", _
                       "Checkpoint cannot be captured before StartTimer."
         End If
 
 '------------------------------------------------------------------------------
-' RESOLVE CURRENT ELAPSED TIME
+' MEASURE
 '------------------------------------------------------------------------------
-    'Read the current cumulative elapsed seconds for the active session
+    'Capture cumulative elapsed seconds once for this checkpoint
         CurrentS = Me.ElapsedSeconds
 
 '------------------------------------------------------------------------------
-' RESOLVE CHECKPOINT NAME
+' NORMALIZE LABEL
 '------------------------------------------------------------------------------
-    'Normalize the checkpoint label and auto-generate one when blank
+    'Substitute a generated label when the caller supplied a blank name
         EffectiveName = Trim$(CheckpointName)
-    'Use a generated label when the caller supplied a blank checkpoint name
         If Len(EffectiveName) = 0 Then
             EffectiveName = Checkpoint_DefaultName(m_CheckpointCount + 1)
         End If
 
 '------------------------------------------------------------------------------
-' COMPUTE DELTA / SEQUENCE
+' COMPUTE SEQUENCE AND DELTA
 '------------------------------------------------------------------------------
-    'Resolve the next checkpoint sequence number
+    'Resolve the next sequence number
         NextSeq = m_CheckpointCount + 1
 
-    'Compute elapsed seconds since the previous checkpoint
+    'Compute the delta since the previous checkpoint
         DeltaS = CurrentS - m_LastCheckpointS
 
-    'Defensively clamp negative jitter
+    'Defensively clamp a negative delta
         If DeltaS < 0# Then
             DeltaS = 0#
         End If
 
 '------------------------------------------------------------------------------
-' ENSURE STORAGE CAPACITY
-'------------------------------------------------------------------------------
-    'Ensure checkpoint storage can hold the new row
-        Checkpoint_EnsureCapacity NextSeq
-
-'------------------------------------------------------------------------------
 ' APPEND CHECKPOINT ROW
 '------------------------------------------------------------------------------
-    'Write the structured checkpoint row
+    'Ensure storage can hold the new row
+        Checkpoint_EnsureCapacity NextSeq
+
+    'Populate the structured checkpoint row
         With m_Checkpoints(NextSeq)
             .Seq = NextSeq
             .NameText = EffectiveName
@@ -2464,9 +2540,8 @@ Public Sub Checkpoint( _
 '------------------------------------------------------------------------------
 ' UPDATE STATE
 '------------------------------------------------------------------------------
-    'Persist the new checkpoint count
+    'Advance the checkpoint counter and last-checkpoint marker
         m_CheckpointCount = NextSeq
-    'Persist the most recent cumulative checkpoint elapsed seconds
         m_LastCheckpointS = CurrentS
 
 End Sub
@@ -2494,7 +2569,7 @@ Public Property Get CheckpointCount() As Long
 '   Does not raise errors
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2547,8 +2622,13 @@ Public Function ReportAsArray() As Variant
 ' ERROR POLICY
 '   Raises errors normally
 '
+' NOTES
+'   M_cPM_TimeWasters.cPM_Report_WriteToRange formats columns 7 and 8 through
+'   its own PM_RPT_COL_* constants. Changing the column order here requires
+'   updating those constants as well.
+'
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2561,15 +2641,14 @@ Public Function ReportAsArray() As Variant
 '------------------------------------------------------------------------------
 ' INITIALIZE
 '------------------------------------------------------------------------------
-    'Resolve the total export row count including the header row
+    'Size the export array to include the header row
         RowCount = m_CheckpointCount + 1
-    'Create the export array
         ReDim Arr(1 To RowCount, 1 To 8)
 
 '------------------------------------------------------------------------------
-' WRITE HEADER ROW
+' BUILD HEADER ROW
 '------------------------------------------------------------------------------
-    'Write the report header row
+    'Populate the header labels
         Arr(1, 1) = "RunLabel"
         Arr(1, 2) = "Seq"
         Arr(1, 3) = "Checkpoint"
@@ -2580,24 +2659,26 @@ Public Function ReportAsArray() As Variant
         Arr(1, 8) = "CumulativeSeconds"
 
 '------------------------------------------------------------------------------
-' WRITE DATA ROWS
+' BUILD DATA ROWS
 '------------------------------------------------------------------------------
-    'Write one export row per captured checkpoint
+    'Populate one export row per captured checkpoint
         For i = 1 To m_CheckpointCount
-            Arr(i + 1, 1) = m_Checkpoints(i).RunLabelText
-            Arr(i + 1, 2) = m_Checkpoints(i).Seq
-            Arr(i + 1, 3) = m_Checkpoints(i).NameText
-            Arr(i + 1, 4) = m_Checkpoints(i).NoteText
-            Arr(i + 1, 5) = m_Checkpoints(i).MethodID
-            Arr(i + 1, 6) = m_Checkpoints(i).MethodNameText
-            Arr(i + 1, 7) = m_Checkpoints(i).DeltaSecondsValue
-            Arr(i + 1, 8) = m_Checkpoints(i).ElapsedSecondsValue
+            With m_Checkpoints(i)
+                Arr(i + 1, 1) = .RunLabelText
+                Arr(i + 1, 2) = .Seq
+                Arr(i + 1, 3) = .NameText
+                Arr(i + 1, 4) = .NoteText
+                Arr(i + 1, 5) = .MethodID
+                Arr(i + 1, 6) = .MethodNameText
+                Arr(i + 1, 7) = .DeltaSecondsValue
+                Arr(i + 1, 8) = .ElapsedSecondsValue
+            End With
         Next i
 
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
-    'Return the structured export array
+    'Return the structured report array
         ReportAsArray = Arr
 
 End Function
@@ -2632,7 +2713,7 @@ Public Function ReportAsText() As String
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2668,13 +2749,15 @@ Public Function ReportAsText() As String
 '------------------------------------------------------------------------------
     'Append one readable line per checkpoint
         For i = 1 To m_CheckpointCount
-            S = S & vbCrLf & _
-                CStr(m_Checkpoints(i).Seq) & " | " & _
-                m_Checkpoints(i).NameText & " | " & _
-                Format$(m_Checkpoints(i).DeltaSecondsValue, "0.000000000") & " | " & _
-                Format$(m_Checkpoints(i).ElapsedSecondsValue, "0.000000000") & " | " & _
-                m_Checkpoints(i).MethodNameText & " | " & _
-                m_Checkpoints(i).NoteText
+            With m_Checkpoints(i)
+                S = S & vbCrLf & _
+                    CStr(.Seq) & " | " & _
+                    .NameText & " | " & _
+                    Format$(.DeltaSecondsValue, "0.000000000") & " | " & _
+                    Format$(.ElapsedSecondsValue, "0.000000000") & " | " & _
+                    .MethodNameText & " | " & _
+                    .NoteText
+            End With
         Next i
 
 '------------------------------------------------------------------------------
@@ -2732,7 +2815,7 @@ Private Function UInt32ToDouble( _
 '   4294967296# is exactly 2^32 represented as a Double literal.
 '
 ' UPDATED
-'   2026-06-13
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2744,6 +2827,75 @@ Private Function UInt32ToDouble( _
         Else
             UInt32ToDouble = CDbl(Value32)
         End If
+
+End Function
+
+Private Function Elapsed_Validate( _
+    ByVal Seconds As Double) _
+    As Double
+'
+'==============================================================================
+'                              ELAPSED VALIDATE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates a computed elapsed-seconds value after rollover correction.
+'
+' WHY THIS EXISTS
+'   Once rollover correction has been applied, a negative elapsed time can only
+'   mean the underlying timing source moved backwards. That makes the whole
+'   measurement invalid rather than merely imprecise.
+'
+'   This matters specifically on Win64 method 2, where RolloverSeconds returns 0
+'   because GetTickCount64 is used. Without this check a negative value would be
+'   returned to the caller unchanged and silently treated as a real duration.
+'
+' INPUTS
+'   Seconds
+'     Computed elapsed seconds after any applicable rollover correction.
+'
+' RETURNS
+'   Double
+'     The validated elapsed-seconds value.
+'
+' BEHAVIOR
+'   - Returns the value unchanged when it is zero or positive.
+'   - Raises in strict mode when the value is negative.
+'   - Clamps to zero in non-strict mode.
+'
+' ERROR POLICY
+'   Raises ERR_CPM_NEGATIVE_ELAPSED in strict mode.
+'
+' DEPENDENCIES
+'   - m_StrictMode
+'
+' NOTES
+'   Method 5 (QPC) deliberately does not call this helper. QPC is monotonic and
+'   method 5 is the default hot path, so the extra call is not justified there.
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject or clamp a backwards-moving timing source
+        If Seconds < 0# Then
+            If m_StrictMode Then
+                Err.Raise ERR_CPM_NEGATIVE_ELAPSED, _
+                          "cPerformanceManager.Elapsed_Validate", _
+                          "Elapsed time is negative after rollover correction. " & _
+                          "The timing source moved backwards and the measurement is invalid."
+            Else
+                Seconds = 0#
+            End If
+        End If
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the validated elapsed-seconds value
+        Elapsed_Validate = Seconds
 
 End Function
 
@@ -2791,17 +2943,20 @@ Private Function Method_NormalizeStart( _
 '   Method 2 is the non-strict fallback when QPC is unavailable because it is a
 '   practical general-purpose monotonic timing source.
 '
+'   The QPC availability check here is what makes the division by m_qpcFreq in
+'   ElapsedSeconds unreachable with a zero denominator.
+'
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' VALIDATE METHOD RANGE
 '------------------------------------------------------------------------------
-    'Reject invalid method values in strict mode
+    'Reject or coerce out-of-range method values
         If (iMethod < 1) Or (iMethod > 6) Then
             If m_StrictMode Then
-                Err.Raise vbObjectError + 1000, _
+                Err.Raise ERR_CPM_INVALID_START_METHOD, _
                           "cPerformanceManager.Method_NormalizeStart", _
                           "Invalid timer method passed to StartTimer."
             Else
@@ -2810,12 +2965,12 @@ Private Function Method_NormalizeStart( _
         End If
 
 '------------------------------------------------------------------------------
-' VALIDATE QPC AVAILABILITY
+' VALIDATE BACKEND AVAILABILITY
 '------------------------------------------------------------------------------
-    'If QPC is requested but unavailable, either raise or fallback
+    'Reject or downgrade a QPC request when QPC is unavailable
         If iMethod = 5 And Not m_QpcAvailable Then
             If m_StrictMode Then
-                Err.Raise vbObjectError + 1001, _
+                Err.Raise ERR_CPM_QPC_UNAVAILABLE, _
                           "cPerformanceManager.Method_NormalizeStart", _
                           "QPC is unavailable on this system."
             Else
@@ -2879,16 +3034,16 @@ Private Function Method_ResolveElapsed( _
 '   timer wrapper into a real timing-session manager.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
-' VALIDATE SESSION STATE
+' VALIDATE ACTIVE SESSION
 '------------------------------------------------------------------------------
-    'Elapsed timing is invalid before StartTimer has established a session.
+    'Reject elapsed-time reads before a session has been started
         If Not m_HasActiveSession Then
             If m_StrictMode Then
-                Err.Raise vbObjectError + 1002, _
+                Err.Raise ERR_CPM_NO_ACTIVE_SESSION, _
                           "cPerformanceManager.Method_ResolveElapsed", _
                           "ElapsedSeconds called before StartTimer."
             Else
@@ -2898,9 +3053,9 @@ Private Function Method_ResolveElapsed( _
         End If
 
 '------------------------------------------------------------------------------
-' USE ACTIVE METHOD WHEN OMITTED
+' RESOLVE IMPLICIT METHOD
 '------------------------------------------------------------------------------
-    'Method 0 means: use the currently active session method.
+    'Method 0 means "use the active session method"
         If iMethod = 0 Then
             Method_ResolveElapsed = m_ActiveMethodID
             Exit Function
@@ -2909,10 +3064,10 @@ Private Function Method_ResolveElapsed( _
 '------------------------------------------------------------------------------
 ' VALIDATE EXPLICIT METHOD RANGE
 '------------------------------------------------------------------------------
-    'Reject invalid explicit method values.
+    'Reject out-of-range explicit method values
         If (iMethod < 1) Or (iMethod > 6) Then
             If m_StrictMode Then
-                Err.Raise vbObjectError + 1003, _
+                Err.Raise ERR_CPM_INVALID_ELAPSED_METHOD, _
                           "cPerformanceManager.Method_ResolveElapsed", _
                           "Invalid timer method passed to ElapsedSeconds."
             Else
@@ -2922,12 +3077,12 @@ Private Function Method_ResolveElapsed( _
         End If
 
 '------------------------------------------------------------------------------
-' VALIDATE EXPLICIT METHOD MATCH
+' VALIDATE SESSION BINDING
 '------------------------------------------------------------------------------
-    'Reject mismatches between StartTimer's method and ElapsedSeconds' method.
+    'Reject explicit methods that do not match the active session method
         If iMethod <> m_ActiveMethodID Then
             If m_StrictMode Then
-                Err.Raise vbObjectError + 1004, _
+                Err.Raise ERR_CPM_METHOD_MISMATCH, _
                           "cPerformanceManager.Method_ResolveElapsed", _
                           "ElapsedSeconds method does not match the active StartTimer method."
             Else
@@ -2939,7 +3094,7 @@ Private Function Method_ResolveElapsed( _
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
-    'Return the validated explicit method.
+    'Return the validated method
         Method_ResolveElapsed = iMethod
 End Function
 
@@ -2956,44 +3111,55 @@ Private Function TW_InstanceKey() As String
 '   instances so it can maintain the correct aggregate disable-mask and remove
 '   the correct instance when a shared TW session ends.
 '
+'   Earlier revisions derived this key from ObjPtr(Me). That is unsafe: VBA
+'   reuses heap addresses, so a session left behind by a destroyed instance
+'   could be silently inherited by an unrelated instance later allocated at the
+'   same address. Keys are therefore issued by PM_TW_NewInstanceKey instead.
+'
 ' INPUTS
 '   None.
 '
 ' RETURNS
 '   String
-'     A string representation of the current object's pointer value.
+'     The cached shared-TW key for this instance.
 '
 ' BEHAVIOR
-'   - Uses ObjPtr(Me) as the per-instance identity source.
-'   - Uses CLngPtr on VBA7 builds for pointer-width safety.
-'   - Falls back to ObjPtr(Me) directly on pre-VBA7 builds.
+'   - Requests a new key from PM_TW_NewInstanceKey on first use.
+'   - Caches the key for the lifetime of this instance.
+'   - Returns the cached key on every subsequent call.
 '
 ' ERROR POLICY
 '   Raises errors normally.
 '
 ' DEPENDENCIES
-'   - ObjPtr
-'   - CLngPtr (VBA7 only)
+'   - PM_TW_NewInstanceKey (M_cPM_TimeWasters)
+'   - m_InstanceKey
 '
 ' NOTES
+'   - Assignment is lazy, so instances that never request TW suppression consume
+'     no key.
 '   - The returned key is intended only for live in-memory instance tracking.
 '   - It is stable for the lifetime of the object instance.
 '   - It is not intended as a persisted or cross-session identifier.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
-' ROUTINE
+' ISSUE KEY ON FIRST USE
 '------------------------------------------------------------------------------
-    #If VBA7 Then
-        'Use the current object's pointer value as the unique instance key
-            TW_InstanceKey = CStr(CLngPtr(ObjPtr(Me)))
-    #Else
-        'Pre-VBA7 fallback
-            TW_InstanceKey = CStr(ObjPtr(Me))
-    #End If
+    'Request and cache a collision-proof key the first time it is needed
+        If Len(m_InstanceKey) = 0 Then
+            m_InstanceKey = PM_TW_NewInstanceKey()
+        End If
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the cached instance key
+        TW_InstanceKey = m_InstanceKey
+
 End Function
 
 '
@@ -3003,6 +3169,7 @@ End Function
 '
 '------------------------------------------------------------------------------
 '
+
 Private Function QPC_TryReadTick( _
     ByRef TickOut As Currency) _
     As Boolean
@@ -3042,7 +3209,7 @@ Private Function QPC_TryReadTick( _
 '   Callers decide whether failure should raise or trigger fallback behavior.
 '
 ' UPDATED
-'   2026-06-13
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3058,109 +3225,6 @@ Private Function QPC_TryReadTick( _
         QPC_TryReadTick = (QueryPerformanceCounter(TickOut) <> 0)
 
 End Function
-Private Function QPC_TryGetNextTimestampTick( _
-    ByRef TickOut As Currency) _
-    As Boolean
-'
-'==============================================================================
-'                            QPC TRY NEXT TIMESTAMP
-'------------------------------------------------------------------------------
-' PURPOSE
-'   Aligns to the next observable QPC tick with a finite spin guard.
-'
-' WHY THIS EXISTS
-'   AlignToNextTick intentionally uses tight polling, but the polling loop must
-'   not be capable of running forever if the timing source fails or stalls.
-'
-' INPUTS
-'   TickOut
-'     Output variable receiving the aligned QPC tick when successful.
-'
-' RETURNS
-'   Boolean
-'     TRUE  => a strictly advanced QPC tick was captured
-'     FALSE => QPC read failed or the spin guard was reached in non-strict mode
-'
-' BEHAVIOR
-'   - Reads an initial QPC tick.
-'   - Polls until a strictly greater tick is observed.
-'   - Stops after CPM_ALIGN_MAX_SPINS attempts.
-'   - Raises in strict mode when the counter cannot be aligned.
-'
-' ERROR POLICY
-'   - Raises in strict mode when QPC cannot be read or alignment times out.
-'   - Returns FALSE in non-strict mode.
-'
-' DEPENDENCIES
-'   - QPC_TryReadTick
-'   - CPM_ALIGN_MAX_SPINS
-'   - m_StrictMode
-'
-' NOTES
-'   This helper is for benchmark alignment only, not for ordinary timing reads.
-'
-' UPDATED
-'   2026-06-13
-'==============================================================================
-'------------------------------------------------------------------------------
-' DECLARE
-'------------------------------------------------------------------------------
-    Dim T1          As Currency     'Initial counter tick
-    Dim T2          As Currency     'Next counter tick
-    Dim SpinCount   As Long         'Finite-loop guard counter
-    
-'------------------------------------------------------------------------------
-' INITIAL READ
-'------------------------------------------------------------------------------
-    'Read the initial QPC tick
-        If Not QPC_TryReadTick(T1) Then
-            If m_StrictMode Then
-                Err.Raise ERR_CPM_QPC_READ_FAILED, _
-                          "cPerformanceManager.QPC_TryGetNextTimestampTick", _
-                          "QueryPerformanceCounter failed during the initial alignment read."
-            End If
-            QPC_TryGetNextTimestampTick = False
-            Exit Function
-        End If
-        
-'------------------------------------------------------------------------------
-' ALIGN TO NEXT OBSERVED TICK
-'------------------------------------------------------------------------------
-    'Spin until QPC advances or the finite guard is reached
-        Do
-            SpinCount = SpinCount + 1
-            If Not QPC_TryReadTick(T2) Then
-                If m_StrictMode Then
-                    Err.Raise ERR_CPM_QPC_READ_FAILED, _
-                              "cPerformanceManager.QPC_TryGetNextTimestampTick", _
-                              "QueryPerformanceCounter failed during the alignment loop."
-                End If
-                QPC_TryGetNextTimestampTick = False
-                Exit Function
-            End If
-            If T2 > T1 Then
-                TickOut = T2
-                QPC_TryGetNextTimestampTick = True
-                Exit Function
-            End If
-        Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
-        
-'------------------------------------------------------------------------------
-' FAIL / FALLBACK
-'------------------------------------------------------------------------------
-    'Raise in strict mode when alignment does not complete
-        If m_StrictMode Then
-            Err.Raise ERR_CPM_ALIGN_TICK_TIMEOUT, _
-                      "cPerformanceManager.QPC_TryGetNextTimestampTick", _
-                      "QPC next-tick alignment did not complete within the spin guard."
-        End If
-    'Return FALSE in non-strict mode
-        TickOut = T1
-        QPC_TryGetNextTimestampTick = False
-        
-End Function
-
-
 
 Private Function QPC_GetFrequencyHz() As Double
 '
@@ -3198,8 +3262,12 @@ Private Function QPC_GetFrequencyHz() As Double
 ' NOTES
 '   m_qpcFreq is stored as Currency, so we must undo Currency's 10,000 scaling.
 '
+'   Note that ElapsedSeconds does NOT use this helper. There the Currency
+'   scaling cancels between the tick delta and the frequency, so the raw
+'   Currency division is already correct.
+'
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3257,7 +3325,7 @@ Private Function Get_TickCountSeconds() As Double
 '   - 4294967296# is the exact 2^32 constant expressed as a Double literal.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3345,7 +3413,7 @@ Private Function Get_SystemTimeMs() As Double
 '   Method 4 remains a distinct timing backend.
 '
 ' UPDATED
-'   2026-06-13
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3380,7 +3448,7 @@ Private Function Get_SystemTimeMs() As Double
             Get_SystemTimeMs = 0#
             Exit Function
         End If
-    
+
     'Validate that the returned format is still TIME_MS
         If m_Mmt.wType <> CPM_TIME_MS Then
             If m_StrictMode Then
@@ -3399,7 +3467,6 @@ Private Function Get_SystemTimeMs() As Double
         Get_SystemTimeMs = UInt32ToDouble(m_Mmt.Units)
 
 End Function
-
 
 Private Function RolloverSeconds( _
     ByVal iMethod As Integer) _
@@ -3445,9 +3512,12 @@ Private Function RolloverSeconds( _
 '   - The rollover value 2^32 milliseconds equals 4294967296# / 1000# seconds.
 '   - This helper is intentionally limited to the backends whose rollover
 '     correction is handled centrally in ElapsedSeconds().
+'   - Returning 0 for the Win64 method 2 path means a negative elapsed value
+'     survives the correction step unchanged. Elapsed_Validate is what catches
+'     that case.
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3457,38 +3527,25 @@ Private Function RolloverSeconds( _
         Case 2
             #If VBA7 Then
                 #If Win64 Then
-                    'GetTickCount64 has no practical rollover for measurement use
                         RolloverSeconds = 0#
                 #Else
-                    '32-bit GetTickCount wraps at 2^32 milliseconds
                         RolloverSeconds = 4294967296# / 1000#
                 #End If
             #Else
-                'Pre-VBA7: 32-bit GetTickCount wraps at 2^32 milliseconds
                     RolloverSeconds = 4294967296# / 1000#
             #End If
         Case 3, 4
-            'timeGetTime and timeGetSystemTime behave like 32-bit millisecond counters
                 RolloverSeconds = 4294967296# / 1000#
         Case Else
-            'All other methods either have custom correction or no rollover logic here
                 RolloverSeconds = 0#
 
     End Select
 End Function
 
-'
-'------------------------------------------------------------------------------
-'
-'                 PRIVATE: TIMING CAPTURE / ALIGNMENT HELPERS
-'
-'------------------------------------------------------------------------------
-'
-
 Private Sub EnsureTimerResolution1ms()
 '
 '==============================================================================
-'                             ENSURE TIME PERIOD ON
+'                        ENSURE TIMER RESOLUTION 1MS
 '------------------------------------------------------------------------------
 ' PURPOSE
 '   Requests 1ms multimedia timer resolution exactly once for this instance
@@ -3524,8 +3581,11 @@ Private Sub EnsureTimerResolution1ms()
 '   ResetEnvironment is responsible for balancing a successful request with
 '   timeEndPeriod 1.
 '
+'   This request affects system-wide timer resolution and can increase power
+'   consumption while held.
+'
 ' UPDATED
-'   2026-06-13
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3553,12 +3613,13 @@ Private Sub EnsureTimerResolution1ms()
         m_TimePeriodOn = True
 
 End Sub
+
 Private Function Get_CurrentTimestampSeconds( _
     ByVal iMethod As Integer) _
     As Double
 '
 '==============================================================================
-'                                  NOW TICK
+'                      GET CURRENT TIMESTAMP SECONDS
 '------------------------------------------------------------------------------
 ' PURPOSE
 '   Returns the current timestamp for non-QPC methods as a Double in seconds.
@@ -3595,27 +3656,33 @@ Private Function Get_CurrentTimestampSeconds( _
 ' NOTES
 '   Method 4 is intentionally preserved as timeGetSystemTime.
 '
+'   Method 5 is not handled here. QPC has its own dedicated capture path in
+'   StartTimer because it works in Currency ticks rather than seconds.
+'
 ' UPDATED
-'   2026-06-13
+'   2026-08-14
 '==============================================================================
 
-'Dispatch to the requested timing backend and return a seconds-based timestamp
-    Select Case iMethod
-        Case 1
-            Get_CurrentTimestampSeconds = Timer
-        Case 2
-            Get_CurrentTimestampSeconds = Get_TickCountSeconds()
-        Case 3
-            EnsureTimerResolution1ms
-            Get_CurrentTimestampSeconds = UInt32ToDouble(timeGetTime()) / 1000#
-        Case 4
-            Get_CurrentTimestampSeconds = Get_SystemTimeMs() / 1000#
-        Case 6
-            Get_CurrentTimestampSeconds = Now() * 86400#
-        Case Else
-            Get_CurrentTimestampSeconds = Timer
-    End Select
-    
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Dispatch to the requested timing backend and return a seconds-based timestamp
+        Select Case iMethod
+            Case 1
+                Get_CurrentTimestampSeconds = Timer
+            Case 2
+                Get_CurrentTimestampSeconds = Get_TickCountSeconds()
+            Case 3
+                EnsureTimerResolution1ms
+                Get_CurrentTimestampSeconds = UInt32ToDouble(timeGetTime()) / 1000#
+            Case 4
+                Get_CurrentTimestampSeconds = Get_SystemTimeMs() / 1000#
+            Case 6
+                Get_CurrentTimestampSeconds = Now() * 86400#
+            Case Else
+                Get_CurrentTimestampSeconds = Timer
+        End Select
+
 End Function
 
 Private Function Get_NextTimestampSeconds( _
@@ -3623,7 +3690,7 @@ Private Function Get_NextTimestampSeconds( _
     As Double
 '
 '==============================================================================
-'                                   NEXT TICK
+'                       GET NEXT TIMESTAMP SECONDS
 '------------------------------------------------------------------------------
 ' PURPOSE
 '   Aligns the start time to the next observable tick for the selected non-QPC
@@ -3663,8 +3730,11 @@ Private Function Get_NextTimestampSeconds( _
 '   This routine uses tight polling and should only be used for benchmark
 '   alignment scenarios.
 '
+'   Method 6 (Now) cannot be meaningfully aligned at this granularity and
+'   therefore returns immediately without spinning.
+'
 ' UPDATED
-'   2026-06-13
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3679,7 +3749,7 @@ Private Function Get_NextTimestampSeconds( _
 '------------------------------------------------------------------------------
     'Dispatch by timing backend and spin until the counter advances
         Select Case iMethod
-            
+
             Case 1
                 A = Timer
                 Do
@@ -3690,7 +3760,7 @@ Private Function Get_NextTimestampSeconds( _
                         Exit Function
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
-            
+
             Case 2
                 A = Get_TickCountSeconds()
                 Do
@@ -3701,7 +3771,7 @@ Private Function Get_NextTimestampSeconds( _
                         Exit Function
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
-            
+
             Case 3
                 EnsureTimerResolution1ms
                 A = UInt32ToDouble(timeGetTime())
@@ -3713,7 +3783,7 @@ Private Function Get_NextTimestampSeconds( _
                         Exit Function
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
-            
+
             Case 4
                 A = Get_SystemTimeMs()
                 Do
@@ -3724,15 +3794,15 @@ Private Function Get_NextTimestampSeconds( _
                         Exit Function
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
-            
+
             Case 6
                 Get_NextTimestampSeconds = Now() * 86400#
                 Exit Function
-            
+
             Case Else
                 Get_NextTimestampSeconds = Get_CurrentTimestampSeconds(iMethod)
                 Exit Function
-        
+
         End Select
 
 '------------------------------------------------------------------------------
@@ -3752,7 +3822,7 @@ End Function
 Private Function QPC_Get_NextTimestampTick() As Currency
 '
 '==============================================================================
-'                                 NEXT TICK QPC
+'                       QPC GET NEXT TIMESTAMP TICK
 '------------------------------------------------------------------------------
 ' PURPOSE
 '   Aligns to the next QueryPerformanceCounter tick with a finite spin guard.
@@ -3787,7 +3857,7 @@ Private Function QPC_Get_NextTimestampTick() As Currency
 '   Tight polling loop by design; do not use in ordinary production paths.
 '
 ' UPDATED
-'   2026-06-13
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3866,9 +3936,8 @@ Private Sub Checkpoint_ClearState()
 '   Checkpoints and run label belong to a timing session. Starting a new session
 '   should therefore reset the structured reporting state deterministically.
 '
-'   This same helper is also used by ClearCheckpoints(), so that explicit
-'   checkpoint clearing resets the full structured report state, including the
-'   current run label.
+'   This same helper is also used by ClearCheckpoints() and by Class_Initialize,
+'   so there is exactly one definition of a clean checkpoint baseline.
 '
 ' INPUTS
 '   None
@@ -3885,8 +3954,13 @@ Private Sub Checkpoint_ClearState()
 ' ERROR POLICY
 '   Raises errors normally
 '
+' NOTES
+'   StartTimer calls this routine and then reapplies its optional RunLabel
+'   argument, which is why a label supplied to StartTimer survives the reset but
+'   one set beforehand through SetRunLabel does not.
+'
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3930,8 +4004,13 @@ Private Sub Checkpoint_EnsureCapacity( _
 ' ERROR POLICY
 '   Raises errors normally
 '
+' NOTES
+'   Storage starts at a capacity of 1, so the first growth occurs on the second
+'   checkpoint. Doubling keeps the amortized cost of ReDim Preserve low across
+'   long checkpoint runs.
+'
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3998,7 +4077,7 @@ Private Function Checkpoint_DefaultName( _
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4008,4 +4087,3 @@ Private Function Checkpoint_DefaultName( _
         Checkpoint_DefaultName = "Checkpoint " & CStr(Seq)
 
 End Function
-

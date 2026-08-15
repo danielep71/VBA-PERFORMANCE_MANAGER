@@ -6,6 +6,9 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '   Shared, process-wide manager for Excel "time-waster" suppression used by
 '   cPerformanceManager
 '
+'   The module also hosts a worksheet-output helper for structured checkpoint
+'   reports (cPM_Report_WriteToRange)
+'
 ' WHY THIS EXISTS
 '   The Excel Application properties controlled here are global process state,
 '   not instance-local state:
@@ -33,11 +36,16 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '     - PM_TW_BeginSession
 '     - PM_TW_EndSession
 '     - PM_TW_ActiveCount
+'     - PM_TW_NewInstanceKey
 '
 '   Additional diagnostic / recovery procedures exposed here are:
 '
 '     - PM_TW_IsInstanceActive
 '     - PM_TW_EndAllSessions
+'
+'   Worksheet-output helper exposed here:
+'
+'     - cPM_Report_WriteToRange
 '
 ' IMPORT REQUIREMENT
 '   Import this module together with cPerformanceManager.cls
@@ -50,6 +58,25 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '     recomputed
 '   - When the final session ends, the original baseline is restored exactly
 '     once and the shared store is released
+'
+' INSTANCE KEY POLICY
+'   Instance keys are issued by PM_TW_NewInstanceKey from a module-level counter
+'
+'   A counter is sufficient and collision-proof here because g_TW_KeySeed and
+'   g_TW_Sessions share the same module-global lifetime. A VBA project reset
+'   clears both together, so the seed can never issue a key that a surviving
+'   dictionary entry still holds
+'
+'   Object addresses (ObjPtr) must NOT be used as keys. VBA reuses heap
+'   addresses, so a session that outlived its instance could be silently
+'   inherited by an unrelated instance allocated at the same address
+'
+' HOST-STATE POLICY
+'   Application.Calculation cannot be read or written when no workbook is open
+'
+'   Both the baseline capture and the effective-state apply paths therefore
+'   guard on Workbooks.Count. All other supported flags remain safe to access
+'   in a workbook-less host
 '
 ' DEPENDENCIES
 '   - Excel Application object model
@@ -64,21 +91,24 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '   - Idempotent no-op paths remain intentional, for example when ending an
 '     already-idle shared store or an inactive instance key
 '   - Internal helpers assume a valid Excel host and valid calling flow
+'   - A workbook-less host is NOT treated as an error. The Calculation flag is
+'     skipped in that case rather than raising
 '   - PM_TW_EndAllSessions is an emergency / recovery helper and also raises
 '     errors normally
 '
 ' NOTES
 '   - This module should not appear as a user-runnable macro surface.
-'     Therefore Option Private Module is used
+'     Therefore Option Private Module is used. Public procedures here remain
+'     callable from anywhere inside the host VBA project
 '   - Cursor suppression uses xlWait while active to force a deterministic
 '     benchmark-time cursor state and avoid ordinary cursor-state churn during
 '     benchmark runs
 '
 ' VERSION
-'   1.0.0
+'   1.2.0
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '
 ' AUTHOR
 '   Daniele Penza
@@ -102,6 +132,22 @@ Attribute VB_Name = "M_cPM_TimeWasters"
         Private Const PM_TW_MASK_CURSOR             As Long = 16
         Private Const PM_TW_MASK_ALL                As Long = 31
 
+    'Module error numbers
+        Private Const ERR_TW_BEGIN_BLANK_KEY        As Long = vbObjectError + 2200
+        Private Const ERR_TW_END_BLANK_KEY          As Long = vbObjectError + 2201
+        Private Const ERR_TW_ISACTIVE_BLANK_KEY     As Long = vbObjectError + 2202
+        Private Const ERR_TW_REPORT_NO_INSTANCE     As Long = vbObjectError + 2600
+        Private Const ERR_TW_REPORT_NO_TARGET       As Long = vbObjectError + 2601
+
+    'Structured report column positions
+    '
+    'These must track the column order built by cPerformanceManager.ReportAsArray
+        Private Const PM_RPT_COL_DELTA              As Long = 7
+        Private Const PM_RPT_COL_CUMULATIVE         As Long = 8
+
+    'Number format applied to the numeric timing columns
+        Private Const PM_RPT_TIMING_FORMAT          As String = "0.000000000"
+
 '------------------------------------------------------------------------------
 ' PRIVATE SHARED STATE
 '------------------------------------------------------------------------------
@@ -109,6 +155,9 @@ Attribute VB_Name = "M_cPM_TimeWasters"
     '   key   = instance key (String)
     '   item  = disable-mask (Long)
         Private g_TW_Sessions               As Object
+
+    'Monotonic seed used to issue collision-proof instance keys
+        Private g_TW_KeySeed                As Long
 
     'TRUE once the baseline Application state has been captured
         Private g_TW_BaselineSaved          As Boolean
@@ -126,6 +175,65 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '                                  PUBLIC API
 '
 '==============================================================================
+
+Public Function PM_TW_NewInstanceKey() As String
+'
+'==============================================================================
+'                           PM_TW_NEWINSTANCEKEY
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Issues a unique shared-TW registration key for one class instance
+'
+' WHY THIS EXISTS
+'   Earlier revisions derived the instance key from ObjPtr(Me). That is unsafe:
+'   VBA reuses heap addresses, so a session left behind by a destroyed instance
+'   could be silently inherited by an unrelated instance later allocated at the
+'   same address
+'
+'   A module-level counter removes that hazard entirely. g_TW_KeySeed and
+'   g_TW_Sessions share the same module-global lifetime, so a project reset
+'   clears both at once and the seed can never reissue a key that a surviving
+'   dictionary entry still holds
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   String
+'     Unique instance key for the lifetime of the current VBA project session
+'
+' BEHAVIOR
+'   - Increments the shared key seed
+'   - Returns a prefixed string form of the new seed value
+'
+' ERROR POLICY
+'   Does not raise errors
+'
+' DEPENDENCIES
+'   - g_TW_KeySeed
+'
+' NOTES
+'   The caller is expected to cache the returned key for the lifetime of the
+'   instance. Calling this repeatedly for the same instance would register that
+'   instance more than once
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' ISSUE KEY
+'------------------------------------------------------------------------------
+    'Advance the shared seed
+        g_TW_KeySeed = g_TW_KeySeed + 1
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the prefixed key
+        PM_TW_NewInstanceKey = "cPM#" & CStr(g_TW_KeySeed)
+
+End Function
 
 Public Sub PM_TW_BeginSession( _
     ByVal InstanceKey As String, _
@@ -146,6 +254,7 @@ Public Sub PM_TW_BeginSession( _
 ' INPUTS
 '   InstanceKey
 '     Unique key identifying the calling class instance
+'     Obtain it from PM_TW_NewInstanceKey
 '
 '   ExceptMask (optional)
 '     Bitmask of TW flags to EXEMPT
@@ -168,6 +277,9 @@ Public Sub PM_TW_BeginSession( _
 ' ERROR POLICY
 '   Raises errors normally
 '
+'   On failure the original error is preserved and re-raised after rollback, so
+'   the caller always sees the true cause rather than a rollback side effect
+'
 ' DEPENDENCIES
 '   - PM_TW_EnsureStore
 '   - PM_TW_SaveBaseline
@@ -182,7 +294,7 @@ Public Sub PM_TW_BeginSession( _
 '     - later calls for same instance => update requested mask
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -201,7 +313,7 @@ Public Sub PM_TW_BeginSession( _
 '------------------------------------------------------------------------------
     'Reject a blank instance key
         If Len(Trim$(InstanceKey)) = 0 Then
-            Err.Raise vbObjectError + 2200, _
+            Err.Raise ERR_TW_BEGIN_BLANK_KEY, _
                       "M_cPM_TimeWasters.PM_TW_BeginSession", _
                       "InstanceKey cannot be blank."
         End If
@@ -297,6 +409,7 @@ ApplyFail:
         Err.Raise SavedErrNumber, SavedErrSource, SavedErrDescription
 
 End Sub
+
 Public Sub PM_TW_EndSession( _
     ByVal InstanceKey As String)
 '
@@ -332,6 +445,8 @@ Public Sub PM_TW_EndSession( _
 ' ERROR POLICY
 '   Raises errors normally
 '
+'   On failure the original error is preserved and re-raised after rollback
+'
 ' DEPENDENCIES
 '   - PM_TW_ApplyEffectiveState
 '   - PM_TW_AggregateDisableMask
@@ -342,7 +457,7 @@ Public Sub PM_TW_EndSession( _
 '     - if the instance is not present, no removal occurs
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -360,7 +475,7 @@ Public Sub PM_TW_EndSession( _
 '------------------------------------------------------------------------------
     'Reject a blank instance key
         If Len(Trim$(InstanceKey)) = 0 Then
-            Err.Raise vbObjectError + 2201, _
+            Err.Raise ERR_TW_END_BLANK_KEY, _
                       "M_cPM_TimeWasters.PM_TW_EndSession", _
                       "InstanceKey cannot be blank."
         End If
@@ -488,7 +603,7 @@ Public Function PM_TW_ActiveCount() As Long
 '   This routine does not create the shared store on an idle read path
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -546,7 +661,7 @@ Public Function PM_TW_IsInstanceActive( _
 '   This routine does not create the shared store on an idle read path
 '
 ' UPDATED
-'   2026-04-15
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -554,7 +669,7 @@ Public Function PM_TW_IsInstanceActive( _
 '------------------------------------------------------------------------------
     'Reject a blank instance key
         If Len(Trim$(InstanceKey)) = 0 Then
-            Err.Raise vbObjectError + 2202, _
+            Err.Raise ERR_TW_ISACTIVE_BLANK_KEY, _
                       "M_cPM_TimeWasters.PM_TW_IsInstanceActive", _
                       "InstanceKey cannot be blank."
         End If
@@ -575,6 +690,66 @@ Public Function PM_TW_IsInstanceActive( _
         PM_TW_IsInstanceActive = g_TW_Sessions.Exists(InstanceKey)
 
 End Function
+
+Public Sub PM_TW_EndAllSessions()
+'
+'==============================================================================
+'                            PM_TW_ENDALLSESSIONS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Emergency / global reset for development, recovery, or test-cleanup
+'   scenarios
+'
+' WHY THIS EXISTS
+'   In normal operation each instance should end only its own session through
+'   PM_TW_EndSession. However, during development, test teardown, or recovery
+'   from interrupted flows it can be useful to force a full shared reset
+'
+'   A hard End statement clears module globals without running Class_Terminate,
+'   which can leave Excel visibly suppressed with no active session to end.
+'   This routine is the documented recovery path for that situation
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Restores the original Application baseline when available
+'   - Clears the baseline-saved flag
+'   - Releases all shared session bookkeeping
+'
+' ERROR POLICY
+'   Raises errors normally
+'
+' DEPENDENCIES
+'   - PM_TW_ApplyEffectiveState
+'   - PM_TW_ResetSharedState
+'
+' NOTES
+'   This is not the normal lifecycle path.
+'   Normal callers should use PM_TW_EndSession for the specific active instance
+'
+' UPDATED
+'   2026-08-14
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' RESTORE BASELINE (IF AVAILABLE)
+'------------------------------------------------------------------------------
+    'Restore the original Application baseline if available
+        If g_TW_BaselineSaved Then
+            PM_TW_ApplyEffectiveState PM_TW_MASK_NONE
+        End If
+
+'------------------------------------------------------------------------------
+' CLEAR SHARED STATE
+'------------------------------------------------------------------------------
+    'Release all active-session bookkeeping and baseline state
+        PM_TW_ResetSharedState
+
+End Sub
 
 '
 '==============================================================================
@@ -617,7 +792,7 @@ Private Sub PM_TW_EnsureStore()
 '   idle project remains in a true idle state
 '
 ' UPDATED
-'   2026-04-15
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -653,10 +828,14 @@ Private Sub PM_TW_SaveBaseline()
 '
 ' BEHAVIOR
 '   - Reads the current Application state into shared baseline variables
+'   - Skips Calculation when no workbook is open and records a safe default
 '   - Marks the baseline as captured
 '
 ' ERROR POLICY
 '   Raises errors normally
+'
+'   A workbook-less host is not an error. Application.Calculation cannot be read
+'   in that state, so the read is guarded rather than allowed to raise
 '
 ' DEPENDENCIES
 '   - Excel Application object model
@@ -665,7 +844,7 @@ Private Sub PM_TW_SaveBaseline()
 '   This routine should only be called when the first shared session begins
 '
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -676,8 +855,14 @@ Private Sub PM_TW_SaveBaseline()
             g_TW_SCREENUPDATING = .ScreenUpdating
             g_TW_ENABLEEVENTS = .EnableEvents
             g_TW_DISPLAYALERTS = .DisplayAlerts
-            g_TW_CALCULATION = .Calculation
             g_TW_CURSOR = .Cursor
+
+            'Calculation is only readable while at least one workbook is open
+                If .Workbooks.Count > 0 Then
+                    g_TW_CALCULATION = .Calculation
+                Else
+                    g_TW_CALCULATION = xlCalculationAutomatic
+                End If
         End With
 
 '------------------------------------------------------------------------------
@@ -718,8 +903,14 @@ Private Sub PM_TW_ResetSharedState()
 ' ERROR POLICY
 '   Raises errors normally
 '
+' NOTES
+'   The key seed is deliberately NOT reset here
+'
+'   Resetting it would allow a key to be reissued while a stale registration
+'   could still exist, which is exactly the collision hazard this design avoids
+'
 ' UPDATED
-'   2026-04-15
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -769,8 +960,8 @@ Private Function PM_TW_DisableMaskFromExcept( _
 '     their benchmark/performance state
 '
 ' BEHAVIOR
-'   - Clamps the input to known bits
-'   - Inverts those bits within the supported TW mask universe
+'   - Inverts the supplied exemption bits
+'   - Bounds the RESULT to the supported TW mask universe
 '
 ' ERROR POLICY
 '   Does not raise errors
@@ -782,14 +973,19 @@ Private Function PM_TW_DisableMaskFromExcept( _
 '   ExceptMask = ScreenUpdating Or EnableEvents
 '   => disable all supported TW flags except those two
 '
+' NOTES
+'   Unsupported high bits in ExceptMask are harmless. The AND against
+'   PM_TW_MASK_ALL bounds the returned mask, so unknown bits can never reach the
+'   apply path
+'
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
-    'Clamp to known bits and invert within the supported TW mask set
+    'Invert the exemption bits and bound the result to the supported TW mask set
         PM_TW_DisableMaskFromExcept = (PM_TW_MASK_ALL And Not ExceptMask)
 
 End Function
@@ -825,8 +1021,13 @@ Private Function PM_TW_AggregateDisableMask() As Long
 '   - PM_TW_EnsureStore
 '   - g_TW_Sessions
 '
+' NOTES
+'   Unlike the public read-only status helpers, this routine does create the
+'   shared store. It is only reached from begin/end paths where the store is
+'   expected to exist
+'
 ' UPDATED
-'   2026-03-28
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -887,8 +1088,13 @@ Private Sub PM_TW_ApplyEffectiveState( _
 '     - if disabled by any active session => force benchmark/performance state
 '     - otherwise => restore original baseline state
 '
+'   Calculation is skipped entirely when no workbook is open
+'
 ' ERROR POLICY
 '   Raises errors normally
+'
+'   A workbook-less host is not an error. Application.Calculation cannot be
+'   written in that state, so the whole Calculation branch is guarded
 '
 ' DEPENDENCIES
 '   - Excel Application object model
@@ -905,7 +1111,7 @@ Private Sub PM_TW_ApplyEffectiveState( _
 '     cursor state
 '
 ' UPDATED
-'   2026-04-15
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -931,11 +1137,13 @@ Private Sub PM_TW_ApplyEffectiveState( _
                 Else
                     .DisplayAlerts = g_TW_DISPLAYALERTS
                 End If
-            'Calculation
-                If (DisableMask And PM_TW_MASK_CALCULATION) <> 0 Then
-                    .Calculation = xlCalculationManual
-                Else
-                    .Calculation = g_TW_CALCULATION
+            'Calculation, only while at least one workbook is open
+                If .Workbooks.Count > 0 Then
+                    If (DisableMask And PM_TW_MASK_CALCULATION) <> 0 Then
+                        .Calculation = xlCalculationManual
+                    Else
+                        .Calculation = g_TW_CALCULATION
+                    End If
                 End If
             'Cursor
                 If (DisableMask And PM_TW_MASK_CURSOR) <> 0 Then
@@ -944,62 +1152,6 @@ Private Sub PM_TW_ApplyEffectiveState( _
                     .Cursor = g_TW_CURSOR
                 End If
         End With
-
-End Sub
-
-Public Sub PM_TW_EndAllSessions()
-'
-'==============================================================================
-'                            PM_TW_ENDALLSESSIONS
-'------------------------------------------------------------------------------
-' PURPOSE
-'   Emergency / global reset for development, recovery, or test-cleanup
-'   scenarios
-'
-' WHY THIS EXISTS
-'   In normal operation each instance should end only its own session through
-'   PM_TW_EndSession. However, during development, test teardown, or recovery
-'   from interrupted flows it can be useful to force a full shared reset
-'
-' INPUTS
-'   None.
-'
-' RETURNS
-'   None
-'
-' BEHAVIOR
-'   - Restores the original Application baseline when available
-'   - Clears the baseline-saved flag
-'   - Releases all shared session bookkeeping
-'
-' ERROR POLICY
-'   Raises errors normally
-'
-' DEPENDENCIES
-'   - PM_TW_ApplyEffectiveState
-'   - PM_TW_ResetSharedState
-'
-' NOTES
-'   This is not the normal lifecycle path.
-'   Normal callers should use PM_TW_EndSession for the specific active instance
-'
-' UPDATED
-'   2026-04-15
-'==============================================================================
-
-'------------------------------------------------------------------------------
-' RESTORE BASELINE (IF AVAILABLE)
-'------------------------------------------------------------------------------
-    'Restore the original Application baseline if available
-        If g_TW_BaselineSaved Then
-            PM_TW_ApplyEffectiveState PM_TW_MASK_NONE
-        End If
-
-'------------------------------------------------------------------------------
-' CLEAR SHARED STATE
-'------------------------------------------------------------------------------
-    'Release all active-session bookkeeping and baseline state
-        PM_TW_ResetSharedState
 
 End Sub
 
@@ -1048,8 +1200,17 @@ Public Sub cPM_Report_WriteToRange( _
 ' ERROR POLICY
 '   Raises errors normally
 '
+' DEPENDENCIES
+'   - cPerformanceManager.ReportAsArray
+'   - Excel Range object model
+'
+' NOTES
+'   PM_RPT_COL_DELTA and PM_RPT_COL_CUMULATIVE must track the column order
+'   produced by cPerformanceManager.ReportAsArray. Changing that column order
+'   without updating these constants would format the wrong columns silently
+'
 ' UPDATED
-'   2026-04-18
+'   2026-08-14
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1065,14 +1226,14 @@ Public Sub cPM_Report_WriteToRange( _
 '------------------------------------------------------------------------------
     'Reject a missing class instance
         If cPM Is Nothing Then
-            Err.Raise vbObjectError + 2600, _
-                      "M_cPM_ReportHelpers.cPM_Report_WriteToRange", _
+            Err.Raise ERR_TW_REPORT_NO_INSTANCE, _
+                      "M_cPM_TimeWasters.cPM_Report_WriteToRange", _
                       "cPerformanceManager instance cannot be Nothing."
         End If
     'Reject a missing output anchor cell
         If TargetTopLeft Is Nothing Then
-            Err.Raise vbObjectError + 2601, _
-                      "M_cPM_ReportHelpers.cPM_Report_WriteToRange", _
+            Err.Raise ERR_TW_REPORT_NO_TARGET, _
+                      "M_cPM_TimeWasters.cPM_Report_WriteToRange", _
                       "TargetTopLeft cannot be Nothing."
         End If
 
@@ -1115,8 +1276,8 @@ Public Sub cPM_Report_WriteToRange( _
             .VerticalAlignment = xlCenter
         End With
     'Format numeric timing columns
-        OutputRange.Columns(7).NumberFormat = "0.000000000"
-        OutputRange.Columns(8).NumberFormat = "0.000000000"
+        OutputRange.Columns(PM_RPT_COL_DELTA).NumberFormat = PM_RPT_TIMING_FORMAT
+        OutputRange.Columns(PM_RPT_COL_CUMULATIVE).NumberFormat = PM_RPT_TIMING_FORMAT
     'Apply lightweight autofit
         OutputRange.EntireColumn.AutoFit
 
