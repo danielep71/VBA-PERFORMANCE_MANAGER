@@ -50,6 +50,7 @@
 
 ---
 
+<<<<<<< HEAD
 > [!IMPORTANT]
 > **This is a timing *session manager*, not a `Timer()` wrapper.**
 >
@@ -73,6 +74,9 @@
 ---
 
 ## ✨ What this project is
+=======
+<img width="1536" height="1024" alt="cPM_Home_reduced" src="https://github.com/user-attachments/assets/c4137fcb-2886-4d38-9cb8-e3349112c258" />
+>>>>>>> main
 
 **Class Performance Manager** (`cPerformanceManager`) is a self-contained timing and execution-control component for Excel VBA on Windows.
 
@@ -549,6 +553,7 @@ Coverage includes:
 
 ---
 
+<<<<<<< HEAD
 # 🏗️ Repository contents
 
 ```text
@@ -567,6 +572,9 @@ CHANGELOG.md                             Version history
 ---
 
 # 🧩 Requirements
+=======
+## 📚 Wiki
+>>>>>>> main
 
 | Requirement | Detail |
 |---|---|
@@ -671,6 +679,7 @@ Released under the [MIT License](LICENSE).
 
 **Daniele Penza**
 
+<<<<<<< HEAD
 [![GitHub](https://img.shields.io/badge/GitHub-danielep71-181717?style=for-the-badge&logo=github)](https://github.com/danielep71)
 
 <br>
@@ -680,3 +689,5 @@ Released under the [MIT License](LICENSE).
 ⭐
 
 </div>
+=======
+>>>>>>> main
