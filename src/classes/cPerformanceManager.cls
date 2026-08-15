@@ -115,12 +115,12 @@ Attribute VB_Exposed = False
 '   place and collisions remain visible.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '
 ' AUTHOR
 '   Daniele Penza
 '
-' VERSION: 1.2.0
+' VERSION: 1.2.1
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -143,6 +143,19 @@ Attribute VB_Exposed = False
         DisplayAlerts = 4
         Calculation = 8
         Cursor = 16
+    End Enum
+
+    'Outcome of the most recent native timing read.
+    '
+    'A non-OK value means the reported elapsed value is not a measurement. In
+    'non-strict mode the class returns 0 rather than raising, so callers need a
+    'way to distinguish "zero seconds elapsed" from "the read failed".
+    Public Enum cPM_ReadStatus
+        cPM_ReadOK = 0
+        cPM_ReadQpcFailed = 1
+        cPM_ReadSystemTimeFailed = 2
+        cPM_ReadSystemTimeFormatInvalid = 3
+        cPM_ReadFallbackToMethod2 = 4
     End Enum
 
 '------------------------------------------------------------------------------
@@ -349,6 +362,7 @@ Attribute VB_Exposed = False
         Private Const ERR_CPM_TIMEGETSYSTEMTIME_FAILED  As Long = vbObjectError + 1011
         Private Const ERR_CPM_TIMEGETSYSTEMTIME_FORMAT  As Long = vbObjectError + 1012
         Private Const ERR_CPM_NEGATIVE_ELAPSED          As Long = vbObjectError + 1013
+        Private Const ERR_CPM_START_CAPTURE_FAILED      As Long = vbObjectError + 1014
 
     'Checkpoint / structured reporting errors
         Private Const ERR_CPM_CHECKPOINT_NO_SESSION     As Long = vbObjectError + 1020
@@ -434,6 +448,22 @@ Attribute VB_Exposed = False
         Private m_LastCheckpointS       As Double                'Last cumulative checkpoint elapsed seconds
         Private m_Checkpoints()         As tCheckpointRow        'Checkpoint storage array
 
+    '--------------------------------------------------------------------------
+    ' NATIVE READ STATUS
+    '--------------------------------------------------------------------------
+        'Outcome of the most recent native read performed by this instance.
+        'Reset at the start of every public timing operation.
+        Private m_LastReadStatus As cPM_ReadStatus
+
+    '--------------------------------------------------------------------------
+    ' FAULT INJECTION (REGRESSION SUITE ONLY)
+    '--------------------------------------------------------------------------
+        'One-shot flags used by the regression suite to force a native read to
+        'fail. Each flag is cleared by the read that consumes it, so a forced
+        'failure can never leak into a later test case.
+        Private m_TestFailNextQpcRead        As Boolean
+        Private m_TestFailNextSystemTimeRead As Boolean
+
 '
 '------------------------------------------------------------------------------
 '
@@ -492,7 +522,7 @@ Private Sub Class_Initialize()
 '   on first use.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -587,7 +617,7 @@ Private Sub Class_Terminate()
 '   PM_TW_EndAllSessions exists as the documented manual recovery path.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
     'Destructor cleanup must be best-effort and non-fatal
@@ -614,13 +644,11 @@ Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
 '                                  START TIMER
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Starts a timer using the selected backend and binds that backend to the
-'   current timing session.
+'   Starts a timing session and binds the selected backend to it.
 '
 ' WHY THIS EXISTS
-'   Timing must begin from a well-defined backend and that backend must remain
-'   bound to the current session so that later elapsed-time reads are validated
-'   against the same method.
+'   Timing must begin from a well-defined backend, and that backend must remain
+'   bound to the session so later elapsed reads can be validated against it.
 '
 ' INPUTS
 '   iMethod (optional)
@@ -631,108 +659,120 @@ Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
 '     FALSE => capture the start timestamp immediately
 '
 '   RunLabel (optional)
-'     Optional run label for the new session.
-'
-'     Starting a session always clears any previously stored run label. Supplying
-'     the label here sets it atomically after that reset, which is the reliable
-'     way to label a run:
-'
-'         cPM.StartTimer 5, False, "Baseline run"
-'
-'     Calling SetRunLabel BEFORE StartTimer has no effect, because the reset
-'     discards it.
+'     Optional run label. Applied after the checkpoint reset, which is the
+'     reliable way to label a run. Calling SetRunLabel BEFORE StartTimer has no
+'     effect, because the reset discards it.
 '
 ' RETURNS
 '   None.
 '
 ' BEHAVIOR
 '   - Normalizes and validates the requested method.
-'   - Captures the requested start timestamp into local variables first.
-'   - Commits class state only after timestamp capture succeeds.
-'   - Starts a fresh structured checkpoint session for the new timing run.
-'   - Applies the optional run label after the checkpoint reset.
+'   - Attempts to capture a start timestamp for that method.
+'   - On failure in strict mode, raises and leaves the previous session intact.
+'   - On failure in non-strict mode, falls back to method 2 and captures again
+'     BEFORE anything is committed.
+'   - Commits class state only once a valid start timestamp exists.
+'   - Starts a fresh checkpoint session and applies the optional run label.
 '
 ' ERROR POLICY
-'   Validation behavior is delegated to Method_NormalizeStart.
-'   Backend-specific capture errors are raised before existing session state is
-'   overwritten.
+'   - Method validation is delegated to Method_NormalizeStart.
+'   - A failed start capture raises in strict mode, before any state changes.
+'
+' CRITICAL INVARIANT
+'   No session is ever committed whose start value was not successfully read.
+'
+'   The previous implementation committed m_qpcStart = 0 after a failed QPC read
+'   in non-strict mode. A subsequent successful end read then measured from zero
+'   and reported something resembling machine uptime.
+'
+' NON-STRICT FALLBACK
+'   When the requested backend cannot be read, non-strict mode binds method 2 and
+'   records cPM_ReadFallbackToMethod2 in LastReadStatus. The resulting session is
+'   fully valid; the status exists so the caller can see the coercion rather than
+'   having it happen silently.
 '
 ' DEPENDENCIES
 '   - Method_NormalizeStart
-'   - QPC_Get_NextTimestampTick
-'   - QPC_TryReadTick
-'   - Get_NextTimestampSeconds
-'   - Get_CurrentTimestampSeconds
+'   - Start_TryCapture
 '   - Checkpoint_ClearState
 '
-' NOTES
-'   The routine is intentionally transactional.
-'
-'   Omitting RunLabel preserves the historical behavior exactly: the run label is
-'   cleared by the new session.
-'
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim NewMethod       As Integer      'Validated method to bind to the new session
-    Dim NewT1           As Double       'Generic start timestamp for the new session
-    Dim NewQpcStart     As Currency     'QPC start tick for method 5
+    Dim NewMethod       As Integer          'Method to bind to the new session
+    Dim NewT1           As Double           'Generic start timestamp
+    Dim NewQpcStart     As Currency         'QPC start tick for method 5
+    Dim CaptureStatus   As cPM_ReadStatus   'Outcome of the capture attempt
+    Dim FinalStatus     As cPM_ReadStatus   'Status published to the caller
 
 '------------------------------------------------------------------------------
-' NORMALIZE INPUTS
+' INITIALIZE
 '------------------------------------------------------------------------------
+    'This operation describes its own read outcome
+        FinalStatus = cPM_ReadOK
+
     'Normalize and validate the requested method
         NewMethod = Method_NormalizeStart(iMethod)
 
 '------------------------------------------------------------------------------
-' CAPTURE START TIMESTAMP BEFORE COMMITTING STATE
+' CAPTURE START TIMESTAMP BEFORE COMMITTING ANY STATE
 '------------------------------------------------------------------------------
-    'Capture the QPC start tick on the dedicated high-resolution path
-        If NewMethod = 5 Then
-            If AlignToNextTick Then
-                NewQpcStart = QPC_Get_NextTimestampTick()
-            Else
-                If Not QPC_TryReadTick(NewQpcStart) Then
-                    If m_StrictMode Then
-                        Err.Raise ERR_CPM_QPC_READ_FAILED, _
-                                  "cPerformanceManager.StartTimer", _
-                                  "QueryPerformanceCounter failed while starting the timing session."
-                    End If
-                    NewQpcStart = 0@
+    'Attempt the requested backend
+        If Not Start_TryCapture(NewMethod, AlignToNextTick, _
+                                NewT1, NewQpcStart, CaptureStatus) Then
+
+            'Strict mode: fail without disturbing the existing session
+                If m_StrictMode Then
+                    m_LastReadStatus = CaptureStatus
+                    Err.Raise Read_StatusToErrorNumber(CaptureStatus), _
+                              "cPerformanceManager.StartTimer", _
+                              Read_StatusToText(CaptureStatus) & _
+                              " The timing session was not started."
                 End If
-            End If
-            NewT1 = CDbl(NewQpcStart)
-        Else
-            If AlignToNextTick Then
-                NewT1 = Get_NextTimestampSeconds(NewMethod)
-            Else
-                NewT1 = Get_CurrentTimestampSeconds(NewMethod)
-            End If
+
+            'Non-strict mode: fall back to method 2 BEFORE committing anything
+                NewMethod = 2
+                NewQpcStart = 0@
+
+                If Not Start_TryCapture(NewMethod, AlignToNextTick, _
+                                        NewT1, NewQpcStart, CaptureStatus) Then
+                    'Method 2 has no failure path; this is defensive only
+                        m_LastReadStatus = CaptureStatus
+                        Err.Raise ERR_CPM_START_CAPTURE_FAILED, _
+                                  "cPerformanceManager.StartTimer", _
+                                  "No timing backend could supply a valid start timestamp."
+                End If
+
+            'Record that the requested backend was coerced
+                FinalStatus = cPM_ReadFallbackToMethod2
         End If
 
 '------------------------------------------------------------------------------
 ' COMMIT NEW SESSION STATE
 '------------------------------------------------------------------------------
-    'Bind the selected method to the active timing session
+    'Bind the backend that actually produced the start timestamp
         m_ActiveMethodID = NewMethod
     'Mark the timer session as started
         m_HasActiveSession = True
-    'Store the generic start timestamp
+    'Store the validated start timestamp
         m_T1 = NewT1
     'Clear cached end/elapsed values for this new session
         m_T2 = 0#
         m_ET = 0#
         m_qpcEnd = 0@
-    'Store QPC start tick only for QPC sessions
+    'Store the QPC start tick only for a genuine QPC session
         If NewMethod = 5 Then
             m_qpcStart = NewQpcStart
         Else
             m_qpcStart = 0@
         End If
+    'Publish the outcome of this operation
+        m_LastReadStatus = FinalStatus
     'Start a fresh checkpoint session for the new timing run
         Checkpoint_ClearState
 
@@ -746,6 +786,90 @@ Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
 
 End Sub
 
+
+Private Function Start_TryCapture( _
+    ByVal MethodID As Integer, _
+    ByVal AlignToNextTick As Boolean, _
+    ByRef T1Out As Double, _
+    ByRef QpcOut As Currency, _
+    ByRef StatusOut As cPM_ReadStatus) _
+    As Boolean
+'
+'==============================================================================
+'                              START TRY CAPTURE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Attempts to capture a start timestamp for one backend, without touching any
+'   class state.
+'
+' WHY THIS EXISTS
+'   StartTimer needs to try a backend, and possibly a second one, before
+'   committing anything. Isolating the capture keeps that logic readable and
+'   guarantees a failed attempt has no side effects.
+'
+' INPUTS
+'   MethodID          - backend to attempt
+'   AlignToNextTick   - whether to align the capture to the next tick
+'   T1Out             - receives the generic start timestamp, on success only
+'   QpcOut            - receives the QPC start tick for method 5, on success only
+'   StatusOut         - receives the failure reason, or cPM_ReadOK
+'
+' RETURNS
+'   Boolean
+'     TRUE  => a valid start timestamp was captured
+'     FALSE => capture failed; the outputs are untouched
+'
+' ERROR POLICY
+'   Read failures are reported through the return value. A strict-mode alignment
+'   timeout may still raise from the alignment helpers.
+'
+' UPDATED
+'   2026-08-15
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Assume success until a read reports otherwise
+        StatusOut = cPM_ReadOK
+
+'------------------------------------------------------------------------------
+' QPC PATH
+'------------------------------------------------------------------------------
+    'Method 5 works in Currency ticks and has its own capture path
+        If MethodID = 5 Then
+            If AlignToNextTick Then
+                If Not QPC_TryGetNextTick(QpcOut) Then
+                    StatusOut = cPM_ReadQpcFailed
+                    Start_TryCapture = False
+                    Exit Function
+                End If
+            Else
+                If Not QPC_TryReadTick(QpcOut) Then
+                    StatusOut = cPM_ReadQpcFailed
+                    Start_TryCapture = False
+                    Exit Function
+                End If
+            End If
+
+            T1Out = CDbl(QpcOut)
+            Start_TryCapture = True
+            Exit Function
+        End If
+
+'------------------------------------------------------------------------------
+' NON-QPC PATH
+'------------------------------------------------------------------------------
+    'Every other backend works in seconds
+        If AlignToNextTick Then
+            Start_TryCapture = Timestamp_TryGetNextSeconds(MethodID, T1Out, StatusOut)
+        Else
+            Start_TryCapture = Timestamp_TryGetCurrentSeconds(MethodID, T1Out, StatusOut)
+        End If
+
+End Function
+
+
 Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Double
 '
 '==============================================================================
@@ -754,11 +878,6 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Dou
 ' PURPOSE
 '   Returns the elapsed time in seconds for the active timing session.
 '
-' WHY THIS EXISTS
-'   This is the canonical low-overhead numeric measurement surface. It avoids
-'   the string formatting cost of ElapsedTime and is the recommended primitive
-'   for benchmark loops.
-'
 ' INPUTS
 '   iMethod (optional)
 '     0   => use the active timer session method
@@ -766,39 +885,46 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Dou
 '
 ' RETURNS
 '   Double
-'     Elapsed seconds since StartTimer.
+'     Elapsed seconds since StartTimer, or 0 when a read failed in non-strict
+'     mode.
 '
 ' BEHAVIOR
-'   - Resolves and validates the timing method against the active session.
+'   - Resets LastReadStatus, so it always describes this read.
+'   - Resolves and validates the method against the active session.
 '   - Delegates the arithmetic to Elapsed_ComputeSeconds.
-'   - Caches m_T2, m_qpcEnd and m_ET as a side effect.
+'   - Caches m_T2, m_qpcEnd and m_ET ONLY when the read succeeded.
 '
 ' ERROR POLICY
 '   Delegated to Method_ResolveElapsed and Elapsed_ComputeSeconds.
 '
-' DEPENDENCIES
-'   - Method_ResolveElapsed
-'   - Elapsed_ComputeSeconds
-'
 ' NOTES
-'   This property caches. Callers that need a measurement WITHOUT disturbing the
-'   cached T2 / ET values should call Elapsed_ComputeSeconds directly, as
-'   Checkpoint now does.
+'   A returned 0 with LastReadStatus <> cPM_ReadOK is NOT a measurement of zero
+'   seconds. It means no valid reading was obtained. Callers that need to tell
+'   the two apart must check LastReadStatus.
 '
-'   Behavior is unchanged from the pre-refactor version. All backend dispatch
-'   now lives in one place instead of being duplicated across procedures.
+'   On a failed read the cached T2 and ET are deliberately left untouched, so a
+'   failure cannot destroy the last known good measurement.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim ResolvedMethod  As Integer      'Validated method bound to the active session
-    Dim EndStamp        As Double       'Raw end timestamp reported by the backend
-    Dim QpcEnd          As Currency     'Raw QPC end tick reported by the backend
-    Dim Seconds         As Double       'Computed elapsed seconds
+    Dim ResolvedMethod  As Integer          'Validated method for this read
+    Dim EndStamp        As Double           'Raw end timestamp
+    Dim QpcEnd          As Currency         'Raw QPC end tick
+    Dim Seconds         As Double           'Computed elapsed seconds
+    Dim Status          As cPM_ReadStatus   'Outcome of the read
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'This read describes its own outcome
+        m_LastReadStatus = cPM_ReadOK
+        EndStamp = m_T2
+        QpcEnd = m_qpcEnd
 
 '------------------------------------------------------------------------------
 ' RESOLVE METHOD
@@ -810,7 +936,17 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Dou
 ' MEASURE
 '------------------------------------------------------------------------------
     'Compute elapsed seconds through the single shared backend reader
-        Seconds = Elapsed_ComputeSeconds(ResolvedMethod, EndStamp, QpcEnd)
+        Seconds = Elapsed_ComputeSeconds(ResolvedMethod, EndStamp, QpcEnd, Status)
+
+'------------------------------------------------------------------------------
+' HANDLE A FAILED READ
+'------------------------------------------------------------------------------
+    'Preserve the last known good cache and report the failure
+        If Status <> cPM_ReadOK Then
+            m_LastReadStatus = Status
+            ElapsedSeconds = 0#
+            Exit Property
+        End If
 
 '------------------------------------------------------------------------------
 ' CACHE AND ASSIGN RESULT
@@ -824,6 +960,7 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Dou
         ElapsedSeconds = Seconds
 
 End Property
+
 
 Public Function ElapsedTime( _
     Optional ByVal iMethod As Integer = 0, _
@@ -883,7 +1020,7 @@ Public Function ElapsedTime( _
 '   - When ElapsedSecondsIn is supplied, no new timing sample is taken
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1028,7 +1165,7 @@ Public Property Get T1() As Double
 '   - T1 is an inspection/debugging surface, not the primary timing API.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1083,7 +1220,7 @@ Public Property Get T2() As Double
 '   - T2 is an inspection/debugging surface, not the primary timing API.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1135,7 +1272,7 @@ Public Property Get ET() As Double
 '     primary timing API.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1236,7 +1373,7 @@ Public Property Get MethodName( _
 '   timing-method normalization.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1278,7 +1415,7 @@ Public Property Get RunLabel() As String
 '   Does not raise errors
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1349,7 +1486,7 @@ Public Function OverheadMeasurement_Seconds( _
 '   one. Treat the value as indicative rather than as a reliable floor.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1506,7 +1643,7 @@ Public Property Get OverheadMeasurement_Text( _
 '   regarding its sensitivity to scheduler outliers.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1583,7 +1720,7 @@ Public Property Get Get_SystemTickInterval() As String
 '     scheduling precision.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1649,7 +1786,7 @@ Public Property Get QPC_Get_SystemTickInterval() As String
 '   Use numeric helpers when machine-readable values are required.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1713,7 +1850,7 @@ Public Property Get QPC_FrequencyPerSecond() As String
 '   required.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1776,7 +1913,7 @@ Public Property Get QPC_FrequencyPerSecond_Value() As Double
 '   Use QPC_FrequencyPerSecond() when human-readable text is desired.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1820,8 +1957,8 @@ Public Sub Pause( _
 '     Selects the pause mechanism:
 '       1 => Sleep API (kernel32) (millisecond granularity; no DoEvents)
 '       2 => Timer + DoEvents loop (coarser; yields to Excel/UI)
-'       3 => Application.Wait for coarse waiting + Timer guard
-'       4 => Now + DoEvents loop + Timer guard
+'       3 => Application.Wait for coarse waiting + Timer bound and guard
+'       4 => Now + DoEvents loop + Timer bound and guard
 '       Else => treated like method 4
 '
 ' RETURNS
@@ -1831,10 +1968,25 @@ Public Sub Pause( _
 '   - Method 1 is the lowest-overhead pause mechanism and does not call
 '     DoEvents.
 '   - Method 2 uses Timer() delta logic and yields via DoEvents.
-'   - Method 3 uses Application.Wait as the coarse wait engine, then applies a
-'     Timer()-based guard loop so the total pause cannot undershoot.
-'   - Method 4 uses a Date/Now-flavored yielding loop and also applies a
-'     Timer()-based guard loop so the total pause cannot undershoot.
+'   - Method 3 issues coarse Application.Wait calls only while enough budget
+'     remains for one, then finishes with a Timer()-based loop.
+'   - Method 4 runs a Date/Now-flavored yielding loop that is itself bounded by
+'     elapsed time, then finishes with a Timer()-based loop.
+'
+' OVERSHOOT POLICY
+'   Now and Application.Wait both operate at one-second granularity, and
+'   WaitTill is computed in floating point where 1/86400 is not exactly
+'   representable. A coarse loop left unbounded can therefore wait a full extra
+'   second before its condition clears.
+'
+'   Every coarse wait is now bounded by the same Timer() measurement used by the
+'   trailing guard loop, so no strategy can exceed the requested duration by
+'   more than DoEvents granularity.
+'
+'   The trailing guard loops remain, because they protect against the opposite
+'   error: a coarse mechanism that returns early. A guard loop can only add
+'   time, so it cannot correct an overshoot - the bound has to be inside the
+'   coarse loop itself.
 '
 ' ERROR POLICY
 '   Invalid, non-positive, or excessively large pause durations are treated as
@@ -1850,16 +2002,17 @@ Public Sub Pause( _
 ' NOTES
 '   - The iMethod values here are pause mechanisms and are NOT the same
 '     numbering as the timing backends used by StartTimer.
-'   - Method 2 is midnight-safe because it measures elapsed delta rather than
-'     comparing Timer() against an absolute target.
-'   - Methods 3 and 4 use a Timer()-based guard loop specifically because
-'     Application.Wait and Now are too coarse to guarantee the requested pause
-'     duration accurately on their own.
+'   - Every elapsed comparison is midnight-safe because it measures a delta
+'     rather than comparing Timer() against an absolute target.
+'   - A single Application.Wait can consume up to two seconds, because it rounds
+'     up to the next whole-second boundary before adding its interval. Method 3
+'     therefore issues a coarse wait only while at least that much budget
+'     remains; for requests under roughly two seconds it behaves like method 2.
 '   - This routine uses local elapsed-time variables and does not overwrite the
 '     class-level m_ET timing cache.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1871,7 +2024,6 @@ Public Sub Pause( _
     Dim WaitTill    As Date     'Target timestamp for coarse Date/Wait paths
     Dim Ms          As Long     'Milliseconds for Sleep (method 1)
     Dim WholeS      As Long     'Whole-second coarse-wait portion (method 3)
-    Dim FracS       As Double   'Fractional remainder after whole seconds (method 3)
     Dim K           As Long     'Loop counter for repeated Wait calls (method 3)
 
 '------------------------------------------------------------------------------
@@ -1921,25 +2073,31 @@ Public Sub Pause( _
 
         Case 3
             'Application.Wait is coarse and second-based, so use it only for the
-            'whole-second portion and then finish with a Timer()-based guard loop
+            'whole-second portion and then finish with a Timer()-based loop
                 WholeS = CLng(Fix(PauseTime))
-                FracS = PauseTime - CDbl(WholeS)
 
-            'Capture the Timer() start snapshot so we can guarantee the total
-            'requested elapsed time even if Application.Wait undershoots
+            'Capture the Timer() start snapshot before any waiting begins, so the
+            'coarse portion and the guard measure from the same origin
                 StartS = Timer
 
-            'Apply the coarse whole-second wait portion using repeated 1-second
-            'Application.Wait calls
+            'Issue coarse waits only while enough budget remains for one
                 For K = 1 To WholeS
-                    Application.Wait Now + TimeSerial(0, 0, 1)
+                    'Compute elapsed seconds since the pause started
+                        ElapsedS = Timer - StartS
+
+                    'Correct midnight rollover when Timer() wraps at 24 hours
+                        If ElapsedS < 0# Then ElapsedS = ElapsedS + 86400#
+
+                    'A single Application.Wait can consume up to two seconds
+                    'because it rounds up to the next whole-second boundary.
+                    'Stop issuing coarse waits once less than that remains.
+                        If (PauseTime - ElapsedS) < 2# Then Exit For
+
+                    'Apply one coarse whole-second wait
+                        Application.Wait Now + TimeSerial(0, 0, 1)
                 Next K
 
-            'If there is no whole-second portion, do nothing here and let the
-            'Timer()-based guard handle the entire requested delay
-                If FracS < 0# Then FracS = 0#
-
-            'Guard against undershoot using Timer() delta logic
+            'Finish the remainder precisely using Timer() delta logic
                 Do
                     'Compute elapsed seconds since the pause started
                         ElapsedS = Timer - StartS
@@ -1955,21 +2113,29 @@ Public Sub Pause( _
                 Loop
 
         Case Else
-            'Preserve the Date/Now-flavored yielding path, but add a Timer()-based
-            'guard loop because Now is too coarse to guarantee the requested pause
-            'duration accurately by itself
+            'Preserve the Date/Now-flavored yielding path, but bound it by elapsed
+            'time so a coarse one-second tick cannot overshoot the request
                 WaitTill = Now + (PauseTime / 86400#)
 
-            'Capture the Timer() start snapshot so we can enforce the true
-            'requested pause duration
+            'Capture the Timer() start snapshot before any waiting begins
                 StartS = Timer
 
-            'Run the coarse Date-based yielding loop first
+            'Run the coarse Date-based yielding loop, bounded by elapsed time
                 Do While Now < WaitTill
-                    DoEvents
+                    'Compute elapsed seconds since the pause started
+                        ElapsedS = Timer - StartS
+
+                    'Correct midnight rollover when Timer() wraps at 24 hours
+                        If ElapsedS < 0# Then ElapsedS = ElapsedS + 86400#
+
+                    'Leave the coarse loop rather than waiting for the next tick
+                        If ElapsedS >= PauseTime Then Exit Do
+
+                    'Yield to Excel/UI while waiting
+                        DoEvents
                 Loop
 
-            'Guard against undershoot using Timer() delta logic
+            'Finish the remainder precisely using Timer() delta logic
                 Do
                     'Compute elapsed seconds since the pause started
                         ElapsedS = Timer - StartS
@@ -1986,7 +2152,6 @@ Public Sub Pause( _
 
     End Select
 End Sub
-
 Public Sub ResetEnvironment()
 '
 '==============================================================================
@@ -2029,7 +2194,7 @@ Public Sub ResetEnvironment()
 '   timer-resolution failure cannot leave Excel suppressed.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2130,14 +2295,16 @@ Public Sub TW_Turn_OFF( _
 '     mask that was never applied.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' BEGIN / UPDATE SHARED SESSION
 '------------------------------------------------------------------------------
-    'Register or update this instance in the shared TW manager
-        PM_TW_BeginSession TW_InstanceKey(), CLng(Except)
+    'Register or update this instance in the shared TW manager, passing this
+    'instance's strictness so the manager can decide whether an unhonourable
+    'Calculation request should raise or be exempted
+        PM_TW_BeginSession TW_InstanceKey(), CLng(Except), m_StrictMode
 
 '------------------------------------------------------------------------------
 ' COMMIT INSTANCE STATE
@@ -2195,7 +2362,7 @@ Public Sub TW_Turn_ON()
 '     That responsibility belongs to the shared TW manager.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2287,7 +2454,7 @@ Public Sub SetRunLabel( _
 '       cPM.StartTimer 5, False, "Baseline run"
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2344,7 +2511,7 @@ Public Sub ClearCheckpoints()
 '   captured afterwards are still measured from the original StartTimer.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2363,72 +2530,47 @@ Public Sub Checkpoint( _
 '                                  CHECKPOINT
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Captures one named checkpoint within the current timing session
-'
-' WHY THIS EXISTS
-'   A single elapsed-time value is useful, but many real workflows need
-'   structured sub-measurements such as:
-'
-'     - LoadData
-'     - BuildArray
-'     - Transform
-'     - WriteBack
-'
-'   This routine records both:
-'
-'     - cumulative elapsed seconds since StartTimer
-'     - delta seconds since the previous checkpoint
+'   Captures one named checkpoint within the current timing session.
 '
 ' INPUTS
-'   CheckpointName
-'     User-defined checkpoint label
-'
-'   NoteText (optional)
-'     Optional descriptive note stored with the checkpoint row
+'   CheckpointName   - user-defined checkpoint label
+'   NoteText         - optional descriptive note stored with the row
 '
 ' RETURNS
-'   None
+'   None.
 '
 ' BEHAVIOR
-'   - Requires an active timing session
-'   - Captures cumulative elapsed seconds once, without disturbing cached state
-'   - Computes delta seconds versus the previous checkpoint
-'   - Appends one structured checkpoint row
-'   - Updates the last checkpoint marker
+'   - Requires an active timing session.
+'   - Captures cumulative elapsed seconds without disturbing cached state.
+'   - Abandons the capture entirely if the underlying read fails.
+'   - Appends one structured checkpoint row and advances the marker.
 '
 ' ERROR POLICY
-'   Raises when no timing session is active
-'   Otherwise delegates timing validation behavior to Method_ResolveElapsed
-'
-' DEPENDENCIES
-'   - Method_ResolveElapsed
-'   - Elapsed_ComputeSeconds
-'   - MethodName
-'   - Checkpoint_EnsureCapacity
-'   - Checkpoint_DefaultName
+'   - Raises when no timing session is active.
+'   - Read failures raise in strict mode and abandon the capture otherwise.
 '
 ' NOTES
-'   - This routine intentionally captures numeric timing only.
-'     It does not call ElapsedTime and therefore avoids formatting overhead.
-'   - Taking a checkpoint no longer overwrites the cached T2 / ET values. An
-'     explicit ElapsedSeconds measurement therefore survives any number of
-'     subsequent checkpoints.
-'   - It also avoids the vtable cost of the previous Me.ElapsedSeconds call.
+'   On a failed read, the checkpoint count and the last-checkpoint marker are
+'   left unchanged. A failed measurement must not appear in a report, and must
+'   not distort the delta of the next successful checkpoint.
+'
+'   Taking a checkpoint does not overwrite the cached T2 / ET values.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim CurrentS            As Double       'Current cumulative elapsed seconds
-    Dim DeltaS              As Double       'Elapsed seconds since previous checkpoint
-    Dim NextSeq             As Long         'Next checkpoint sequence number
-    Dim EffectiveName       As String       'Normalized checkpoint label
-    Dim ResolvedMethod      As Integer      'Validated method bound to the session
-    Dim DiscardEndStamp     As Double       'Raw endpoint, discarded by design
-    Dim DiscardQpcEnd       As Currency     'Raw QPC endpoint, discarded by design
+    Dim CurrentS            As Double           'Current cumulative elapsed seconds
+    Dim DeltaS              As Double           'Elapsed seconds since previous checkpoint
+    Dim NextSeq             As Long             'Next checkpoint sequence number
+    Dim EffectiveName       As String           'Normalized checkpoint label
+    Dim ResolvedMethod      As Integer          'Validated method for this read
+    Dim DiscardEndStamp     As Double           'Raw endpoint, discarded by design
+    Dim DiscardQpcEnd       As Currency         'Raw QPC endpoint, discarded by design
+    Dim Status              As cPM_ReadStatus   'Outcome of the read
 
 '------------------------------------------------------------------------------
 ' VALIDATE SESSION
@@ -2443,9 +2585,19 @@ Public Sub Checkpoint( _
 '------------------------------------------------------------------------------
 ' MEASURE WITHOUT MUTATING CACHED STATE
 '------------------------------------------------------------------------------
+    'This capture describes its own read outcome
+        m_LastReadStatus = cPM_ReadOK
+
     'Resolve the session method and read elapsed seconds directly
         ResolvedMethod = Method_ResolveElapsed(0)
-        CurrentS = Elapsed_ComputeSeconds(ResolvedMethod, DiscardEndStamp, DiscardQpcEnd)
+        CurrentS = Elapsed_ComputeSeconds(ResolvedMethod, _
+                                          DiscardEndStamp, DiscardQpcEnd, Status)
+
+    'Abandon the capture if no valid reading was obtained
+        If Status <> cPM_ReadOK Then
+            m_LastReadStatus = Status
+            Exit Sub
+        End If
 
 '------------------------------------------------------------------------------
 ' NORMALIZE LABEL
@@ -2497,6 +2649,7 @@ Public Sub Checkpoint( _
 
 End Sub
 
+
 Public Property Get CheckpointCount() As Long
 '
 '==============================================================================
@@ -2520,7 +2673,7 @@ Public Property Get CheckpointCount() As Long
 '   Does not raise errors
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2579,7 +2732,7 @@ Public Function ReportAsArray() As Variant
 '   updating those constants as well.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2664,7 +2817,7 @@ Public Function ReportAsText() As String
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2766,7 +2919,7 @@ Friend Function UInt32ToDouble( _
 '   4294967296# is exactly 2^32 represented as a Double literal.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2824,7 +2977,7 @@ Friend Function Elapsed_Validate( _
 '   method 5 is the default hot path, so the extra call is not justified there.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2898,7 +3051,7 @@ Private Function Method_NormalizeStart( _
 '   ElapsedSeconds unreachable with a zero denominator.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2985,7 +3138,7 @@ Private Function Method_ResolveElapsed( _
 '   timer wrapper into a real timing-session manager.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3094,7 +3247,7 @@ Private Function TW_InstanceKey() As String
 '   - It is not intended as a persisted or cross-session identifier.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3129,53 +3282,74 @@ Private Function QPC_TryReadTick( _
 '                              QPC TRY READ TICK
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Reads the current QueryPerformanceCounter tick and returns whether the API
-'   call succeeded.
+'   Reads the current QueryPerformanceCounter tick and reports whether the read
+'   succeeded.
 '
 ' WHY THIS EXISTS
-'   QueryPerformanceCounter returns a status code. The class should not ignore
-'   that code in benchmark-grade timing paths.
+'   This is the ONLY place in the class that calls QueryPerformanceCounter.
+'   Centralizing the call means there is exactly one point where a failed read
+'   can be detected, and no caller can accidentally consume an unread value.
 '
 ' INPUTS
 '   TickOut
-'     Output variable receiving the raw QPC tick when the API call succeeds.
+'     Receives the raw QPC tick. Written ONLY when the read succeeds, so a
+'     failed read cannot overwrite a caller's existing value with a sentinel.
 '
 ' RETURNS
 '   Boolean
-'     TRUE  => QueryPerformanceCounter succeeded
-'     FALSE => QueryPerformanceCounter failed
+'     TRUE  => the read succeeded and TickOut holds a valid tick
+'     FALSE => the read failed and TickOut is untouched
 '
 ' BEHAVIOR
-'   - Clears TickOut before calling the API.
-'   - Calls QueryPerformanceCounter.
-'   - Returns TRUE only when the API return code is non-zero.
+'   - Consumes and clears the one-shot fault-injection flag when set.
+'   - Calls QueryPerformanceCounter into a local.
+'   - Assigns TickOut only on a non-zero API return code.
 '
 ' ERROR POLICY
-'   Does not raise errors directly.
-'
-' DEPENDENCIES
-'   - QueryPerformanceCounter
+'   Never raises. The caller decides whether a failure is fatal.
 '
 ' NOTES
-'   Callers decide whether failure should raise or trigger fallback behavior.
+'   The fault-injection flag is deliberately one-shot: it is cleared by the read
+'   that consumes it. A sticky flag would make test ordering significant and
+'   would introduce exactly the kind of hidden state this class exists to avoid.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
-' INITIALIZE
+' DECLARE
 '------------------------------------------------------------------------------
-    'Clear the output tick before attempting the API read
-        TickOut = 0@
+    Dim Tick As Currency    'Local target, so TickOut is written only on success
 
 '------------------------------------------------------------------------------
-' ROUTINE
+' FAULT INJECTION
 '------------------------------------------------------------------------------
-    'Return TRUE only when QueryPerformanceCounter succeeds
-        QPC_TryReadTick = (QueryPerformanceCounter(TickOut) <> 0)
+    'Consume the one-shot forced-failure flag, if the suite armed it
+        If m_TestFailNextQpcRead Then
+            m_TestFailNextQpcRead = False
+            QPC_TryReadTick = False
+            Exit Function
+        End If
+
+'------------------------------------------------------------------------------
+' READ
+'------------------------------------------------------------------------------
+    'Report failure without touching the caller's variable
+        If QueryPerformanceCounter(Tick) = 0 Then
+            QPC_TryReadTick = False
+            Exit Function
+        End If
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Publish the tick only now that the read is known to have succeeded
+        TickOut = Tick
+        QPC_TryReadTick = True
 
 End Function
+
 
 Private Function QPC_GetFrequencyHz() As Double
 '
@@ -3218,7 +3392,7 @@ Private Function QPC_GetFrequencyHz() As Double
 '   Currency division is already correct.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3276,7 +3450,7 @@ Private Function Get_TickCountSeconds() As Double
 '   - 4294967296# is the exact 2^32 constant expressed as a Double literal.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3318,59 +3492,78 @@ Private Function Get_TickCountSeconds() As Double
 #End If
 End Function
 
-Private Function Get_SystemTimeMs() As Double
+Private Function SystemTime_TryReadMs( _
+    ByRef ValueOut As Double, _
+    ByRef StatusOut As cPM_ReadStatus) _
+    As Boolean
 '
 '==============================================================================
-'                           GET SYSTEM TIME MS
+'                           SYSTEM TIME TRY READ MS
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Returns the current timeGetSystemTime millisecond counter using
-'   MMTIME / TIME_MS.
+'   Reads the timeGetSystemTime millisecond counter and reports whether the read
+'   succeeded.
 '
 ' WHY THIS EXISTS
-'   Method 4 intentionally uses winmm.timeGetSystemTime rather than timeGetTime.
-'   This helper centralizes the API call, validates the return code, validates
-'   the returned format, and maps the DWORD millisecond value into logical
-'   unsigned 32-bit space.
+'   This is the ONLY place in the class that calls timeGetSystemTime.
+'
+'   The previous Get_SystemTimeMs returned 0 on failure in non-strict mode. That
+'   sentinel then entered elapsed arithmetic, produced a negative delta, and was
+'   "corrected" by adding the 32-bit rollover period - converting a failed read
+'   into a large positive duration that passed validation.
+'
+'   Returning a status instead makes that impossible.
 '
 ' INPUTS
-'   None.
+'   ValueOut
+'     Receives the logical unsigned millisecond value. Written ONLY on success.
+'
+'   StatusOut
+'     Receives the specific failure reason, or cPM_ReadOK.
 '
 ' RETURNS
-'   Double
-'     Logical unsigned millisecond counter value in the range 0 to 4,294,967,295.
+'   Boolean
+'     TRUE  => the read succeeded and ValueOut holds a valid value
+'     FALSE => the read failed and ValueOut is untouched
 '
 ' BEHAVIOR
-'   - Resets the reusable MMTIME structure before every call.
-'   - Requests TIME_MS format.
-'   - Calls timeGetSystemTime.
-'   - Validates the API return code.
-'   - Validates that the returned format is TIME_MS.
-'   - Converts the returned DWORD value from signed Long to unsigned Double.
+'   - Consumes and clears the one-shot fault-injection flag when set.
+'   - Resets the reusable MMTIME structure and requests TIME_MS.
+'   - Distinguishes an API failure from an unexpected returned format.
+'   - Assigns ValueOut only when both checks pass.
 '
 ' ERROR POLICY
-'   - Raises in strict mode when timeGetSystemTime fails.
-'   - Raises in strict mode when the returned format is not TIME_MS.
-'   - Returns 0 in non-strict mode if the API call fails or the format is not
-'     the expected TIME_MS format.
+'   Never raises. The caller decides whether a failure is fatal.
 '
 ' DEPENDENCIES
 '   - timeGetSystemTime
-'   - MMTIME
 '   - UInt32ToDouble
-'   - CPM_TIME_MS
-'
-' NOTES
-'   Method 4 remains a distinct timing backend.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim RC As Long    'Return code from timeGetSystemTime
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Assume success until a check fails
+        StatusOut = cPM_ReadOK
+
+'------------------------------------------------------------------------------
+' FAULT INJECTION
+'------------------------------------------------------------------------------
+    'Consume the one-shot forced-failure flag, if the suite armed it
+        If m_TestFailNextSystemTimeRead Then
+            m_TestFailNextSystemTimeRead = False
+            StatusOut = cPM_ReadSystemTimeFailed
+            SystemTime_TryReadMs = False
+            Exit Function
+        End If
 
 '------------------------------------------------------------------------------
 ' PREPARE STRUCTURE
@@ -3381,43 +3574,34 @@ Private Function Get_SystemTimeMs() As Double
         m_Mmt.Reserved = 0&
 
 '------------------------------------------------------------------------------
-' CALL API
+' READ
 '------------------------------------------------------------------------------
     'Populate m_Mmt using TIME_MS format
         RC = timeGetSystemTime(m_Mmt, LenB(m_Mmt))
 
-'------------------------------------------------------------------------------
-' VALIDATE API RESULT
-'------------------------------------------------------------------------------
-    'Validate the API return code
+    'Report an API failure without touching the caller's variable
         If RC <> 0 Then
-            If m_StrictMode Then
-                Err.Raise ERR_CPM_TIMEGETSYSTEMTIME_FAILED, _
-                          "cPerformanceManager.Get_SystemTimeMs", _
-                          "timeGetSystemTime failed."
-            End If
-            Get_SystemTimeMs = 0#
+            StatusOut = cPM_ReadSystemTimeFailed
+            SystemTime_TryReadMs = False
             Exit Function
         End If
 
-    'Validate that the returned format is still TIME_MS
+    'Report an unexpected format separately from an outright failure
         If m_Mmt.wType <> CPM_TIME_MS Then
-            If m_StrictMode Then
-                Err.Raise ERR_CPM_TIMEGETSYSTEMTIME_FORMAT, _
-                          "cPerformanceManager.Get_SystemTimeMs", _
-                          "timeGetSystemTime did not return TIME_MS format."
-            End If
-            Get_SystemTimeMs = 0#
+            StatusOut = cPM_ReadSystemTimeFormatInvalid
+            SystemTime_TryReadMs = False
             Exit Function
         End If
 
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
-    'Return the logical unsigned millisecond value
-        Get_SystemTimeMs = UInt32ToDouble(m_Mmt.Units)
+    'Publish the value only now that the read is known to be valid
+        ValueOut = UInt32ToDouble(m_Mmt.Units)
+        SystemTime_TryReadMs = True
 
 End Function
+
 
 Friend Function RolloverSeconds( _
     ByVal iMethod As Integer) _
@@ -3468,7 +3652,7 @@ Friend Function RolloverSeconds( _
 '     that case.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3536,7 +3720,7 @@ Private Sub EnsureTimerResolution1ms()
 '   consumption while held.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3565,270 +3749,296 @@ Private Sub EnsureTimerResolution1ms()
 
 End Sub
 
-Private Function Get_CurrentTimestampSeconds( _
-    ByVal iMethod As Integer) _
-    As Double
+Private Function Timestamp_TryGetCurrentSeconds( _
+    ByVal iMethod As Integer, _
+    ByRef ValueOut As Double, _
+    ByRef StatusOut As cPM_ReadStatus) _
+    As Boolean
 '
 '==============================================================================
-'                      GET CURRENT TIMESTAMP SECONDS
+'                      TIMESTAMP TRY GET CURRENT SECONDS
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Returns the current timestamp for non-QPC methods as a Double in seconds.
+'   Returns the current timestamp in seconds for a non-QPC backend, reporting
+'   whether the underlying read succeeded.
 '
 ' WHY THIS EXISTS
-'   StartTimer and related timing helpers need a shared abstraction for
-'   obtaining a consistent seconds-based timestamp for the supported non-QPC
-'   backends, without duplicating dispatch logic.
+'   Replaces Get_CurrentTimestampSeconds, which could not report a method-4
+'   failure and therefore returned a sentinel that later entered arithmetic.
 '
 ' INPUTS
-'   iMethod
-'     Timing backend selector.
+'   iMethod    - non-QPC backend selector
+'   ValueOut   - receives the timestamp in seconds; written ONLY on success
+'   StatusOut  - receives the failure reason, or cPM_ReadOK
 '
 ' RETURNS
-'   Double
-'     Timestamp in seconds for the requested backend.
+'   Boolean
+'     TRUE  => ValueOut holds a valid timestamp
+'     FALSE => the read failed and ValueOut is untouched
 '
 ' BEHAVIOR
-'   - Dispatches to the requested non-QPC timing backend.
-'   - Keeps method 4 as timeGetSystemTime.
-'   - Returns all supported backends in seconds.
+'   - Backends 1, 2, 3 and 6 cannot fail and always report success.
+'   - Backend 4 delegates to SystemTime_TryReadMs and propagates its status.
 '
 ' ERROR POLICY
-'   Backend-specific errors are delegated to the corresponding helper.
-'
-' DEPENDENCIES
-'   - Timer
-'   - Get_TickCountSeconds
-'   - EnsureTimerResolution1ms
-'   - timeGetTime
-'   - Get_SystemTimeMs
-'   - Now
+'   Never raises.
 '
 ' NOTES
-'   Method 4 is intentionally preserved as timeGetSystemTime.
-'
-'   Method 5 is not handled here. QPC has its own dedicated capture path in
-'   StartTimer because it works in Currency ticks rather than seconds.
+'   Method 5 is not handled here. QPC has its own dedicated capture path because
+'   it works in Currency ticks rather than seconds.
 '
 ' UPDATED
-'   2026-08-14
-'==============================================================================
-
-'------------------------------------------------------------------------------
-' ROUTINE
-'------------------------------------------------------------------------------
-    'Dispatch to the requested timing backend and return a seconds-based timestamp
-        Select Case iMethod
-            Case 1
-                Get_CurrentTimestampSeconds = Timer
-            Case 2
-                Get_CurrentTimestampSeconds = Get_TickCountSeconds()
-            Case 3
-                EnsureTimerResolution1ms
-                Get_CurrentTimestampSeconds = UInt32ToDouble(timeGetTime()) / 1000#
-            Case 4
-                Get_CurrentTimestampSeconds = Get_SystemTimeMs() / 1000#
-            Case 6
-                Get_CurrentTimestampSeconds = Now() * 86400#
-            Case Else
-                Get_CurrentTimestampSeconds = Timer
-        End Select
-
-End Function
-
-Private Function Get_NextTimestampSeconds( _
-    ByVal iMethod As Integer) _
-    As Double
-'
-'==============================================================================
-'                       GET NEXT TIMESTAMP SECONDS
-'------------------------------------------------------------------------------
-' PURPOSE
-'   Aligns the start time to the next observable tick for the selected non-QPC
-'   timing backend, with a finite spin guard.
-'
-' WHY THIS EXISTS
-'   AlignToNextTick intentionally polls until the timing source advances, but
-'   polling must not be capable of running forever if the source fails or stalls.
-'
-' INPUTS
-'   iMethod
-'     Timing backend selector.
-'
-' RETURNS
-'   Double
-'     Seconds-based timestamp aligned to the next observed counter change.
-'
-' BEHAVIOR
-'   - Spins until the selected counter advances.
-'   - Stops after CPM_ALIGN_MAX_SPINS iterations.
-'   - Preserves method 4 as timeGetSystemTime.
-'   - Falls back to a current timestamp in non-strict mode if alignment fails.
-'
-' ERROR POLICY
-'   - Raises in strict mode if alignment does not complete within the spin guard.
-'   - Falls back defensively in non-strict mode.
-'
-' DEPENDENCIES
-'   - Timer
-'   - Get_TickCountSeconds
-'   - EnsureTimerResolution1ms
-'   - timeGetTime
-'   - Get_SystemTimeMs
-'   - Get_CurrentTimestampSeconds
-'
-' NOTES
-'   This routine uses tight polling and should only be used for benchmark
-'   alignment scenarios.
-'
-'   Method 6 (Now) cannot be meaningfully aligned at this granularity and
-'   therefore returns immediately without spinning.
-'
-' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim A           As Double   'Initial observed timestamp
-    Dim B           As Double   'Next observed timestamp
+    Dim Ms As Double    'Raw millisecond value for backend 4
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Assume success until a read reports otherwise
+        StatusOut = cPM_ReadOK
+
+'------------------------------------------------------------------------------
+' DISPATCH
+'------------------------------------------------------------------------------
+    Select Case iMethod
+
+        Case 1
+                ValueOut = Timer
+                Timestamp_TryGetCurrentSeconds = True
+
+        Case 2
+                ValueOut = Get_TickCountSeconds()
+                Timestamp_TryGetCurrentSeconds = True
+
+        Case 3
+                EnsureTimerResolution1ms
+                ValueOut = UInt32ToDouble(timeGetTime()) / 1000#
+                Timestamp_TryGetCurrentSeconds = True
+
+        Case 4
+                'The only non-QPC backend with a real failure path
+                If Not SystemTime_TryReadMs(Ms, StatusOut) Then
+                    Timestamp_TryGetCurrentSeconds = False
+                    Exit Function
+                End If
+                ValueOut = Ms / 1000#
+                Timestamp_TryGetCurrentSeconds = True
+
+        Case 6
+                ValueOut = Now() * 86400#
+                Timestamp_TryGetCurrentSeconds = True
+
+        Case Else
+                ValueOut = Timer
+                Timestamp_TryGetCurrentSeconds = True
+
+    End Select
+
+End Function
+
+
+Private Function Timestamp_TryGetNextSeconds( _
+    ByVal iMethod As Integer, _
+    ByRef ValueOut As Double, _
+    ByRef StatusOut As cPM_ReadStatus) _
+    As Boolean
+'
+'==============================================================================
+'                       TIMESTAMP TRY GET NEXT SECONDS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Aligns to the next observable tick for a non-QPC backend, reporting whether
+'   the underlying reads succeeded.
+'
+' INPUTS
+'   iMethod    - non-QPC backend selector
+'   ValueOut   - receives the aligned timestamp; written ONLY on success
+'   StatusOut  - receives the failure reason, or cPM_ReadOK
+'
+' RETURNS
+'   Boolean
+'     TRUE  => ValueOut holds a valid aligned timestamp
+'     FALSE => a read failed and ValueOut is untouched
+'
+' BEHAVIOR
+'   - Spins until the selected counter advances.
+'   - Stops after CPM_ALIGN_MAX_SPINS iterations.
+'   - Abandons alignment immediately if a backend-4 read fails.
+'
+' ERROR POLICY
+'   - Raises ERR_CPM_ALIGN_TICK_TIMEOUT in strict mode if the spin guard is hit.
+'   - Falls back to a current timestamp in non-strict mode.
+'   - A failed READ is reported through the return value, not by raising.
+'
+' NOTES
+'   Alignment failure and read failure are deliberately different outcomes. A
+'   spin-guard timeout means the clock did not advance in time; a read failure
+'   means no value was obtained at all.
+'
+' UPDATED
+'   2026-08-15
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim A           As Double   'Initial observed value
+    Dim B           As Double   'Next observed value
     Dim SpinCount   As Long     'Finite-loop guard counter
 
 '------------------------------------------------------------------------------
-' ROUTINE
+' INITIALIZE
 '------------------------------------------------------------------------------
-    'Dispatch by timing backend and spin until the counter advances
-        Select Case iMethod
+    'Assume success until a read reports otherwise
+        StatusOut = cPM_ReadOK
 
-            Case 1
+'------------------------------------------------------------------------------
+' DISPATCH
+'------------------------------------------------------------------------------
+    Select Case iMethod
+
+        Case 1
                 A = Timer
                 Do
                     SpinCount = SpinCount + 1
                     B = Timer
                     If B <> A Then
-                        Get_NextTimestampSeconds = B
+                        ValueOut = B
+                        Timestamp_TryGetNextSeconds = True
                         Exit Function
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
 
-            Case 2
+        Case 2
                 A = Get_TickCountSeconds()
                 Do
                     SpinCount = SpinCount + 1
                     B = Get_TickCountSeconds()
                     If B <> A Then
-                        Get_NextTimestampSeconds = B
+                        ValueOut = B
+                        Timestamp_TryGetNextSeconds = True
                         Exit Function
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
 
-            Case 3
+        Case 3
                 EnsureTimerResolution1ms
                 A = UInt32ToDouble(timeGetTime())
                 Do
                     SpinCount = SpinCount + 1
                     B = UInt32ToDouble(timeGetTime())
                     If B <> A Then
-                        Get_NextTimestampSeconds = B / 1000#
+                        ValueOut = B / 1000#
+                        Timestamp_TryGetNextSeconds = True
                         Exit Function
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
 
-            Case 4
-                A = Get_SystemTimeMs()
+        Case 4
+                'Abandon alignment entirely if the initial read fails
+                If Not SystemTime_TryReadMs(A, StatusOut) Then
+                    Timestamp_TryGetNextSeconds = False
+                    Exit Function
+                End If
+
                 Do
                     SpinCount = SpinCount + 1
-                    B = Get_SystemTimeMs()
+                    'A failure mid-alignment is still a failure
+                    If Not SystemTime_TryReadMs(B, StatusOut) Then
+                        Timestamp_TryGetNextSeconds = False
+                        Exit Function
+                    End If
                     If B <> A Then
-                        Get_NextTimestampSeconds = B / 1000#
+                        ValueOut = B / 1000#
+                        Timestamp_TryGetNextSeconds = True
                         Exit Function
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
 
-            Case 6
-                Get_NextTimestampSeconds = Now() * 86400#
+        Case 6
+                'Now() cannot be meaningfully aligned at this granularity
+                ValueOut = Now() * 86400#
+                Timestamp_TryGetNextSeconds = True
                 Exit Function
 
-            Case Else
-                Get_NextTimestampSeconds = Get_CurrentTimestampSeconds(iMethod)
+        Case Else
+                Timestamp_TryGetNextSeconds = _
+                    Timestamp_TryGetCurrentSeconds(iMethod, ValueOut, StatusOut)
                 Exit Function
 
-        End Select
+    End Select
 
 '------------------------------------------------------------------------------
 ' ALIGNMENT FAILURE
 '------------------------------------------------------------------------------
-    'Raise in strict mode when the finite spin guard is reached
+    'The clock did not advance within the spin guard
         If m_StrictMode Then
             Err.Raise ERR_CPM_ALIGN_TICK_TIMEOUT, _
-                      "cPerformanceManager.Get_NextTimestampSeconds", _
+                      "cPerformanceManager.Timestamp_TryGetNextSeconds", _
                       "Next-tick alignment did not complete within the spin guard."
         End If
-    'Fallback defensively in non-strict mode
-        Get_NextTimestampSeconds = Get_CurrentTimestampSeconds(iMethod)
+
+    'Non-strict: settle for a current timestamp
+        Timestamp_TryGetNextSeconds = _
+            Timestamp_TryGetCurrentSeconds(iMethod, ValueOut, StatusOut)
 
 End Function
 
-Private Function QPC_Get_NextTimestampTick() As Currency
+
+Private Function QPC_TryGetNextTick( _
+    ByRef TickOut As Currency) _
+    As Boolean
 '
 '==============================================================================
-'                       QPC GET NEXT TIMESTAMP TICK
+'                           QPC TRY GET NEXT TICK
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Aligns to the next QueryPerformanceCounter tick with a finite spin guard.
-'
-' WHY THIS EXISTS
-'   AlignToNextTick intentionally uses tight polling, but tight polling must not
-'   be capable of running forever if the timing source fails or stalls.
+'   Aligns to the next QueryPerformanceCounter tick, reporting whether the reads
+'   succeeded.
 '
 ' INPUTS
-'   None.
+'   TickOut
+'     Receives the first tick strictly greater than the initial read. Written
+'     ONLY on success.
 '
 ' RETURNS
-'   Currency
-'     The first observed QPC counter value strictly greater than the initial
-'     read.
+'   Boolean
+'     TRUE  => TickOut holds a valid aligned tick
+'     FALSE => a QPC read failed and TickOut is untouched
 '
 ' BEHAVIOR
-'   - Captures an initial QPC value.
-'   - Spins in a tight loop until a strictly greater QPC value is observed.
+'   - Captures an initial tick.
+'   - Spins until a strictly greater tick is observed.
 '   - Stops after CPM_ALIGN_MAX_SPINS attempts.
 '
 ' ERROR POLICY
-'   - Raises in strict mode if QPC cannot be read.
-'   - Raises in strict mode if the spin guard is reached.
-'   - Returns the initial tick in non-strict mode if alignment fails.
-'
-' DEPENDENCIES
-'   - QPC_TryReadTick
-'   - CPM_ALIGN_MAX_SPINS
-'
-' NOTES
-'   Tight polling loop by design; do not use in ordinary production paths.
+'   - Raises ERR_CPM_ALIGN_TICK_TIMEOUT in strict mode if the spin guard is hit.
+'   - Returns the initial tick in non-strict mode on spin-guard timeout.
+'   - A failed READ is reported through the return value, not by raising, so the
+'     caller can fall back to another backend before committing any state.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim T1          As Currency     'Initial counter tick
-    Dim T2          As Currency     'Next counter tick
+    Dim TickA       As Currency     'Initial tick
+    Dim TickB       As Currency     'Next tick
     Dim SpinCount   As Long         'Finite-loop guard counter
 
 '------------------------------------------------------------------------------
 ' INITIAL READ
 '------------------------------------------------------------------------------
-    'Read the initial tick
-        If Not QPC_TryReadTick(T1) Then
-            If m_StrictMode Then
-                Err.Raise ERR_CPM_QPC_READ_FAILED, _
-                          "cPerformanceManager.QPC_Get_NextTimestampTick", _
-                          "QueryPerformanceCounter failed during the initial alignment read."
-            End If
-            QPC_Get_NextTimestampTick = 0@
+    'A failed initial read means no alignment is possible
+        If Not QPC_TryReadTick(TickA) Then
+            QPC_TryGetNextTick = False
             Exit Function
         End If
 
@@ -3838,17 +4048,15 @@ Private Function QPC_Get_NextTimestampTick() As Currency
     'Spin until the counter advances strictly beyond the initial read
         Do
             SpinCount = SpinCount + 1
-            If Not QPC_TryReadTick(T2) Then
-                If m_StrictMode Then
-                    Err.Raise ERR_CPM_QPC_READ_FAILED, _
-                              "cPerformanceManager.QPC_Get_NextTimestampTick", _
-                              "QueryPerformanceCounter failed during the alignment loop."
-                End If
-                QPC_Get_NextTimestampTick = T1
+
+            If Not QPC_TryReadTick(TickB) Then
+                QPC_TryGetNextTick = False
                 Exit Function
             End If
-            If T2 > T1 Then
-                QPC_Get_NextTimestampTick = T2
+
+            If TickB > TickA Then
+                TickOut = TickB
+                QPC_TryGetNextTick = True
                 Exit Function
             End If
         Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
@@ -3856,16 +4064,19 @@ Private Function QPC_Get_NextTimestampTick() As Currency
 '------------------------------------------------------------------------------
 ' ALIGNMENT FAILURE
 '------------------------------------------------------------------------------
-    'Raise in strict mode when the finite spin guard is reached
+    'The counter did not advance within the spin guard
         If m_StrictMode Then
             Err.Raise ERR_CPM_ALIGN_TICK_TIMEOUT, _
-                      "cPerformanceManager.QPC_Get_NextTimestampTick", _
+                      "cPerformanceManager.QPC_TryGetNextTick", _
                       "QPC next-tick alignment did not complete within the spin guard."
         End If
-    'Return the initial tick in non-strict mode
-        QPC_Get_NextTimestampTick = T1
+
+    'Non-strict: the initial tick is still a valid reading
+        TickOut = TickA
+        QPC_TryGetNextTick = True
 
 End Function
+
 
 '
 '------------------------------------------------------------------------------
@@ -3911,7 +4122,7 @@ Private Sub Checkpoint_ClearState()
 '   one set beforehand through SetRunLabel does not.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3961,7 +4172,7 @@ Private Sub Checkpoint_EnsureCapacity( _
 '   long checkpoint runs.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4028,7 +4239,7 @@ Private Function Checkpoint_DefaultName( _
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4130,7 +4341,7 @@ Public Function MeasureProcedure( _
 '     and checkpoint state are untouched
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4297,7 +4508,7 @@ Public Function MeasureOverhead_Samples( _
 '   not enough to settle code paths and caches
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4433,7 +4644,7 @@ Public Function Stats_Count( _
 '   uninitialized array. All others raise through Stats_RequireSamples
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4480,7 +4691,7 @@ Public Function Stats_Min( _
 '   - Stats_RequireSamples
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4543,7 +4754,7 @@ Public Function Stats_Max( _
 '   - Stats_RequireSamples
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4610,7 +4821,7 @@ Public Function Stats_Mean( _
 '   mean materially while barely moving the median
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4680,7 +4891,7 @@ Public Function Stats_Median( _
 '   The caller's array is never reordered
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4762,7 +4973,7 @@ Public Function Stats_Percentile( _
 '   an actually observed measurement rather than a synthetic one
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4850,7 +5061,7 @@ Public Function Stats_StdDev( _
 '   complete population
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4933,7 +5144,7 @@ Public Function Stats_CoefficientOfVariation( _
 '   re-running on a quieter machine
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5005,7 +5216,7 @@ Public Function Stats_IsContaminated( _
 '   it does not prove a result is wrong
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5057,7 +5268,7 @@ Public Function Stats_Text( _
 '   that should drive conclusions; the mean is reported last for continuity
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5125,7 +5336,8 @@ End Function
 Private Function Elapsed_ComputeSeconds( _
     ByVal ResolvedMethod As Integer, _
     ByRef EndStampOut As Double, _
-    ByRef QpcEndOut As Currency) _
+    ByRef QpcEndOut As Currency, _
+    ByRef StatusOut As cPM_ReadStatus) _
     As Double
 '
 '==============================================================================
@@ -5133,128 +5345,127 @@ Private Function Elapsed_ComputeSeconds( _
 '------------------------------------------------------------------------------
 ' PURPOSE
 '   Computes elapsed seconds for an already resolved backend, without writing to
-'   any cached class state
+'   any cached class state.
 '
 ' WHY THIS EXISTS
-'   Backend dispatch was previously duplicated across several procedures, so
-'   adding or changing a timing backend meant editing every one of them. This
-'   helper is the single place where an elapsed value is produced
-'
-'   Keeping it free of side effects also lets Checkpoint measure without
-'   clobbering the cached T2 and ET values that the caller may still need
+'   Backend dispatch lives here and nowhere else, so adding or changing a backend
+'   is a single edit. Keeping it free of side effects also lets Checkpoint
+'   measure without clobbering the cached T2 and ET values.
 '
 ' INPUTS
-'   ResolvedMethod
-'     Backend already validated by Method_ResolveElapsed
-'
-'   EndStampOut
-'     Receives the raw end timestamp. Pre-seeded with the current cached value,
-'     so failure paths that take no reading leave it unchanged
-'
-'   QpcEndOut
-'     Receives the raw QPC end tick. Only meaningful for method 5
+'   ResolvedMethod  - backend already validated by Method_ResolveElapsed
+'   EndStampOut     - receives the raw end timestamp, on success only
+'   QpcEndOut       - receives the raw QPC end tick, on success only
+'   StatusOut       - receives the failure reason, or cPM_ReadOK
 '
 ' RETURNS
 '   Double
-'     Elapsed seconds since the session start
+'     Elapsed seconds, or 0 when the read failed in non-strict mode.
 '
-' BEHAVIOR
-'   - Reads the endpoint for the resolved backend
-'   - Applies rollover correction where the backend requires it
-'   - Validates the result through Elapsed_Validate for methods 1/2/3/4/6
-'   - Returns 0 on non-strict failure paths
+' CRITICAL INVARIANT
+'   A failed read NEVER enters timestamp arithmetic.
+'
+'   The previous implementation let a failed method-4 read return 0, which then
+'   produced a negative delta and had the 32-bit rollover period added to it -
+'   turning a failure into a large positive duration that passed validation.
+'
+'   Every read is now checked before any subtraction or rollover correction.
 '
 ' ERROR POLICY
-'   - Raises in strict mode when QPC cannot be read
-'   - Raises in strict mode when the resolved method is invalid
-'   - Raises in strict mode on a negative elapsed value, via Elapsed_Validate
-'
-' DEPENDENCIES
-'   - Get_TickCountSeconds
-'   - EnsureTimerResolution1ms
-'   - Get_SystemTimeMs
-'   - QPC_TryReadTick
-'   - RolloverSeconds
-'   - Elapsed_Validate
+'   - Raises in strict mode when a read fails or the method is invalid.
+'   - Returns 0 with a non-OK StatusOut in non-strict mode.
+'   - Never applies rollover correction to a failed read.
 '
 ' NOTES
 '   Method 5 deliberately skips Elapsed_Validate. QPC is monotonic and method 5
-'   is the default hot path
-'
-'   For QPC the Currency scaling cancels between the tick delta and the
-'   frequency, so the raw Currency division is already exact
+'   is the default hot path.
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim QpcNow      As Currency     'Raw QPC tick for the current read
+    Dim EndStamp    As Double       'Raw end timestamp for the current read
+    Dim Ms          As Double       'Raw millisecond value for backend 4
     Dim Seconds     As Double       'Computed elapsed seconds
 
 '------------------------------------------------------------------------------
-' INITIALIZE OUTPUTS
+' INITIALIZE
 '------------------------------------------------------------------------------
-    'Seed the outputs from cached state so untaken readings change nothing
-        EndStampOut = m_T2
-        QpcEndOut = m_qpcEnd
+    'Assume success until a read reports otherwise
+        StatusOut = cPM_ReadOK
 
 '------------------------------------------------------------------------------
-' DISPATCH
+' DISPATCH - READ FIRST, ARITHMETIC ONLY AFTER A VALID READ
 '------------------------------------------------------------------------------
     Select Case ResolvedMethod
 
         Case 1
-                EndStampOut = Timer
-                Seconds = EndStampOut - m_T1
+                EndStamp = Timer
+                Seconds = EndStamp - m_T1
                 'Correct midnight rollover for Timer()
                     If Seconds < 0# Then Seconds = Seconds + 86400#
                 Seconds = Elapsed_Validate(Seconds)
 
         Case 2
-                EndStampOut = Get_TickCountSeconds()
-                Seconds = EndStampOut - m_T1
+                EndStamp = Get_TickCountSeconds()
+                Seconds = EndStamp - m_T1
                 'Correct 32-bit millisecond-counter rollover where applicable
                     If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(2)
                 Seconds = Elapsed_Validate(Seconds)
 
         Case 3
                 EnsureTimerResolution1ms
-                EndStampOut = UInt32ToDouble(timeGetTime()) / 1000#
-                Seconds = EndStampOut - m_T1
+                EndStamp = UInt32ToDouble(timeGetTime()) / 1000#
+                Seconds = EndStamp - m_T1
                 'Correct 32-bit millisecond-counter rollover
                     If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(3)
                 Seconds = Elapsed_Validate(Seconds)
 
         Case 4
-                EndStampOut = Get_SystemTimeMs() / 1000#
-                Seconds = EndStampOut - m_T1
+                'Validate the read BEFORE any arithmetic touches it
+                If Not SystemTime_TryReadMs(Ms, StatusOut) Then
+                    If m_StrictMode Then
+                        Err.Raise Read_StatusToErrorNumber(StatusOut), _
+                                  "cPerformanceManager.Elapsed_ComputeSeconds", _
+                                  Read_StatusToText(StatusOut) & _
+                                  " No elapsed time could be computed."
+                    End If
+                    Elapsed_ComputeSeconds = 0#
+                    Exit Function
+                End If
+
+                EndStamp = Ms / 1000#
+                Seconds = EndStamp - m_T1
                 'Correct 32-bit millisecond-counter rollover
                     If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(4)
                 Seconds = Elapsed_Validate(Seconds)
 
         Case 5
-                'QPC is the monotonic high-resolution path and skips validation
+                'Validate the read BEFORE any arithmetic touches it
                 If Not QPC_TryReadTick(QpcNow) Then
-                    QpcEndOut = QpcNow
+                    StatusOut = cPM_ReadQpcFailed
                     If m_StrictMode Then
                         Err.Raise ERR_CPM_QPC_READ_FAILED, _
                                   "cPerformanceManager.Elapsed_ComputeSeconds", _
-                                  "QueryPerformanceCounter failed while reading the elapsed-time endpoint."
+                                  "QueryPerformanceCounter failed while reading the " & _
+                                  "elapsed-time endpoint. No elapsed time could be computed."
                     End If
                     Elapsed_ComputeSeconds = 0#
                     Exit Function
                 End If
+
                 'Currency scaling cancels between numerator and denominator
                 Seconds = CDbl((QpcNow - m_qpcStart) / m_qpcFreq)
-                EndStampOut = CDbl(QpcNow)
+                EndStamp = CDbl(QpcNow)
                 QpcEndOut = QpcNow
 
         Case 6
-                EndStampOut = Now() * 86400#
-                Seconds = EndStampOut - m_T1
+                EndStamp = Now() * 86400#
+                Seconds = EndStamp - m_T1
                 Seconds = Elapsed_Validate(Seconds)
 
         Case Else
@@ -5269,12 +5480,14 @@ Private Function Elapsed_ComputeSeconds( _
     End Select
 
 '------------------------------------------------------------------------------
-' ASSIGN RESULT
+' PUBLISH ENDPOINT AND RESULT
 '------------------------------------------------------------------------------
-    'Return the computed elapsed seconds
+    'Only a validated read reaches this point
+        EndStampOut = EndStamp
         Elapsed_ComputeSeconds = Seconds
 
 End Function
+
 
 Private Sub Stats_RequireSamples( _
     ByRef Samples() As Double, _
@@ -5307,7 +5520,7 @@ Private Sub Stats_RequireSamples( _
 '   - Stats_Count
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5359,7 +5572,7 @@ Private Function Stats_SortedCopy( _
 '   callers can index it directly
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5437,7 +5650,7 @@ Private Sub Stats_QuickSort( _
 '   about twenty frames
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5486,4 +5699,283 @@ Private Sub Stats_QuickSort( _
         End If
 
 End Sub
+
+Public Property Get LastReadStatus() As cPM_ReadStatus
+'
+'==============================================================================
+'                              LAST READ STATUS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the outcome of the most recent native timing read.
+'
+' WHY THIS EXISTS
+'   In non-strict mode a failed read returns 0 rather than raising. Without a
+'   status, a caller cannot distinguish "zero seconds elapsed" from "no reading
+'   was obtained" - and the second silently poisons any aggregate built from it.
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   cPM_ReadStatus
+'     cPM_ReadOK                      - the last read succeeded
+'     cPM_ReadQpcFailed               - QueryPerformanceCounter failed
+'     cPM_ReadSystemTimeFailed        - timeGetSystemTime failed
+'     cPM_ReadSystemTimeFormatInvalid - timeGetSystemTime returned a bad format
+'     cPM_ReadFallbackToMethod2       - the requested backend was unreadable and
+'                                       method 2 was bound instead
+'
+' BEHAVIOR
+'   Reset to cPM_ReadOK at the start of StartTimer, ElapsedSeconds and
+'   Checkpoint, so it always describes the most recent relevant operation rather
+'   than an older failure.
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' NOTES
+'   cPM_ReadFallbackToMethod2 is not a failure. The session is valid and the
+'   measurement is usable - the status records that the requested backend was
+'   coerced, so the coercion is visible rather than silent. ActiveMethodID
+'   reports the backend that was actually bound.
+'
+' UPDATED
+'   2026-08-15
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Return the outcome of the most recent native read
+        LastReadStatus = m_LastReadStatus
+
+End Property
+
+
+Private Function Read_StatusToErrorNumber( _
+    ByVal Status As cPM_ReadStatus) _
+    As Long
+'
+'==============================================================================
+'                        READ STATUS TO ERROR NUMBER
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Maps a read status onto the error number raised for it in strict mode.
+'
+' WHY THIS EXISTS
+'   Keeps the status-to-error mapping in one place, so a status can never be
+'   reported under two different error numbers from two different call sites.
+'
+' INPUTS
+'   Status - the read status to map
+'
+' RETURNS
+'   Long - the corresponding error number
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' UPDATED
+'   2026-08-15
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' MAP
+'------------------------------------------------------------------------------
+    'Resolve the error number for this status
+        Select Case Status
+            Case cPM_ReadQpcFailed
+                Read_StatusToErrorNumber = ERR_CPM_QPC_READ_FAILED
+            Case cPM_ReadSystemTimeFailed
+                Read_StatusToErrorNumber = ERR_CPM_TIMEGETSYSTEMTIME_FAILED
+            Case cPM_ReadSystemTimeFormatInvalid
+                Read_StatusToErrorNumber = ERR_CPM_TIMEGETSYSTEMTIME_FORMAT
+            Case Else
+                Read_StatusToErrorNumber = ERR_CPM_START_CAPTURE_FAILED
+        End Select
+
+End Function
+
+
+Private Function Read_StatusToText( _
+    ByVal Status As cPM_ReadStatus) _
+    As String
+'
+'==============================================================================
+'                            READ STATUS TO TEXT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns a human-readable description of a read status, for error messages.
+'
+' INPUTS
+'   Status - the read status to describe
+'
+' RETURNS
+'   String - a readable description
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' UPDATED
+'   2026-08-15
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' MAP
+'------------------------------------------------------------------------------
+    'Resolve the description for this status
+        Select Case Status
+            Case cPM_ReadOK
+                Read_StatusToText = "The timing read succeeded."
+            Case cPM_ReadQpcFailed
+                Read_StatusToText = "QueryPerformanceCounter failed."
+            Case cPM_ReadSystemTimeFailed
+                Read_StatusToText = "timeGetSystemTime failed."
+            Case cPM_ReadSystemTimeFormatInvalid
+                Read_StatusToText = "timeGetSystemTime did not return TIME_MS format."
+            Case cPM_ReadFallbackToMethod2
+                Read_StatusToText = "The requested backend was unreadable; method 2 was bound."
+            Case Else
+                Read_StatusToText = "The timing read failed."
+        End Select
+
+End Function
+
+
+Friend Sub Test_ForceNextQPCReadFailure()
+'
+'==============================================================================
+'                       TEST FORCE NEXT QPC READ FAILURE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms a ONE-SHOT forced failure of the next QueryPerformanceCounter read.
+'
+' WHY THIS EXISTS
+'   The failure paths this class guards cannot be reached by ordinary calling
+'   patterns - QPC does not fail on demand. Without a seam, the most important
+'   correctness behaviour in the class would be permanently untested.
+'
+'   The seam sits at the raw-read abstraction, below all public timing
+'   semantics, so every higher-level behaviour can be proven naturally:
+'   fallback-before-commit, cache preservation, checkpoint abandonment.
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   None.
+'
+' BEHAVIOR
+'   The next call to QPC_TryReadTick returns FALSE and clears the flag.
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' NOTES
+'   The flag is deliberately ONE-SHOT and self-clearing. A sticky flag would
+'   make test ordering significant and would leak a forced failure into later
+'   cases - precisely the hidden state this class exists to eliminate.
+'
+'   Declared Friend, so it is reachable from the regression suite but invisible
+'   outside the project.
+'
+' UPDATED
+'   2026-08-15
+'==============================================================================
+
+    'Arm a single forced QPC read failure
+        m_TestFailNextQpcRead = True
+
+End Sub
+
+
+Friend Sub Test_ForceNextSystemTimeReadFailure()
+'
+'==============================================================================
+'                  TEST FORCE NEXT SYSTEM TIME READ FAILURE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms a ONE-SHOT forced failure of the next timeGetSystemTime read.
+'
+' WHY THIS EXISTS
+'   Backend 4 previously converted a failed read into a large positive duration
+'   through rollover correction. Proving that can no longer happen requires the
+'   ability to force the read to fail.
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   None.
+'
+' BEHAVIOR
+'   The next call to SystemTime_TryReadMs returns FALSE with
+'   cPM_ReadSystemTimeFailed, and clears the flag.
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' NOTES
+'   One-shot and self-clearing, for the same reasons as the QPC seam.
+'
+' UPDATED
+'   2026-08-15
+'==============================================================================
+
+    'Arm a single forced timeGetSystemTime read failure
+        m_TestFailNextSystemTimeRead = True
+
+End Sub
+
+Public Property Get TW_CalculationExempted() As Boolean
+'
+'==============================================================================
+'                          TW CALCULATION EXEMPTED
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns TRUE when Calculation control could not be honoured on this host and
+'   has been exempted from the shared effective state
+'
+' WHY THIS EXISTS
+'   Application.Calculation cannot be read or written when no workbook is open.
+'   In non-strict mode the shared manager exempts the flag rather than guessing
+'   a baseline, and the caller needs a way to discover that rather than assuming
+'   its suppression request was applied
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   Boolean
+'     TRUE  => Calculation was requested or captured but could not be honoured
+'     FALSE => Calculation control is being applied normally, or was never wanted
+'
+' BEHAVIOR
+'   Delegates to PM_TW_CalculationExempted in the shared manager.
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' NOTES
+'   Calculation control requires the open-workbook set to remain stable for the
+'   life of the shared scope. A baseline captured with no workbook open is
+'   unknown, and the manager will not lazily capture one later, because that
+'   would apply a baseline the scope never observed.
+'
+'   In strict mode an unhonourable Calculation request raises from TW_Turn_OFF
+'   instead, so this property reports FALSE on that path - the session was
+'   never started.
+'
+' UPDATED
+'   2026-08-15
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Report whether the shared manager exempted Calculation control
+        TW_CalculationExempted = PM_TW_CalculationExempted()
+
+End Property
+
 
