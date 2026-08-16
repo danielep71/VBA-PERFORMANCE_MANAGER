@@ -59,19 +59,6 @@ fresh rather than reconstructed at release time.
   medians, subtracting a dispatch-matched baseline, and telling a failed read
   apart from a genuinely fast operation. (#17)
 
-### Fixed
-
-- **`LastReadStatus` now describes the failed read after a strict-mode error.**
-  Strict mode raised from inside the private reader, before the status could be
-  returned, and the public operation had already reset `LastReadStatus` to
-  `cPM_ReadOK` — so a caller who trapped the error and inspected the status was
-  told the last read succeeded.
-  The error was never silent; `Err.Number` carried the right condition. But the
-  two public surfaces disagreed, and the one documented as authoritative was the
-  one that lied. Read policy now lives in `ElapsedSeconds` and `Checkpoint`,
-  which publish the status and then decide whether to fail — the shape
-  `StartTimer` already used. (CPM120-P2-01)
-  
 ### Changed
 
 - **BEHAVIORAL CORRECTION: `Stats_CoefficientOfVariation` now raises when the
@@ -106,13 +93,30 @@ fresh rather than reconstructed at release time.
   produced an unlabelled report while appearing to set one. It now passes the
   label to `StartTimer`. The examples module also had no coverage of anything
   added in v1.2.0. (#17)
-
+  
+- **`Elapsed_ComputeSeconds` no longer raises for read failures**, reporting
+  them through its status output instead. Two raises remain deliberately: the
+  defensive invalid-method branch, which has no corresponding read status, and
+  `Elapsed_Validate` for a backwards-moving clock, which is arithmetic
+  validation rather than a read.
+  
 ### Fixed
 
 - **`Stats_IsContaminated` rejects a negative `CvThreshold`.** A negative
   threshold reported every sample set as contaminated, since the coefficient of
   variation is never negative — a silently useless answer rather than an
   error. (#8)
+  
+- **`LastReadStatus` now describes the failed read after a strict-mode error.**
+  Strict mode raised from inside the private reader, before the status could be
+  returned, and the public operation had already reset `LastReadStatus` to
+  `cPM_ReadOK` — so a caller who trapped the error and inspected the status was
+  told the last read succeeded.
+  The error was never silent; `Err.Number` carried the right condition. But the
+  two public surfaces disagreed, and the one documented as authoritative was the
+  one that lied. Read policy now lives in `ElapsedSeconds` and `Checkpoint`,
+  which publish the status and then decide whether to fail — the shape
+  `StartTimer` already used. (CPM120-P2-01)
 
 ### Known limitations
 
