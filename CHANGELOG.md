@@ -205,6 +205,23 @@ fresh rather than reconstructed at release time.
   `RELEASING.md` therefore requires confirming the run for the exact tag target
   and recording its URL. (CPM120-P2-07)
 
+- **The release manifest now verifies its own claim and states its limits.**
+  `release_provenance.py --tag` compares every hashed source against that tag's
+  blob and exits non-zero on any difference, so the manifest can no longer hash
+  a working tree while claiming a commit the two disagree about. `--out` writes
+  it as JSON for attachment to the release.
+
+  What it deliberately does not do is assert that the workbook was built from
+  that source. No automated step produces the workbook — modules are imported by
+  hand and the file saved — and the VBA editor reformats on import, stripping
+  alignment and appending lines, so extracted source could never match the
+  repository byte for byte even in principle. Adding a "build script version"
+  field to a manual process would have been fiction.
+
+  The manifest therefore says plainly which claims it establishes and which it
+  does not, and states that the tagged source is authoritative and the workbook
+  a convenience copy. (CPM120-P2-08)
+
 ### Known limitations
 
 - **`LastReadStatus` does not cover harness reads.** The harness measures on an

@@ -88,10 +88,28 @@ leaving the reader to assume both.
 
 ```bash
 python3 tools/release_provenance.py --version 1.3.0 \
+    --tag v1.3.0 \
     --asset "demo/PERFORMANCE MANAGER.xlsm" \
+    --out release-manifest.json \
     --excel "Microsoft 365 MSO, Version 2606, Build 16.0.20131.20152" \
-    --bitness 64-bit --cases 69 --assertions 447
+    --bitness 64-bit --cases 72 --assertions 480
 ```
+
+`--tag` compares every hashed source against that tag's blob and exits non-zero
+on any difference, so the manifest cannot claim a tag it does not match. Run it
+**after** the tag exists.
+
+`--out` writes a machine-readable manifest. Attach it to the release alongside
+the workbook.
+
+> [!IMPORTANT]
+> The manifest establishes that the published sources are the tagged ones, and
+> that a download is the file published here. It does **not** establish that the
+> workbook was built from that source: no automated step produces it, and the
+> VBA editor reformats on import, so byte equality is unreachable in principle.
+>
+> The source files in the tag are authoritative. The workbook is a convenience
+> copy.
 
 The script exits non-zero and marks any missing field as `TODO`, so an
 incomplete block cannot slip through unnoticed. Keep the output for step 6.

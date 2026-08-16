@@ -28,10 +28,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+
+# Recorded in the manifest so a reader knows which logic produced it.
+TOOL_VERSION = "1.1.0"
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -69,6 +73,32 @@ def git(*args: str) -> str | None:
         return None
 
 
+def verify_against_tag(tag: str, paths: list[str]) -> list[str]:
+    """Confirm each file on disk matches the blob recorded at a tag.
+
+    The manifest hashes the working tree while claiming a commit. Those can
+    disagree - a stray edit, a stale checkout, a file exported but not committed.
+    Comparing against the tag turns the claim into a checked fact.
+
+    This proves the published hashes are the tagged sources. It says nothing
+    about the workbook, which no automated step produces.
+    """
+    problems: list[str] = []
+    for rel in paths:
+        p = ROOT / rel
+        blob = git("show", f"{tag}:{rel}")
+        if blob is None:
+            problems.append(f"{rel}: not present at {tag}")
+            continue
+        if not p.exists():
+            problems.append(f"{rel}: present at {tag} but missing on disk")
+            continue
+        on_disk = p.read_text(encoding="utf-8", errors="replace")
+        if on_disk.replace("\r\n", "\n") != blob.replace("\r\n", "\n"):
+            problems.append(f"{rel}: differs from {tag}")
+    return problems
+
+
 def rows(paths: list[str]) -> list[str]:
     out = []
     for rel in paths:
@@ -89,10 +119,16 @@ def main() -> int:
     ap.add_argument("--cases", type=int, help="Regression cases run")
     ap.add_argument("--assertions", type=int, help="Assertions executed")
     ap.add_argument("--failures", type=int, default=0, help="Failures (default 0)")
+    ap.add_argument("--tag", help="Verify every hashed source matches this tag's blob")
+    ap.add_argument("--out", metavar="PATH", help="Also write the manifest as JSON")
     args = ap.parse_args()
 
     commit = git("rev-parse", "HEAD")
     dirty = git("status", "--porcelain")
+
+    tag_problems: list[str] = []
+    if args.tag:
+        tag_problems = verify_against_tag(args.tag, REQUIRED + OPTIONAL)
 
     if dirty:
         print("WARNING: the working tree has uncommitted changes.", file=sys.stderr)
@@ -112,6 +148,7 @@ def main() -> int:
     out.append(f"| **Version** | v{args.version} |")
     out.append(f"| **Commit** | `{commit or TODO}` |")
     out.append(f"| **Built** | {date.today().isoformat()} |")
+    out.append(f"| **Manifest tool** | `release_provenance.py {TOOL_VERSION}` |")
     out.append("")
     out.append("### Certification")
     out.append("")
@@ -163,6 +200,41 @@ def main() -> int:
             out.append(f"| `{p.name}` | *not found at {args.asset}* |")
 
     out.append("")
+    if args.tag:
+        out.append("### Source integrity")
+        out.append("")
+        if tag_problems:
+            out.append(f"> [!CAUTION]")
+            out.append(f"> The hashed sources do **not** match `{args.tag}`:")
+            out.append(">")
+            for p in tag_problems:
+                out.append(f"> - {p}")
+        else:
+            out.append(f"Every hashed source file matches its blob at `{args.tag}`.")
+        out.append("")
+
+    out.append("### What this establishes")
+    out.append("")
+    out.append("| Claim | Established by |")
+    out.append("|---|---|")
+    out.append("| The published source files are the tagged ones | "
+               + ("comparison against the tag" if args.tag else "*not checked — rerun with `--tag`*") + " |")
+    out.append("| A downloaded file is the one published here | its SHA-256 |")
+    out.append("| The suite passed in the stated environment | the certification block, asserted by the releaser |")
+    out.append("")
+    out.append("> [!IMPORTANT]")
+    out.append("> **The workbook digest does not prove the workbook was built from this")
+    out.append("> source.** No automated step produces it: the modules are imported by hand")
+    out.append("> and the file is saved, and the VBA editor reformats on import — stripping")
+    out.append("> alignment, appending blank lines — so extracted source could never match")
+    out.append("> the repository byte for byte even in principle.")
+    out.append(">")
+    out.append("> The digest establishes that a download is the file published here, which")
+    out.append("> is a real and useful guarantee, and a different one.")
+    out.append(">")
+    out.append("> **The source files in this tag are authoritative.** The workbook is a")
+    out.append("> convenience copy. Where they disagree, the source is right.")
+    out.append("")
     out.append("<details>")
     out.append("<summary><strong>Verifying a download</strong></summary>")
     out.append("")
@@ -181,6 +253,48 @@ def main() -> int:
 
     text = "\n".join(out)
     print(text)
+
+    if args.out:
+        manifest = {
+            "tool": "release_provenance.py",
+            "tool_version": TOOL_VERSION,
+            "version": args.version,
+            "commit": commit,
+            "built": date.today().isoformat(),
+            "tag_verified": args.tag if (args.tag and not tag_problems) else None,
+            "tag_problems": tag_problems,
+            "certification": {
+                "cases": args.cases,
+                "assertions": args.assertions,
+                "failures": args.failures,
+                "excel": args.excel,
+                "bitness": args.bitness,
+            },
+            "sha256": {
+                rel: sha256(ROOT / rel)
+                for rel in REQUIRED + OPTIONAL
+                if (ROOT / rel).exists()
+            },
+            "scope": {
+                "source_files_match_tag": bool(args.tag and not tag_problems),
+                "workbook_built_from_source": False,
+                "workbook_build_is_manual": True,
+            },
+        }
+        if args.asset:
+            ap_path = Path(args.asset)
+            if not ap_path.is_absolute():
+                ap_path = ROOT / ap_path
+            if ap_path.exists():
+                manifest["sha256"][ap_path.name] = sha256(ap_path)
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        print(f"\nmanifest written to {out_path}", file=sys.stderr)
+
+    if tag_problems:
+        print(f"\n{len(tag_problems)} source file(s) do not match {args.tag}.", file=sys.stderr)
+        return 1
 
     missing = text.count(TODO)
     if missing:
