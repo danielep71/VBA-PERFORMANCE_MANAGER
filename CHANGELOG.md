@@ -164,6 +164,17 @@ fresh rather than reconstructed at release time.
   caller did not intend. Zero remains in domain: an operation can genuinely be
   too fast to resolve. (CPM120-P2-04)
 
+- **The trusted-input boundary of the measurement harness is now documented.**
+  `MeasureProcedure` passes its argument to `Application.Run`, which executes
+  it, so a name taken from a worksheet cell or a file is arbitrary code
+  execution inside the project. Qualification, added earlier in this release,
+  narrows a different risk and does not address this one.
+
+  No code change: any syntactically valid procedure name is executable by
+  design, so validating the string would look like protection without being any.
+  The remaining criteria in this finding were already met by the qualification
+  work. (CPM120-P2-05)
+
 ### Known limitations
 
 - **`LastReadStatus` does not cover harness reads.** The harness measures on an

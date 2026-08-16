@@ -666,6 +666,11 @@ All elapsed-time dispatch lives in one private reader. `ElapsedSeconds` delegate
 - **Rollover correction handles one wrap.** A session spanning more than a full 32-bit millisecond wrap on backends 2, 3 or 4 cannot be recovered by a single addition.
 - **`Application.Run` dispatch cost** is included in every `MeasureProcedure` sample. Subtract a baseline from `MeasureBaseline`, not from `MeasureOverhead_Samples`, which never dispatches.
 - **An unqualified procedure name** resolves against the workbook hosting the class, not the active workbook. Pass a qualified name such as `'Other.xlsm'!Proc` to measure elsewhere.
+- **`MeasureProcedure` executes the name it is given.** It reaches
+  `Application.Run`, so a name taken from a worksheet cell, a configuration
+  sheet or a file lets that source run arbitrary code inside your project. Pass
+  literals, or names your own code controls. Validating the string would not
+  help — any valid procedure name is executable by design.
 - **`timeBeginPeriod(1)`** affects system-wide timer resolution while held and is released by `ResetEnvironment`, with `Class_Terminate` as the fallback.
 - **A hard `End` statement** bypasses `Class_Terminate`; recover with `PM_TW_EndAllSessions`.
 - **Calculation control requires a stable open-workbook set** for the life of a suppression scope. Where that does not hold, the flag is exempted and `TW_CalculationExempted` reports it.

@@ -4594,6 +4594,20 @@ Public Function MeasureProcedure( _
 '   - ElapsedSeconds
 '   - ResetEnvironment
 '
+' TRUSTED INPUT
+'   ProcedureName is passed to Application.Run, which executes it. Supplying a
+'   name that came from a worksheet cell, a configuration sheet, a file or any
+'   other untrusted source is equivalent to letting that source run arbitrary
+'   code inside this VBA project.
+'
+'   Qualification narrows a different risk - a same-named procedure in another
+'   open workbook being selected instead of the intended one - but it does not
+'   address this one. Validating the string would not help either: any
+'   syntactically valid procedure name is executable by design, so a filter
+'   would look like protection without being any.
+'
+'   Pass literals, or names your own code controls.
+'
 ' NOTES
 '   - Application.Run only reaches Public procedures in standard modules. It
 '     cannot call Private procedures, class methods, or procedures in a module
@@ -4828,6 +4842,11 @@ Public Function MeasureBaseline( _
 ' ERROR POLICY
 '   Raises ERR_CPM_MEASURE_NO_BASELINE on a blank procedure name, with a message
 '   naming what to create
+'
+' TRUSTED INPUT
+'   EmptyProcedureName reaches Application.Run through MeasureProcedure and is
+'   executed. The same caution applies: pass literals, or names your own code
+'   controls, never a value read from a worksheet or a file.
 '
 ' WHY THE CALLER SUPPLIES THE PROCEDURE
 '   Application.Run cannot reach a procedure in a module declared
