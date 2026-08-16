@@ -12,7 +12,7 @@
 [![Pure VBA](https://img.shields.io/badge/Implementation-Pure_VBA-00599C?style=for-the-badge)](https://github.com/danielep71/vba-performance_manager)
 [![No External DLL](https://img.shields.io/badge/External_DLL-None-555555?style=for-the-badge)](#-installation)
 [![QPC](https://img.shields.io/badge/Default_Backend-QueryPerformanceCounter-c2185b?style=for-the-badge)](#-timing-backends)
-[![Regression](https://img.shields.io/badge/Regression-63_Cases_·_431_Assertions-d97706?style=for-the-badge)](#-testing-and-validation)
+[![Regression](https://img.shields.io/badge/Regression-69_Cases_·_468_Assertions-d97706?style=for-the-badge)](#-testing-and-validation)
 [![Statistics](https://img.shields.io/badge/Statistics-Median_·_P95_·_CV-0f766e?style=for-the-badge)](#-measurement-and-statistics)
 [![Version](https://img.shields.io/badge/Version-1.2.0-4c1d95?style=for-the-badge)](CHANGELOG.md)
 
@@ -62,8 +62,8 @@
 | | |
 |---:|:---|
 | **6** | timing backends behind one session-bound interface |
-| **43** | public members — 24 methods and 19 properties |
-| **63** | regression cases running **431** deterministic assertions, all green |
+| **44** | public members — 25 methods and 19 properties |
+| **69** | regression cases running **468** deterministic assertions, all green |
 | **23** | named error constants; no bare error numbers anywhere |
 | **76 %** | of the class is documentation, at procedure level |
 | **2** | files to import. No reference, no add-in, no DLL |
@@ -348,7 +348,8 @@ cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Cursor
 
 | Member | Returns | Purpose |
 |---|---|---|
-| `MeasureProcedure(Name, Iterations, Warmup, Method)` | `Double()` | Runs a named `Public Sub` N times via `Application.Run`; returns every per-run elapsed value |
+| `MeasureProcedure(Name, Iterations, Warmup, Method, [FailedReadsOut], [LastFailureStatusOut])` | `Double()` | Runs a named `Public Sub` N times via `Application.Run`; returns every per-run value, and reports how many reads failed |
+| `MeasureBaseline(EmptyProcName, Iterations, Warmup, Method)` | `Double()` | An empty procedure through the **same dispatch path**, so its median can legitimately be subtracted |
 | `MeasureOverhead_Samples(Iterations, Warmup, Method)` | `Double()` | Per-cycle overhead of the backend itself; its **minimum is your observed empty-cycle floor** |
 
 ## The statistics
@@ -389,7 +390,7 @@ Compare **P95 against the median** to see the tail. If P95 is close to the media
 
 - `Application.Run` reaches only **Public procedures in standard modules**. It cannot call class methods, `Private` procedures, or anything in a module declared `Option Private Module`.
 - `Application.Run` adds a dispatch cost to every sample. Measure it on your own machine rather than assuming a figure — it varies by Excel version, bitness and load. The harness suits work measured in milliseconds or longer.
-- `MeasureOverhead_Samples` measures the backend timing cycle only; it does **not** dispatch through `Application.Run`, so it is not a matched baseline for `MeasureProcedure`. For a matched baseline, run `MeasureProcedure` against an empty `Public Sub`. A dedicated helper is tracked in [#7](https://github.com/danielep71/vba-performance_manager/issues/7).
+- `MeasureOverhead_Samples` measures the backend timing cycle only; it does **not** dispatch through `Application.Run`, so it is not a matched baseline. Use **`MeasureBaseline`** for that, and subtract medians rather than means.
 - Measurement runs on an isolated worker instance, so your own session, checkpoints, and run label are never disturbed.
 
 </details>
@@ -448,7 +449,8 @@ cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Calculation
 
 | Member | Description |
 |---|---|
-| `MeasureProcedure(Name, [Iterations], [Warmup], [Method])` | Repeated measurement of a named procedure |
+| `MeasureProcedure(Name, [Iterations], [Warmup], [Method], [FailedReadsOut], [LastFailureStatusOut])` | Repeated measurement of a named procedure |
+| `MeasureBaseline(EmptyProcName, [Iterations], [Warmup], [Method])` | Dispatch-matched baseline |
 | `MeasureOverhead_Samples([Iterations], [Warmup], [Method])` | Per-cycle backend overhead samples |
 | `Stats_Median` · `Stats_Min` · `Stats_Max` · `Stats_Mean` | Central tendency and extremes |
 | `Stats_Percentile` · `Stats_StdDev` · `Stats_CoefficientOfVariation` | Distribution shape |
@@ -535,7 +537,9 @@ cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Calculation
 | Native read fails during a session start | Raises | Falls back to backend 2 before committing |
 | Native read fails during an elapsed read | Raises | Returns 0 and records the reason in `LastReadStatus` |
 
-All 23 raised error numbers are declared as named constants, so no bare `vbObjectError` offset appears anywhere in the code. Timing-method identifiers 1–6 remain numeric literals; naming those is tracked in [#13](https://github.com/danielep71/vba-performance_manager/issues/13).
+Every raised error number is a named constant, so no bare `vbObjectError` offset appears anywhere in the code, and they are exposed as the public `cPM_Error` and `cPM_TWError` enums so a caller can trap a condition by name.
+
+Backends and pause strategies are named too — `cPM_TimerMethod` and `cPM_PauseMethod`. The two share the numbers 1–4 and mean entirely different things, so separate types make them non-interchangeable at compile time.
 
 ---
 
@@ -545,7 +549,7 @@ All 23 raised error numbers are declared as named constants, so no bare `vbObjec
 Run_cPerformanceManager_RegressionSuite
 ```
 
-**63 cases · 431 assertions**, written to a dedicated worksheet log and summarised in the Immediate Window.
+**69 cases · 468 assertions**, written to a dedicated worksheet log and summarised in the Immediate Window.
 
 Last certified run: **0 failures**, 2026-08-16, on Excel for Microsoft 365 MSO
 Version 2606 Build 16.0.20131.20152, 64-bit.
@@ -657,7 +661,8 @@ All elapsed-time dispatch lives in one private reader. `ElapsedSeconds` delegate
 - **Windows only** for backends 2–5. Backends 1 and 6 are conceptually portable.
 - **Backend 1 cannot distinguish a backward clock adjustment from midnight rollover.** Both appear as a negative raw delta, and both get 24 hours added. Use backend 5 where this matters.
 - **Rollover correction handles one wrap.** A session spanning more than a full 32-bit millisecond wrap on backends 2, 3 or 4 cannot be recovered by a single addition.
-- **`Application.Run` dispatch cost** is included in every `MeasureProcedure` sample, and `MeasureOverhead_Samples` is not a matched baseline for it.
+- **`Application.Run` dispatch cost** is included in every `MeasureProcedure` sample. Subtract a baseline from `MeasureBaseline`, not from `MeasureOverhead_Samples`, which never dispatches.
+- **An unqualified procedure name** resolves against the workbook hosting the class, not the active workbook. Pass a qualified name such as `'Other.xlsm'!Proc` to measure elsewhere.
 - **`timeBeginPeriod(1)`** affects system-wide timer resolution while held and is released by `ResetEnvironment`, with `Class_Terminate` as the fallback.
 - **A hard `End` statement** bypasses `Class_Terminate`; recover with `PM_TW_EndAllSessions`.
 - **Calculation control requires a stable open-workbook set** for the life of a suppression scope. Where that does not hold, the flag is exempted and `TW_CalculationExempted` reports it.
