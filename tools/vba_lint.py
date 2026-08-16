@@ -409,15 +409,23 @@ def check_changelog_released_sections_frozen(rep: Report) -> None:
 
     current = _changelog_sections(CHANGELOG_FILE.read_text(encoding="utf-8"))
     problems: list[str] = []
-    compared, skipped = 0, []
+    compared: int = 0
+    unreleased: list[str] = []   # section exists, tag does not yet
+    predates: list[str] = []     # tag exists, but had no changelog
 
     for version, body in current.items():
         if version.lower() == "unreleased":
             continue
         tag = f"v{version}"
+        # A section whose tag does not exist yet is the release being prepared,
+        # which is a different situation from a tag that predates the changelog.
+        if _git("rev-parse", "-q", "--verify", f"refs/tags/{tag}") is None:
+            unreleased.append(tag)
+            continue
+
         at_tag = _git_show(tag, "CHANGELOG.md")
         if at_tag is None:
-            skipped.append(tag)
+            predates.append(tag)
             continue
         tagged = _changelog_sections(at_tag).get(version)
         if tagged is None:
@@ -432,8 +440,10 @@ def check_changelog_released_sections_frozen(rep: Report) -> None:
             )
 
     rep.check("released changelog sections frozen", problems)
-    if skipped:
-        print(f"note  {', '.join(skipped)} predate the changelog and cannot be verified")
+    if unreleased:
+        print(f"note  {', '.join(unreleased)} not tagged yet - section is the release being prepared")
+    if predates:
+        print(f"note  {', '.join(predates)} predate the changelog and cannot be verified")
     if compared == 0 and not problems:
         print("note  no released section could be compared - are tags fetched?")
 

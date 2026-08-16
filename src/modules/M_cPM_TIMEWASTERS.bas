@@ -128,7 +128,7 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '     benchmark runs
 '
 ' VERSION
-'   1.2.0
+'   1.3.0
 '
 ' UPDATED
 '   2026-08-15

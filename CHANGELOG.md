@@ -9,9 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Work merged to `main` but not yet released. Each entry is added by the pull
-request that introduces it, so the record is written while the reasoning is
-fresh rather than reconstructed at release time.
+Nothing yet.
+
+---
+
+## [1.3.0] — 2026-08-16
+
+Process discipline turned into enforcement, every value the API takes given a
+name, and a family of defects closed in which an invalid result was
+indistinguishable from a valid one.
+
+**Regression suite: 72 cases, 511 assertions, 0 failures.**
 
 ### Added
 
@@ -422,7 +430,8 @@ Initial public release.
 
 ---
 
-[Unreleased]: https://github.com/danielep71/vba-performance_manager/compare/v1.2.0...main
+[Unreleased]: https://github.com/danielep71/vba-performance_manager/compare/v1.3.0...main
+[1.3.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.3.0
 [1.2.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.2.0
 [1.1.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.1.0
 [1.0.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.0.0

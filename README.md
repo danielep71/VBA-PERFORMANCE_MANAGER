@@ -14,7 +14,7 @@
 [![QPC](https://img.shields.io/badge/Default_Backend-QueryPerformanceCounter-c2185b?style=for-the-badge)](#-timing-backends)
 [![Regression](https://img.shields.io/badge/Regression-72_Cases_·_511_Assertions-d97706?style=for-the-badge)](#-testing-and-validation)
 [![Statistics](https://img.shields.io/badge/Statistics-Median_·_P95_·_CV-0f766e?style=for-the-badge)](#-measurement-and-statistics)
-[![Version](https://img.shields.io/badge/Version-1.2.0-4c1d95?style=for-the-badge)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.3.0-4c1d95?style=for-the-badge)](CHANGELOG.md)
 
 <br>
 

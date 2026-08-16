@@ -7,7 +7,7 @@ Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
-'==============================================================================
+'================================================
 ' CLASS: cPERFORMANCEMANAGER
 '------------------------------------------------------------------------------
 ' PURPOSE
@@ -120,7 +120,7 @@ Attribute VB_Exposed = False
 ' AUTHOR
 '   Daniele Penza
 '
-' VERSION: 1.2.0
+' VERSION: 1.3.0
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -6884,6 +6884,8 @@ Public Property Get TW_CalculationExempted() As Boolean
         TW_CalculationExempted = PM_TW_CalculationExempted()
 
 End Property
+
+
 
 
 
