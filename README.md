@@ -63,7 +63,7 @@
 |---:|:---|
 | **6** | timing backends behind one session-bound interface |
 | **43** | public members — 24 methods and 19 properties |
-| **63** | regression cases running **431** deterministic assertions |
+| **63** | regression cases running **431** deterministic assertions, all green |
 | **23** | named error constants; no bare error numbers anywhere |
 | **76 %** | of the class is documentation, at procedure level |
 | **2** | files to import. No reference, no add-in, no DLL |
@@ -546,6 +546,14 @@ Run_cPerformanceManager_RegressionSuite
 ```
 
 **63 cases · 431 assertions**, written to a dedicated worksheet log and summarised in the Immediate Window.
+
+Last certified run: **0 failures**, 2026-08-16, on Excel for Microsoft 365 MSO
+Version 2606 Build 16.0.20131.20152, 64-bit.
+
+> [!NOTE]
+> On 64-bit Office, backend 2 compiles to `GetTickCount64`, so `RolloverSeconds`
+> is certified on its `Win64` branch only. The 32-bit wrap-correction branch is
+> compiled out and is not exercised by a 64-bit run.
 
 Coverage includes:
 

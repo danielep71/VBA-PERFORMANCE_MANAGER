@@ -14,6 +14,8 @@ measurement harness, and the removal of every magic error number from the
 codebase.
 
 **Regression suite: 63 cases, 431 assertions, 0 failures.**
+Certified 2026-08-16 on Excel for Microsoft 365 MSO Version 2606
+Build 16.0.20131.20152, 64-bit.
 
 ### Added
 
