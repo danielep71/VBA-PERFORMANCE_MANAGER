@@ -253,6 +253,11 @@ Initial public release.
   as the safety net.
 - Shared time-waster suppression through the required companion module.
 - Demo, usage-example, and regression-test modules.
+- **`cPM_TimerMethod`, `cPM_PauseMethod`, `cPM_Error` and `cPM_TWError` enums.**
+  Timing backends, pause strategies and error numbers are now selectable by
+  name. Values are unchanged, so existing numeric calls keep working. Separate
+  timer and pause types make the two non-interchangeable at compile time, which
+  v1.2.0 could only warn about in documentation. (#13, #14)
 
 ---
 
