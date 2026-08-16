@@ -5196,7 +5196,7 @@ Public Function Stats_CoefficientOfVariation( _
                       "The coefficient of variation is undefined because the sample " & _
                       "mean is not strictly positive. For timing data this means every " & _
                       "observation was zero, which usually indicates failed reads " & _
-                      "rather than a fast operation. Inspect LastReadStatus."
+                      "rather than a fast operation."
         End If
 
 '------------------------------------------------------------------------------
