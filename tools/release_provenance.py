@@ -83,6 +83,16 @@ def verify_against_tag(tag: str, paths: list[str]) -> list[str]:
     This proves the published hashes are the tagged sources. It says nothing
     about the workbook, which no automated step produces.
     """
+    # Distinguish a missing tag from missing files. git show fails identically
+    # for both, and reporting "not present at <tag>" for every file when the tag
+    # itself is unreachable sends the reader looking in entirely the wrong place.
+    if git("rev-parse", "-q", "--verify", f"refs/tags/{tag}") is None:
+        return [
+            f"tag {tag} does not exist in this clone",
+            "  If the release is still a draft, GitHub creates the tag on publish.",
+            "  If it is published, run: git fetch --tags",
+        ]
+
     problems: list[str] = []
     for rel in paths:
         p = ROOT / rel
@@ -204,11 +214,18 @@ def main() -> int:
         out.append("### Source integrity")
         out.append("")
         if tag_problems:
-            out.append(f"> [!CAUTION]")
-            out.append(f"> The hashed sources do **not** match `{args.tag}`:")
-            out.append(">")
-            for p in tag_problems:
-                out.append(f"> - {p}")
+            missing_tag = tag_problems and tag_problems[0].startswith("tag ")
+            out.append("> [!CAUTION]")
+            if missing_tag:
+                out.append(f"> **`{args.tag}` could not be found, so nothing was verified.**")
+                out.append(">")
+                for p in tag_problems:
+                    out.append(f"> {p.strip()}" if p.startswith("  ") else f"> - {p}")
+            else:
+                out.append(f"> The hashed sources do **not** match `{args.tag}`:")
+                out.append(">")
+                for p in tag_problems:
+                    out.append(f"> - {p}")
         else:
             out.append(f"Every hashed source file matches its blob at `{args.tag}`.")
         out.append("")
