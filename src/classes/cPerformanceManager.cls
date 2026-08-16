@@ -937,12 +937,18 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As cPM_TimerMethod = c
 '   - Caches m_T2, m_qpcEnd and m_ET ONLY when the read succeeded.
 '
 ' ERROR POLICY
-'   Delegated to Method_ResolveElapsed and Elapsed_ComputeSeconds.
+'   - Session and method validation is delegated to Method_ResolveElapsed.
+'   - A failed read publishes LastReadStatus first, then raises in strict mode
+'     or returns 0 in non-strict mode.
 '
 ' NOTES
 '   A returned 0 with LastReadStatus <> cPM_ReadOK is NOT a measurement of zero
 '   seconds. It means no valid reading was obtained. Callers that need to tell
 '   the two apart must check LastReadStatus.
+'
+'   LastReadStatus is assigned before any raise, so it describes this read on
+'   both paths. A caller that traps a strict-mode error can inspect it for the
+'   specific condition rather than decoding the error number.
 '
 '   On a failed read the cached T2 and ET are deliberately left untouched, so a
 '   failure cannot destroy the last known good measurement.
@@ -983,11 +989,21 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As cPM_TimerMethod = c
 '------------------------------------------------------------------------------
 ' HANDLE A FAILED READ
 '------------------------------------------------------------------------------
-    'Preserve the last known good cache and report the failure
+    'Publish the outcome BEFORE deciding whether to fail, so a caller that traps
+    'a strict-mode error still finds the status describing this read
         If Status <> cPM_ReadOK Then
             m_LastReadStatus = Status
-            ElapsedSeconds = 0#
-            Exit Property
+
+            If m_StrictMode Then
+                Err.Raise Read_StatusToErrorNumber(Status), _
+                          "cPerformanceManager.ElapsedSeconds", _
+                          Read_StatusToText(Status) & _
+                          " No elapsed time could be computed."
+            End If
+
+            'Non-strict: preserve the last known good cache and return zero
+                ElapsedSeconds = 0#
+                Exit Property
         End If
 
 '------------------------------------------------------------------------------
@@ -2589,7 +2605,8 @@ Public Sub Checkpoint( _
 '
 ' ERROR POLICY
 '   - Raises when no timing session is active.
-'   - Read failures raise in strict mode and abandon the capture otherwise.
+'   - A failed read publishes LastReadStatus first, then raises in strict mode
+'     or abandons the capture in non-strict mode.
 '
 ' NOTES
 '   On a failed read, the checkpoint count and the last-checkpoint marker are
@@ -2635,10 +2652,21 @@ Public Sub Checkpoint( _
         CurrentS = Elapsed_ComputeSeconds(ResolvedMethod, _
                                           DiscardEndStamp, DiscardQpcEnd, Status)
 
-    'Abandon the capture if no valid reading was obtained
+    'Publish the outcome BEFORE deciding whether to fail, so a caller that traps
+    'a strict-mode error still finds the status describing this read
         If Status <> cPM_ReadOK Then
             m_LastReadStatus = Status
-            Exit Sub
+
+            If m_StrictMode Then
+                Err.Raise Read_StatusToErrorNumber(Status), _
+                          "cPerformanceManager.Checkpoint", _
+                          Read_StatusToText(Status) & _
+                          " The checkpoint was not captured."
+            End If
+
+            'Non-strict: abandon the capture, leaving the count and the
+            'last-checkpoint marker untouched
+                Exit Sub
         End If
 
 '------------------------------------------------------------------------------
@@ -5768,9 +5796,22 @@ Private Function Elapsed_ComputeSeconds( _
 '   Every read is now checked before any subtraction or rollover correction.
 '
 ' ERROR POLICY
-'   - Raises in strict mode when a read fails or the method is invalid.
-'   - Returns 0 with a non-OK StatusOut in non-strict mode.
+'   - NEVER raises for a read failure. A failed read is reported through
+'     StatusOut so the caller can publish it before deciding whether to fail.
+'   - Still raises for an invalid resolved method, which is a defensive branch
+'     with no corresponding read status, and through Elapsed_Validate for a
+'     backwards-moving clock, which is arithmetic validation rather than a read.
 '   - Never applies rollover correction to a failed read.
+'
+' WHY THE READ POLICY LIVES IN THE CALLER
+'   Strict mode previously raised from here, before StatusOut could be returned.
+'   The public operation had already reset LastReadStatus to OK, so a caller who
+'   trapped the strict error and then inspected the status was told the last read
+'   succeeded.
+'
+'   Reporting the status and letting the caller decide keeps the two public
+'   surfaces - Err and LastReadStatus - in agreement. StartTimer already works
+'   this way through Start_TryCapture.
 '
 ' NOTES
 '   Method 5 deliberately skips Elapsed_Validate. QPC is monotonic and method 5
@@ -5822,14 +5863,10 @@ Private Function Elapsed_ComputeSeconds( _
                 Seconds = Elapsed_Validate(Seconds)
 
         Case cPM_MethodSystemTime
-                'Validate the read BEFORE any arithmetic touches it
+                'Validate the read BEFORE any arithmetic touches it.
+                'The status is returned rather than raised, so the caller can
+                'publish it before deciding whether to fail.
                 If Not SystemTime_TryReadMs(Ms, StatusOut) Then
-                    If m_StrictMode Then
-                        Err.Raise Read_StatusToErrorNumber(StatusOut), _
-                                  "cPerformanceManager.Elapsed_ComputeSeconds", _
-                                  Read_StatusToText(StatusOut) & _
-                                  " No elapsed time could be computed."
-                    End If
                     Elapsed_ComputeSeconds = 0#
                     Exit Function
                 End If
@@ -5841,15 +5878,11 @@ Private Function Elapsed_ComputeSeconds( _
                 Seconds = Elapsed_Validate(Seconds)
 
         Case cPM_MethodQPC
-                'Validate the read BEFORE any arithmetic touches it
+                'Validate the read BEFORE any arithmetic touches it.
+                'The status is returned rather than raised, so the caller can
+                'publish it before deciding whether to fail.
                 If Not QPC_TryReadTick(QpcNow) Then
                     StatusOut = cPM_ReadQpcFailed
-                    If m_StrictMode Then
-                        Err.Raise ERR_CPM_QPC_READ_FAILED, _
-                                  "cPerformanceManager.Elapsed_ComputeSeconds", _
-                                  "QueryPerformanceCounter failed while reading the " & _
-                                  "elapsed-time endpoint. No elapsed time could be computed."
-                    End If
                     Elapsed_ComputeSeconds = 0#
                     Exit Function
                 End If
@@ -6605,12 +6638,5 @@ Public Property Get TW_CalculationExempted() As Boolean
         TW_CalculationExempted = PM_TW_CalculationExempted()
 
 End Property
-
-
-
-
-
-
-
 
 

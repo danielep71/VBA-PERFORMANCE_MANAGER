@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 69    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 70    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -562,6 +562,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault: checkpoint read failure"
         Test_FaultInject_CheckpointFailure
+
+    'Validate that LastReadStatus survives a strict-mode raise
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "LastReadStatus after strict failure"
+        Test_LastReadStatus_AfterStrictFailure
 
     'Validate that a real Calculation baseline is captured and restored
         CurrentStep = CurrentStep + 1
@@ -9567,4 +9572,199 @@ CleanFail:
 
 End Sub
 
+Private Sub Test_LastReadStatus_AfterStrictFailure()
+'
+'==============================================================================
+'               TEST LASTREADSTATUS AFTER STRICT FAILURE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that LastReadStatus describes the failed read after a strict-mode
+'   error has been trapped
+'
+' WHY THIS EXISTS
+'   Strict mode previously raised from inside the private reader, before the
+'   status could be returned. The public operation had already reset
+'   LastReadStatus to cPM_ReadOK, so a caller who trapped the error and then
+'   inspected the status was told the last read succeeded
+'
+'   The error was never silent, but the two public surfaces disagreed, and the
+'   one documented as authoritative was the one that lied
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
 
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Class under test
+    Dim GoodET      As Double                 'Last good elapsed value
+    Dim GoodT2      As Double                 'Last good end timestamp
+    Dim CountBefore As Long                   'Checkpoint count before the failure
+    Dim ErrNum      As Long                   'Trapped error number
+    Dim Dummy       As Double                 'Discarded return value
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "LastReadStatus after a strict-mode failure"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance in strict mode
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = True
+
+'------------------------------------------------------------------------------
+' ESTABLISH A GOOD MEASUREMENT TO PROTECT
+'------------------------------------------------------------------------------
+    'Take a real measurement and retain it
+        cPM.StartTimer cPM_MethodQPC
+        cPM.Pause 0.02, cPM_PauseSleep
+        GoodET = cPM.ElapsedSeconds
+        GoodT2 = cPM.T2
+
+    'Assert the baseline read reports success
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
+                              "A successful read reports cPM_ReadOK"
+
+'------------------------------------------------------------------------------
+' STRICT QPC ENDPOINT FAILURE
+'------------------------------------------------------------------------------
+    'Force the next QPC read to fail and trap the resulting error
+        cPM.Test_ForceNextQPCReadFailure
+
+        ErrNum = 0
+        On Error Resume Next
+        Dummy = cPM.ElapsedSeconds
+        ErrNum = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+    'Assert the error still fires with the correct number
+        Test_Assert_True (ErrNum <> 0), _
+                         "A failed QPC read still raises in strict mode"
+
+    'This is the defect: the status must describe the failed read, not the one before
+        Test_Assert_EqualLong CLng(cPM_ReadQpcFailed), CLng(cPM.LastReadStatus), _
+                              "LastReadStatus reports the QPC failure after a strict raise"
+
+    'Assert the raise happened before any cached value was disturbed
+        Test_Assert_ApproxDouble GoodET, cPM.ET, 0.000000001, _
+                                 "A strict failure leaves the cached ET untouched"
+        Test_Assert_ApproxDouble GoodT2, cPM.T2, 0.000000001, _
+                                 "A strict failure leaves the cached T2 untouched"
+
+'------------------------------------------------------------------------------
+' STRICT METHOD-4 ENDPOINT FAILURE
+'------------------------------------------------------------------------------
+    'Establish a method-4 session, then force its next read to fail
+        cPM.StartTimer cPM_MethodSystemTime
+        cPM.Pause 0.02, cPM_PauseSleep
+        Dummy = cPM.ElapsedSeconds
+
+        cPM.Test_ForceNextSystemTimeReadFailure
+
+        ErrNum = 0
+        On Error Resume Next
+        Dummy = cPM.ElapsedSeconds
+        ErrNum = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+    'Assert the specific condition is reported, not a generic one
+        Test_Assert_True (ErrNum <> 0), _
+                         "A failed method-4 read still raises in strict mode"
+        Test_Assert_EqualLong CLng(cPM_ReadSystemTimeFailed), CLng(cPM.LastReadStatus), _
+                              "LastReadStatus reports the timeGetSystemTime failure"
+
+'------------------------------------------------------------------------------
+' STRICT WRONG-FORMAT ENDPOINT
+'------------------------------------------------------------------------------
+    'Force a wrong-format result and trap the error
+        cPM.Test_ForceNextSystemTimeFormatInvalid
+
+        ErrNum = 0
+        On Error Resume Next
+        Dummy = cPM.ElapsedSeconds
+        ErrNum = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+    'Assert the format problem is distinguished from an outright read failure
+        Test_Assert_True (ErrNum <> 0), _
+                         "A wrong-format read still raises in strict mode"
+        Test_Assert_EqualLong CLng(cPM_ReadSystemTimeFormatInvalid), CLng(cPM.LastReadStatus), _
+                              "LastReadStatus distinguishes a wrong format from a read failure"
+
+'------------------------------------------------------------------------------
+' STRICT FAILURE DURING CHECKPOINT
+'------------------------------------------------------------------------------
+    'Establish a QPC session with one good checkpoint
+        cPM.StartTimer cPM_MethodQPC, False, "Strict run"
+        cPM.Pause 0.02, cPM_PauseSleep
+        cPM.Checkpoint "Phase 1"
+        CountBefore = cPM.CheckpointCount
+
+    'Force the checkpoint read to fail and trap the error
+        cPM.Test_ForceNextQPCReadFailure
+
+        ErrNum = 0
+        On Error Resume Next
+        cPM.Checkpoint "Phase 2 - should not be recorded"
+        ErrNum = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+    'Assert the failure is reported through both surfaces
+        Test_Assert_True (ErrNum <> 0), _
+                         "A failed checkpoint read raises in strict mode"
+        Test_Assert_EqualLong CLng(cPM_ReadQpcFailed), CLng(cPM.LastReadStatus), _
+                              "LastReadStatus reports the failed checkpoint read"
+
+    'Assert the abandoned capture left the report untouched
+        Test_Assert_EqualLong CountBefore, cPM.CheckpointCount, _
+                              "A strict checkpoint failure appends no row"
+
+'------------------------------------------------------------------------------
+' ASSERT RECOVERY
+'------------------------------------------------------------------------------
+    'A successful read afterwards must clear the status again
+        Test_Assert_True (cPM.ElapsedSeconds > 0#), _
+                         "The next read succeeds normally"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
+                              "LastReadStatus resets to OK on a successful read"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_LastReadStatus_AfterStrictFailure"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
