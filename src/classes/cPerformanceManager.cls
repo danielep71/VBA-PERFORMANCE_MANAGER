@@ -151,13 +151,13 @@ Attribute VB_Exposed = False
     'StartTimer cPM_MethodQPC are identical. The enum exists so the choice is
     'legible at the call site and selectable from IntelliSense.
     Public Enum cPM_TimerMethod
-        cPM_MethodSession       = 0     'Use the backend bound to the active session
-        cPM_MethodTimer         = 1     'VBA Timer, seconds since midnight
-        cPM_MethodTickCount     = 2     'GetTickCount / GetTickCount64
-        cPM_MethodTimeGetTime   = 3     'winmm timeGetTime
-        cPM_MethodSystemTime    = 4     'winmm timeGetSystemTime via MMTIME
-        cPM_MethodQPC           = 5     'QueryPerformanceCounter - default
-        cPM_MethodNow           = 6     'Now() * 86400, wall clock
+        cPM_MethodSession = 0           'Use the backend bound to the active session
+        cPM_MethodTimer = 1             'VBA Timer, seconds since midnight
+        cPM_MethodTickCount = 2         'GetTickCount / GetTickCount64
+        cPM_MethodTimeGetTime = 3       'winmm timeGetTime
+        cPM_MethodSystemTime = 4        'winmm timeGetSystemTime via MMTIME
+        cPM_MethodQPC = 5               'QueryPerformanceCounter - default
+        cPM_MethodNow = 6               'Now() * 86400, wall clock
     End Enum
 
     'Pause strategy selector.
@@ -166,10 +166,10 @@ Attribute VB_Exposed = False
     'something entirely different. Separate enum types make the two
     'non-interchangeable at compile time rather than only in the documentation.
     Public Enum cPM_PauseMethod
-        cPM_PauseSleep          = 1     'Sleep API, lowest overhead, no DoEvents
-        cPM_PauseTimerLoop      = 2     'Timer delta with DoEvents
-        cPM_PauseAppWait        = 3     'Application.Wait plus a Timer bound
-        cPM_PauseNowLoop        = 4     'Now loop with DoEvents plus a Timer bound
+        cPM_PauseSleep = 1              'Sleep API, lowest overhead, no DoEvents
+        cPM_PauseTimerLoop = 2          'Timer delta with DoEvents
+        cPM_PauseAppWait = 3            'Application.Wait plus a Timer bound
+        cPM_PauseNowLoop = 4            'Now loop with DoEvents plus a Timer bound
     End Enum
 
     'Outcome of the most recent native timing read.
@@ -383,33 +383,34 @@ Attribute VB_Exposed = False
     'without disturbing the numbering of the others.
     Public Enum cPM_Error
         'Method validation and session binding
-        ERR_CPM_INVALID_START_METHOD     = vbObjectError + 1000
-        ERR_CPM_QPC_UNAVAILABLE          = vbObjectError + 1001
-        ERR_CPM_NO_ACTIVE_SESSION        = vbObjectError + 1002
-        ERR_CPM_INVALID_ELAPSED_METHOD   = vbObjectError + 1003
-        ERR_CPM_METHOD_MISMATCH          = vbObjectError + 1004
-        ERR_CPM_RESOLVED_METHOD_INVALID  = vbObjectError + 1005
+        ERR_CPM_INVALID_START_METHOD = vbObjectError + 1000
+        ERR_CPM_QPC_UNAVAILABLE = vbObjectError + 1001
+        ERR_CPM_NO_ACTIVE_SESSION = vbObjectError + 1002
+        ERR_CPM_INVALID_ELAPSED_METHOD = vbObjectError + 1003
+        ERR_CPM_METHOD_MISMATCH = vbObjectError + 1004
+        ERR_CPM_RESOLVED_METHOD_INVALID = vbObjectError + 1005
 
         'Timing source and environment
-        ERR_CPM_QPC_READ_FAILED          = vbObjectError + 1007
-        ERR_CPM_TIMEBEGINPERIOD_FAILED   = vbObjectError + 1008
-        ERR_CPM_TIMEENDPERIOD_FAILED     = vbObjectError + 1009
-        ERR_CPM_ALIGN_TICK_TIMEOUT       = vbObjectError + 1010
+        ERR_CPM_QPC_READ_FAILED = vbObjectError + 1007
+        ERR_CPM_TIMEBEGINPERIOD_FAILED = vbObjectError + 1008
+        ERR_CPM_TIMEENDPERIOD_FAILED = vbObjectError + 1009
+        ERR_CPM_ALIGN_TICK_TIMEOUT = vbObjectError + 1010
         ERR_CPM_TIMEGETSYSTEMTIME_FAILED = vbObjectError + 1011
         ERR_CPM_TIMEGETSYSTEMTIME_FORMAT = vbObjectError + 1012
-        ERR_CPM_NEGATIVE_ELAPSED         = vbObjectError + 1013
-        ERR_CPM_START_CAPTURE_FAILED     = vbObjectError + 1014
+        ERR_CPM_NEGATIVE_ELAPSED = vbObjectError + 1013
+        ERR_CPM_START_CAPTURE_FAILED = vbObjectError + 1014
 
         'Checkpoints and structured reporting
-        ERR_CPM_CHECKPOINT_NO_SESSION    = vbObjectError + 1020
-        ERR_CPM_RUNLABEL_AFTER_CAPTURE   = vbObjectError + 1021
+        ERR_CPM_CHECKPOINT_NO_SESSION = vbObjectError + 1020
+        ERR_CPM_RUNLABEL_AFTER_CAPTURE = vbObjectError + 1021
 
         'Statistics and the measurement harness
-        ERR_CPM_STATS_NO_SAMPLES         = vbObjectError + 1030
-        ERR_CPM_STATS_BAD_PERCENTILE     = vbObjectError + 1031
-        ERR_CPM_MEASURE_BLANK_PROC       = vbObjectError + 1032
-        ERR_CPM_STATS_UNDEFINED_CV       = vbObjectError + 1033
-        ERR_CPM_STATS_BAD_CV_THRESHOLD   = vbObjectError + 1034
+        ERR_CPM_STATS_NO_SAMPLES = vbObjectError + 1030
+        ERR_CPM_STATS_BAD_PERCENTILE = vbObjectError + 1031
+        ERR_CPM_MEASURE_BLANK_PROC = vbObjectError + 1032
+        ERR_CPM_STATS_UNDEFINED_CV = vbObjectError + 1033
+        ERR_CPM_STATS_BAD_CV_THRESHOLD = vbObjectError + 1034
+        ERR_CPM_MEASURE_NO_BASELINE = vbObjectError + 1035
     End Enum
 
     'Coefficient-of-variation above which a sample set is reported as noisy
@@ -503,6 +504,7 @@ Attribute VB_Exposed = False
         Private m_TestFailNextQpcRead        As Boolean
         Private m_TestFailNextSystemTimeRead As Boolean
         Private m_TestForceNextSystemTimeFormatInvalid As Boolean
+        Private m_TestWorkerReadFailures As Long
 
 '
 '------------------------------------------------------------------------------
@@ -4325,7 +4327,9 @@ Public Function MeasureProcedure( _
     ByVal ProcedureName As String, _
     Optional ByVal Iterations As Long = 30, _
     Optional ByVal WarmupIterations As Long = 3, _
-    Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC) _
+    Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC, _
+    Optional ByRef FailedReadsOut As Long, _
+    Optional ByRef LastFailureStatusOut As cPM_ReadStatus) _
     As Double()
 '
 '==============================================================================
@@ -4403,9 +4407,12 @@ Public Function MeasureProcedure( _
 '------------------------------------------------------------------------------
     Dim Samples()           As Double                'Per-run elapsed seconds
     Dim K                   As Long                  'Loop counter
-    Dim ResolvedMethod      As cPM_TimerMethod               'Validated timer method
+    Dim ResolvedMethod      As cPM_TimerMethod       'Validated timer method
     Dim cPM_Work            As cPerformanceManager   'Isolated worker instance
     Dim DiscardedElapsedS   As Double                'Throwaway warm-up value
+    Dim RunTarget           As String                'Workbook-qualified procedure name
+    Dim FailedReads         As Long                  'Measured reads that did not succeed
+    Dim LastFailure         As cPM_ReadStatus        'Status of the most recent failed read
     Dim ErrNumber           As Long                  'Captured error number
     Dim ErrSource           As String                'Captured error source
     Dim ErrDescription      As String                'Captured error description
@@ -4430,8 +4437,17 @@ Public Function MeasureProcedure( _
     'Route runtime failures through cleanup
         On Error GoTo Err_Handler
 
+    'This run reports its own outcome
+        FailedReadsOut = 0
+        LastFailureStatusOut = cPM_ReadOK
+        LastFailure = cPM_ReadOK
+
     'Normalize and validate the timer method using the current instance policy
         ResolvedMethod = Method_NormalizeStart(iMethod)
+
+    'Resolve the target deterministically rather than leaving it to whichever
+    'workbook happens to be active
+        RunTarget = Measure_QualifyProcedureName(ProcedureName)
 
     'Size the result vector
         ReDim Samples(1 To Iterations)
@@ -4450,7 +4466,7 @@ Public Function MeasureProcedure( _
     'Run and discard the warm-up iterations
         For K = 1 To WarmupIterations
             cPM_Work.StartTimer ResolvedMethod, False
-            Application.Run ProcedureName
+            Application.Run RunTarget
             DiscardedElapsedS = cPM_Work.ElapsedSeconds()
         Next K
 
@@ -4460,9 +4476,30 @@ Public Function MeasureProcedure( _
     'Record one elapsed value per measured iteration
         For K = 1 To Iterations
             cPM_Work.StartTimer ResolvedMethod, False
-            Application.Run ProcedureName
+            Application.Run RunTarget
+
+            'Consume any armed fault injection so a forced failure lands on a
+            'measured sample rather than a discarded warm-up one
+                If m_TestWorkerReadFailures > 0 Then
+                    m_TestWorkerReadFailures = m_TestWorkerReadFailures - 1
+                    cPM_Work.Test_ForceNextQPCReadFailure
+                End If
+
             Samples(K) = cPM_Work.ElapsedSeconds()
+
+            'Record a read that did not produce a measurement
+                If cPM_Work.LastReadStatus <> cPM_ReadOK Then
+                    FailedReads = FailedReads + 1
+                    LastFailure = cPM_Work.LastReadStatus
+                End If
         Next K
+
+    'The worker is released below, so its outcome has to be surfaced here or it
+    'is lost. The caller's own LastReadStatus is deliberately not touched: it
+    'describes the caller's own reads, not a run delegated to a worker
+        FailedReadsOut = FailedReads
+        LastFailureStatusOut = LastFailure
+        m_TestWorkerReadFailures = 0
 
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
@@ -4503,6 +4540,97 @@ Err_Handler:
 '------------------------------------------------------------------------------
     'Re-raise the original error
         Err.Raise ErrNumber, ErrSource, ErrDescription
+
+End Function
+
+Public Function MeasureBaseline( _
+    ByVal EmptyProcedureName As String, _
+    Optional ByVal Iterations As Long = 30, _
+    Optional ByVal WarmupIterations As Long = 3, _
+    Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC) _
+    As Double()
+'
+'==============================================================================
+'                              MEASURE BASELINE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Measures the cost of the harness itself, through the same dispatch path that
+'   MeasureProcedure uses
+'
+' WHY THIS EXISTS
+'   MeasureOverhead_Samples measures the timing cycle only. It does not call
+'   Application.Run, so subtracting it from a MeasureProcedure result removes
+'   the wrong quantity and leaves the dispatch cost in place
+'
+'   This routine runs an empty procedure through the identical path, so its
+'   median is a baseline that can legitimately be subtracted
+'
+' INPUTS
+'   EmptyProcedureName
+'     Name of an empty Public Sub in a standard module
+'
+'   Iterations, WarmupIterations, iMethod
+'     As for MeasureProcedure
+'
+' RETURNS
+'   Double()
+'     1-based vector of per-run dispatch cost in seconds
+'
+' BEHAVIOR
+'   Delegates to MeasureProcedure, so qualification, isolation and failure
+'   handling are identical by construction rather than by duplication
+'
+' ERROR POLICY
+'   Raises ERR_CPM_MEASURE_NO_BASELINE on a blank procedure name, with a message
+'   naming what to create
+'
+' WHY THE CALLER SUPPLIES THE PROCEDURE
+'   Application.Run cannot reach a procedure in a module declared
+'   Option Private Module, which is what the companion TW module uses to keep
+'   its internals out of the Macro dialog. An empty procedure shipped with the
+'   component would therefore need a third file whose entire content is two
+'   lines, and the import contract is deliberately two files.
+'
+'   Add this once, anywhere in a standard module:
+'
+'       Public Sub cPM_BaselineEmpty()
+'       End Sub
+'
+' USAGE
+'       Dim Work() As Double, Base() As Double
+'       Work = cPM.MeasureProcedure("MyWorkload", 30, 3)
+'       Base = cPM.MeasureBaseline("cPM_BaselineEmpty", 30, 3)
+'
+'       Debug.Print "Net: " & (cPM.Stats_Median(Work) - cPM.Stats_Median(Base))
+'
+' NOTES
+'   Subtract medians, not means. Both vectors are right-skewed, and subtracting
+'   two means compounds the contamination in each
+'
+'   The baseline is machine-specific and worth re-measuring on each host
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject a blank name with instructions rather than a bare failure
+        If Len(Trim$(EmptyProcedureName)) = 0 Then
+            Err.Raise ERR_CPM_MEASURE_NO_BASELINE, _
+                      "cPerformanceManager.MeasureBaseline", _
+                      "EmptyProcedureName cannot be blank. Add an empty Public Sub to " & _
+                      "a standard module and pass its name, for example: " & _
+                      "Public Sub cPM_BaselineEmpty() / End Sub"
+        End If
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Measure through the identical path so the baseline is genuinely matched
+        MeasureBaseline = MeasureProcedure(EmptyProcedureName, Iterations, _
+                                           WarmupIterations, iMethod)
 
 End Function
 
@@ -6045,6 +6173,114 @@ Private Function Read_StatusToText( _
 End Function
 
 
+Private Function Measure_QualifyProcedureName( _
+    ByVal ProcedureName As String) _
+    As String
+'
+'==============================================================================
+'                      MEASURE QUALIFY PROCEDURE NAME
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns a workbook-qualified name for Application.Run
+'
+' WHY THIS EXISTS
+'   Application.Run resolves an unqualified name against the active workbook
+'   first. When several open workbooks define a procedure of the same name, the
+'   harness could silently measure the wrong one, and which one would depend on
+'   what the user happened to have in front
+'
+'   Qualifying with the workbook that hosts this class makes resolution
+'   deterministic
+'
+' INPUTS
+'   ProcedureName
+'     Name as supplied by the caller, qualified or not
+'
+' RETURNS
+'   String
+'     The name Application.Run should be given
+'
+' BEHAVIOR
+'   - A name already containing "!" is returned untouched, so an explicit
+'     qualification always wins
+'   - Otherwise the name is qualified with ThisWorkbook, quoted so that a
+'     workbook name containing spaces still resolves
+'
+' ERROR POLICY
+'   Does not raise
+'
+' NOTES
+'   The quoting matters. "PERFORMANCE MANAGER.xlsm!Proc" fails to resolve;
+'   "'PERFORMANCE MANAGER.xlsm'!Proc" succeeds
+'
+'   To measure a procedure in a different workbook, pass the qualified form
+'   yourself
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'An explicit qualification always wins
+        If InStr(1, ProcedureName, "!") > 0 Then
+            Measure_QualifyProcedureName = ProcedureName
+            Exit Function
+        End If
+
+    'Qualify with the workbook hosting this class, quoted for names with spaces
+        Measure_QualifyProcedureName = "'" & ThisWorkbook.Name & "'!" & ProcedureName
+
+End Function
+
+Friend Sub Test_ForceWorkerReadFailures( _
+    ByVal FailureCount As Long)
+'
+'==============================================================================
+'                     TEST FORCE WORKER READ FAILURES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms a number of forced read failures inside the isolated worker instance
+'   that the measurement harness creates
+'
+' WHY THIS EXISTS
+'   The other fault-injection seams arm a flag on the instance they are called
+'   on. The harness measures on a private worker, so those seams cannot reach
+'   the reads that actually produce the sample vector
+'
+'   Without this, the failure reporting added for the harness could only ever be
+'   tested on a healthy run, which proves nothing
+'
+' INPUTS
+'   FailureCount
+'     Number of measured reads to fail. Negative values are treated as zero
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   The next FailureCount measured reads inside MeasureProcedure or
+'   MeasureOverhead_Samples return a failure. The counter is consumed as the
+'   reads occur and is cleared when the harness finishes
+'
+' ERROR POLICY
+'   Does not raise
+'
+' NOTES
+'   Warm-up iterations are not affected, so a forced failure lands on a measured
+'   sample rather than a discarded one
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+    'Arm the requested number of forced worker read failures
+        If FailureCount < 0 Then FailureCount = 0
+        m_TestWorkerReadFailures = FailureCount
+
+End Sub
+
 Friend Sub Test_ForceNextQPCReadFailure()
 '
 '==============================================================================
@@ -6228,6 +6464,8 @@ Public Property Get TW_CalculationExempted() As Boolean
         TW_CalculationExempted = PM_TW_CalculationExempted()
 
 End Property
+
+
 
 
 

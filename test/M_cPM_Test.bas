@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 66    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 69    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -512,6 +512,21 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "MeasureProcedure and overhead samples"
         Test_Measure_Harness
+
+    'Validate deterministic resolution of the measured procedure name
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: qualified resolution"
+        Test_Measure_QualifiedResolution
+
+    'Validate that worker read failures reach the caller
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: worker read failures"
+        Test_Measure_SurfacesWorkerReadFailures
+
+    'Validate the dispatch-matched baseline
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: dispatch-matched baseline"
+        Test_Measure_DispatchMatchedBaseline
 
     'Validate strict-mode rejection of a failed QPC start read
         CurrentStep = CurrentStep + 1
@@ -9129,6 +9144,416 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_Stats_Text_ReportsUndefinedCV"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Public Sub cPM_Test_BaselineEmpty()
+'
+'==============================================================================
+'                          CPM TEST BASELINE EMPTY
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Empty procedure used as the target of MeasureBaseline
+'
+' WHY THIS EXISTS
+'   A dispatch-matched baseline needs a procedure that does nothing, reached
+'   through the same Application.Run path as a real workload. It must be Public
+'   and in a standard module, because Application.Run cannot resolve anything
+'   else
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+    'Deliberately empty
+
+End Sub
+
+Private Sub Test_Measure_QualifiedResolution()
+'
+'==============================================================================
+'                    TEST MEASURE QUALIFIED RESOLUTION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that the harness resolves its target deterministically, and that
+'   an explicitly qualified name is honored
+'
+' WHY THIS EXISTS
+'   Application.Run resolves an unqualified name against the active workbook
+'   first. With several workbooks open, the harness could measure a procedure of
+'   the same name belonging to whichever one the user happened to have in front
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Class under test
+    Dim Bare()      As Double                 'Samples from an unqualified name
+    Dim Qualified() As Double                 'Samples from an explicit qualification
+    Dim TargetName  As String                 'Explicitly qualified target
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: qualified procedure resolution"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+    'Build the qualified form the class should produce internally
+        TargetName = "'" & ThisWorkbook.Name & "'!cPM_Test_Workload"
+
+'------------------------------------------------------------------------------
+' ASSERT AN UNQUALIFIED NAME STILL RESOLVES
+'------------------------------------------------------------------------------
+    'A bare name must keep working, now resolved against this workbook
+        Bare = cPM.MeasureProcedure("cPM_Test_Workload", 3, 1)
+        Test_Assert_EqualLong 3, cPM.Stats_Count(Bare), _
+                              "An unqualified name resolves and returns samples"
+        Test_Assert_True (cPM.Stats_Min(Bare) > 0#), _
+                         "Unqualified resolution produced real measurements"
+
+'------------------------------------------------------------------------------
+' ASSERT AN EXPLICIT QUALIFICATION IS HONORED
+'------------------------------------------------------------------------------
+    'A caller-supplied qualification must be passed through untouched
+        Qualified = cPM.MeasureProcedure(TargetName, 3, 1)
+        Test_Assert_EqualLong 3, cPM.Stats_Count(Qualified), _
+                              "An explicitly qualified name resolves and returns samples"
+        Test_Assert_True (cPM.Stats_Min(Qualified) > 0#), _
+                         "Explicit qualification produced real measurements"
+
+'------------------------------------------------------------------------------
+' ASSERT AN UNRESOLVABLE NAME FAILS LOUDLY
+'------------------------------------------------------------------------------
+    'A name that cannot resolve must raise rather than return empty samples
+        Test_Assert_True Test_Measure_RaisesFor(cPM, "cPM_NoSuchProcedure_XYZ"), _
+                         "An unresolvable procedure name raises"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Measure_QualifiedResolution"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Function Test_Measure_RaisesFor( _
+    ByVal cPM As cPerformanceManager, _
+    ByVal ProcedureName As String) _
+    As Boolean
+'
+'==============================================================================
+'                        TEST MEASURE RAISES FOR
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns TRUE when MeasureProcedure raises for the supplied name
+'
+' WHY THIS EXISTS
+'   Isolating the On Error Resume Next block keeps the calling case readable and
+'   stops a suppressed error leaking into later assertions
+'
+' INPUTS
+'   cPM             - instance under test
+'   ProcedureName   - name to attempt
+'
+' RETURNS
+'   Boolean
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Discarded() As Double   'Discarded sample vector
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Attempt the call and report whether it raised
+        On Error Resume Next
+        Discarded = cPM.MeasureProcedure(ProcedureName, 1, 0)
+        Test_Measure_RaisesFor = (Err.Number <> 0)
+        Err.Clear
+        On Error GoTo 0
+
+End Function
+
+Private Sub Test_Measure_SurfacesWorkerReadFailures()
+'
+'==============================================================================
+'                TEST MEASURE SURFACES WORKER READ FAILURES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that read failures inside the harness worker are reported to the
+'   caller, and that the caller's own status is not overwritten
+'
+' WHY THIS EXISTS
+'   The harness measures on an isolated worker that is released before the
+'   sample vector is returned. Without explicit reporting, a run in which every
+'   read failed is indistinguishable from a run of a procedure that does nothing
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Samples()       As Double                 'Per-run samples
+    Dim FailedReads     As Long                   'Reported failure count
+    Dim LastStatus      As cPM_ReadStatus         'Reported failure status
+    Dim CallerET        As Double                 'Caller measurement to protect
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: worker read failures are surfaced"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance in non-strict mode so failures return rather than raise
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = False
+
+'------------------------------------------------------------------------------
+' ESTABLISH A CALLER MEASUREMENT TO PROTECT
+'------------------------------------------------------------------------------
+    'Take a real measurement on the caller instance
+        cPM.StartTimer cPM_MethodQPC
+        cPM.Pause 0.02, cPM_PauseSleep
+        CallerET = cPM.ElapsedSeconds
+
+'------------------------------------------------------------------------------
+' ASSERT A HEALTHY RUN REPORTS NO FAILURES
+'------------------------------------------------------------------------------
+    'A normal run must report a clean outcome
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 4, 1, _
+                                       cPM_MethodQPC, FailedReads, LastStatus)
+        Test_Assert_EqualLong 0, FailedReads, _
+                              "A healthy harness run reports no failed reads"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(LastStatus), _
+                              "A healthy harness run reports cPM_ReadOK"
+
+'------------------------------------------------------------------------------
+' ASSERT INJECTED WORKER FAILURES ARE COUNTED
+'------------------------------------------------------------------------------
+    'Force two of the measured reads to fail inside the worker
+        cPM.Test_ForceWorkerReadFailures 2
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 4, 1, _
+                                       cPM_MethodQPC, FailedReads, LastStatus)
+
+    'Assert the failures reached the caller
+        Test_Assert_EqualLong 2, FailedReads, _
+                              "Injected worker read failures are counted"
+        Test_Assert_EqualLong CLng(cPM_ReadQpcFailed), CLng(LastStatus), _
+                              "The reported status names the failure"
+
+    'Assert the vector still has one entry per iteration
+        Test_Assert_EqualLong 4, cPM.Stats_Count(Samples), _
+                              "A failed read still yields a sample slot"
+
+'------------------------------------------------------------------------------
+' ASSERT THE CALLER STATE IS UNDISTURBED
+'------------------------------------------------------------------------------
+    'The harness must not overwrite the caller's own measurement or status
+        Test_Assert_ApproxDouble CallerET, cPM.ET, 0.000000001, _
+                                 "The harness leaves the caller's cached ET untouched"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
+                              "The harness does not overwrite the caller's LastReadStatus"
+
+'------------------------------------------------------------------------------
+' ASSERT THE INJECTION IS CLEARED
+'------------------------------------------------------------------------------
+    'A later run must not inherit the previous injection
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 3, 1, _
+                                       cPM_MethodQPC, FailedReads, LastStatus)
+        Test_Assert_EqualLong 0, FailedReads, _
+                              "Worker fault injection does not leak into a later run"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Measure_SurfacesWorkerReadFailures"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Measure_DispatchMatchedBaseline()
+'
+'==============================================================================
+'                  TEST MEASURE DISPATCH MATCHED BASELINE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that MeasureBaseline measures the dispatch path and that its cost
+'   sits below a real workload measured the same way
+'
+' WHY THIS EXISTS
+'   MeasureOverhead_Samples measures the timing cycle only and does not call
+'   Application.Run, so subtracting it from a MeasureProcedure result removes the
+'   wrong quantity. This case pins the difference between the two
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Class under test
+    Dim Baseline()  As Double                 'Dispatch-matched baseline
+    Dim Workload()  As Double                 'Real workload through the same path
+    Dim Raised      As Boolean                'TRUE when the expected error was raised
+    Dim Discarded() As Double                 'Discarded sample vector
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: dispatch-matched baseline"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' ASSERT THE BASELINE MEASURES SOMETHING REAL
+'------------------------------------------------------------------------------
+    'An empty procedure still costs a dispatch
+        Baseline = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 10, 2)
+        Test_Assert_EqualLong 10, cPM.Stats_Count(Baseline), _
+                              "MeasureBaseline returns one sample per iteration"
+        Test_Assert_NonNegativeDouble cPM.Stats_Min(Baseline), _
+                                      "The dispatch baseline is nonnegative"
+
+'------------------------------------------------------------------------------
+' ASSERT THE BASELINE SITS BELOW A REAL WORKLOAD
+'------------------------------------------------------------------------------
+    'Measured the same way, an empty procedure must cost less than a real one
+        Workload = cPM.MeasureProcedure("cPM_Test_Workload", 10, 2)
+        Test_Assert_True (cPM.Stats_Median(Baseline) < cPM.Stats_Median(Workload)), _
+                         "The dispatch baseline is cheaper than a real workload"
+
+'------------------------------------------------------------------------------
+' ASSERT SUBTRACTION YIELDS A SANE NET COST
+'------------------------------------------------------------------------------
+    'Subtracting medians must leave a positive net workload cost
+        Test_Assert_True ((cPM.Stats_Median(Workload) - cPM.Stats_Median(Baseline)) > 0#), _
+                         "Subtracting the baseline leaves a positive net cost"
+
+'------------------------------------------------------------------------------
+' ASSERT A BLANK NAME RAISES WITH GUIDANCE
+'------------------------------------------------------------------------------
+    'A blank name must explain what to create rather than failing bare
+        Raised = False
+        On Error Resume Next
+        Discarded = cPM.MeasureBaseline(vbNullString, 1, 0)
+        If Err.Number <> 0 Then
+            Raised = True
+            Err.Clear
+        End If
+        On Error GoTo CleanFail
+
+    'Assert the blank name was rejected
+        Test_Assert_True Raised, _
+                         "MeasureBaseline raises on a blank procedure name"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Measure_DispatchMatchedBaseline"
     'Continue through centralized cleanup
         Resume CleanExit
 
