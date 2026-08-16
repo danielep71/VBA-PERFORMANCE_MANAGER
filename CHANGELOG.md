@@ -128,6 +128,7 @@ Build 16.0.20131.20152, 64-bit.
 - **Contamination detection** — `Stats_IsContaminated` reports when the
   coefficient of variation exceeds 0.25, and `Stats_Text` appends a warning so a
   noisy run cannot be mistaken for a precise one.
+
 #### Read-status reporting
 
 - **`cPM_ReadStatus` enum and the `LastReadStatus` property.** In non-strict
@@ -136,7 +137,7 @@ Build 16.0.20131.20152, 64-bit.
   `cPM_ReadQpcFailed`, `cPM_ReadSystemTimeFailed`,
   `cPM_ReadSystemTimeFormatInvalid`, `cPM_ReadFallbackToMethod2`.
 - **`TW_CalculationExempted`** and **`PM_TW_CalculationExempted`** — report when
-  Calculation control could not be honored on the current host.
+  Calculation control could not be honoured on the current host.
 
 #### API
 

@@ -14,6 +14,7 @@ Exit code 0 when all checks pass, 1 otherwise.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +29,7 @@ CLASS_FILE = ROOT / "src" / "classes" / "cPerformanceManager.cls"
 MODULE_FILE = ROOT / "src" / "modules" / "M_cPM_TIMEWASTERS.bas"
 TEST_FILE = ROOT / "test" / "M_cPM_Test.bas"
 README_FILE = ROOT / "README.md"
+CHANGELOG_FILE = ROOT / "CHANGELOG.md"
 
 VBA_SOURCES = [CLASS_FILE, MODULE_FILE, TEST_FILE]
 ALL_SOURCES = VBA_SOURCES + [
@@ -343,6 +345,79 @@ def check_version_consistency(rep: Report) -> None:
     rep.check("version stamps agree", problems)
 
 
+def _changelog_sections(text: str) -> dict[str, str]:
+    """Split a changelog into {version: body}, keyed by the heading label."""
+    out: dict[str, str] = {}
+    current, buf = None, []
+    for line in text.split("\n"):
+        m = re.match(r"^## \[([^\]]+)\]", line)
+        if m:
+            if current is not None:
+                out[current] = "\n".join(buf).rstrip()
+            current, buf = m.group(1), []
+            continue
+        if current is not None:
+            buf.append(line)
+    if current is not None:
+        out[current] = "\n".join(buf).rstrip()
+    return out
+
+
+def _git_show(ref: str, path: str) -> str | None:
+    try:
+        r = subprocess.run(["git", "show", f"{ref}:{path}"], cwd=ROOT,
+                           capture_output=True, text=True, check=True)
+        return r.stdout
+    except Exception:
+        return None
+
+
+def check_changelog_released_sections_frozen(rep: Report) -> None:
+    """A released changelog section describes a tag and must never change.
+
+    Entries have twice been appended to a released section instead of
+    [Unreleased], which would claim a shipped release contained work that is not
+    in its tag. Comparing each released section against its own content at that
+    tag catches it without maintaining a separate list of what is allowed.
+
+    Sections whose tag predates the changelog cannot be compared and are
+    reported as unverifiable rather than passed silently.
+    """
+    if not CHANGELOG_FILE.exists():
+        rep.check("released changelog sections frozen", ["CHANGELOG.md not found"])
+        return
+
+    current = _changelog_sections(CHANGELOG_FILE.read_text(encoding="utf-8"))
+    problems: list[str] = []
+    compared, skipped = 0, []
+
+    for version, body in current.items():
+        if version.lower() == "unreleased":
+            continue
+        tag = f"v{version}"
+        at_tag = _git_show(tag, "CHANGELOG.md")
+        if at_tag is None:
+            skipped.append(tag)
+            continue
+        tagged = _changelog_sections(at_tag).get(version)
+        if tagged is None:
+            problems.append(f"{tag}: section [{version}] is absent from the changelog at that tag")
+            continue
+        compared += 1
+        if tagged.rstrip() != body.rstrip():
+            problems.append(
+                f"[{version}] differs from its content at {tag}. "
+                "A released section describes a tag and cannot change; "
+                "move the entry to [Unreleased]."
+            )
+
+    rep.check("released changelog sections frozen", problems)
+    if skipped:
+        print(f"note  {', '.join(skipped)} predate the changelog and cannot be verified")
+    if compared == 0 and not problems:
+        print("note  no released section could be compared - are tags fetched?")
+
+
 def check_api_declarations(rep: Report) -> None:
     """Native timing APIs must be called from exactly one place each."""
     if not CLASS_FILE.exists():
@@ -385,6 +460,7 @@ def main() -> int:
     check_total_steps(rep)
     check_version_consistency(rep)
     check_api_declarations(rep)
+    check_changelog_released_sections_frozen(rep)
 
     print("-" * 60)
     if rep.failures:

@@ -3,6 +3,9 @@ name: Static checks
 # Runs on every push and pull request. These checks analyse the exported VBA
 # sources as text and need no Excel, so they run on a hosted runner in seconds.
 #
+# One check needs git history: released changelog sections are compared against
+# their content at the matching tag, so the checkout fetches tags.
+#
 # They cannot execute a single test. That is the job of the headless Excel
 # regression gate tracked in #11, which requires a self-hosted Windows runner.
 # What these checks do cover is the class of defect that reached this
@@ -27,6 +30,10 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
+        with:
+          # Tags are required: the changelog check compares each released
+          # section against its own content at that tag.
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
