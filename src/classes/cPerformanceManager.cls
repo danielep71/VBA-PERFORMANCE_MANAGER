@@ -411,6 +411,7 @@ Attribute VB_Exposed = False
         ERR_CPM_STATS_UNDEFINED_CV = vbObjectError + 1033
         ERR_CPM_STATS_BAD_CV_THRESHOLD = vbObjectError + 1034
         ERR_CPM_MEASURE_NO_BASELINE = vbObjectError + 1035
+        ERR_CPM_MEASURE_NO_VALID_SAMPLES = vbObjectError + 1036
     End Enum
 
     'Coefficient-of-variation above which a sample set is reported as noisy
@@ -4531,7 +4532,9 @@ Public Function MeasureProcedure( _
 '
 ' RETURNS
 '   Double()
-'     1-based vector of per-run elapsed seconds, one element per iteration
+'     1-based vector of per-run elapsed seconds. In non-strict mode a read that
+'     fails contributes NO element, so the vector may be shorter than Iterations
+'     and the shortfall is the measured-failure count
 '
 ' BEHAVIOR
 '   - Validates the procedure name and coerces the loop counts
@@ -4542,8 +4545,24 @@ Public Function MeasureProcedure( _
 '
 ' ERROR POLICY
 '   - Raises on a blank procedure name
+'   - Raises ERR_CPM_MEASURE_NO_VALID_SAMPLES when no measured read succeeded
 '   - Propagates any error raised by the measured procedure, after cleanup
 '   - Timer validation is delegated to Method_NormalizeStart
+'
+' FAILED READS
+'   In non-strict mode a failed endpoint read returns zero. Recording that zero
+'   would make the failure look like the fastest run in the set and would
+'   materially distort the minimum and, on small samples, the median.
+'
+'   Such samples are therefore EXCLUDED rather than stored. The consequences:
+'
+'     - Stats_Count(Samples) may be less than Iterations
+'     - Iterations minus Stats_Count is the measured-failure count
+'     - FailedReadsOut counts every failed read, warm-up included, so it can
+'       exceed the shortfall in the vector
+'
+'   In strict mode this path is unreachable. The worker mirrors the caller''s
+'   policy and raises, which propagates through Err_Handler.
 '
 ' DEPENDENCIES
 '   - Method_NormalizeStart
@@ -4580,8 +4599,10 @@ Public Function MeasureProcedure( _
     Dim cPM_Work            As cPerformanceManager   'Isolated worker instance
     Dim DiscardedElapsedS   As Double                'Throwaway warm-up value
     Dim RunTarget           As String                'Workbook-qualified procedure name
-    Dim FailedReads         As Long                  'Measured reads that did not succeed
+    Dim FailedReads         As Long                  'Reads that did not succeed, warm-up included
+    Dim ValidCount          As Long                  'Measured reads that produced a value
     Dim LastFailure         As cPM_ReadStatus        'Status of the most recent failed read
+    Dim ThisSample          As Double                'Elapsed value for the current iteration
     Dim ErrNumber           As Long                  'Captured error number
     Dim ErrSource           As String                'Captured error source
     Dim ErrDescription      As String                'Captured error description
@@ -4637,6 +4658,14 @@ Public Function MeasureProcedure( _
             cPM_Work.StartTimer ResolvedMethod, False
             Application.Run RunTarget
             DiscardedElapsedS = cPM_Work.ElapsedSeconds()
+
+            'A warm-up read that fails is still evidence the host cannot be
+            'measured reliably, so it is counted even though its value is
+            'discarded either way
+                If cPM_Work.LastReadStatus <> cPM_ReadOK Then
+                    FailedReads = FailedReads + 1
+                    LastFailure = cPM_Work.LastReadStatus
+                End If
         Next K
 
 '------------------------------------------------------------------------------
@@ -4654,14 +4683,38 @@ Public Function MeasureProcedure( _
                     cPM_Work.Test_ForceNextQPCReadFailure
                 End If
 
-            Samples(K) = cPM_Work.ElapsedSeconds()
+            ThisSample = cPM_Work.ElapsedSeconds()
 
-            'Record a read that did not produce a measurement
+            'A failed read returns zero in non-strict mode. Storing that zero
+            'would make the failure look like the fastest run in the set, so the
+            'sample is excluded rather than recorded.
+            '
+            'Strict mode never reaches here: the worker mirrors the caller's
+            'policy and raises, which propagates through Err_Handler
                 If cPM_Work.LastReadStatus <> cPM_ReadOK Then
                     FailedReads = FailedReads + 1
                     LastFailure = cPM_Work.LastReadStatus
+                Else
+                    ValidCount = ValidCount + 1
+                    Samples(ValidCount) = ThisSample
                 End If
         Next K
+
+    'An empty vector is not a measurement, and every statistic over it would
+    'raise anyway. Fail here, where the reason is still known
+        If ValidCount = 0 Then
+            Err.Raise ERR_CPM_MEASURE_NO_VALID_SAMPLES, _
+                      "cPerformanceManager.MeasureProcedure", _
+                      "No measured read produced a value. " & _
+                      Read_StatusToText(LastFailure) & _
+                      " All " & CStr(Iterations) & " iteration(s) failed."
+        End If
+
+    'Trim to the readings actually obtained, so the shortfall against Iterations
+    'is itself the measured-failure count
+        If ValidCount < Iterations Then
+            ReDim Preserve Samples(1 To ValidCount)
+        End If
 
     'The worker is released below, so its outcome has to be surfaced here or it
     'is lost. The caller's own LastReadStatus is deliberately not touched: it
@@ -4835,7 +4888,8 @@ Public Function MeasureOverhead_Samples( _
 '
 ' RETURNS
 '   Double()
-'     1-based vector of per-cycle overhead in seconds
+'     1-based vector of per-cycle overhead in seconds. A cycle whose read failed
+'     contributes no element, so the vector may be shorter than Iterations
 '
 ' BEHAVIOR
 '   - Coerces the loop counts
@@ -4870,6 +4924,9 @@ Public Function MeasureOverhead_Samples( _
     Dim ResolvedMethod      As cPM_TimerMethod               'Validated timer method
     Dim cPM_Work            As cPerformanceManager   'Isolated worker instance
     Dim DiscardedElapsedS   As Double                'Throwaway warm-up value
+    Dim ValidCount          As Long                  'Measured cycles that produced a value
+    Dim LastFailure         As cPM_ReadStatus        'Status of the most recent failed read
+    Dim ThisSample          As Double                'Elapsed value for the current cycle
     Dim ErrNumber           As Long                  'Captured error number
     Dim ErrSource           As String                'Captured error source
     Dim ErrDescription      As String                'Captured error description
@@ -4916,8 +4973,31 @@ Public Function MeasureOverhead_Samples( _
     'Record one elapsed value per measured cycle
         For K = 1 To Iterations
             cPM_Work.StartTimer ResolvedMethod, False
-            Samples(K) = cPM_Work.ElapsedSeconds()
+            ThisSample = cPM_Work.ElapsedSeconds()
+
+            'Exclude a failed read rather than storing its zero, which would
+            'otherwise become the minimum and be read as the resolution floor
+                If cPM_Work.LastReadStatus <> cPM_ReadOK Then
+                    LastFailure = cPM_Work.LastReadStatus
+                Else
+                    ValidCount = ValidCount + 1
+                    Samples(ValidCount) = ThisSample
+                End If
         Next K
+
+    'An empty vector is not a measurement
+        If ValidCount = 0 Then
+            Err.Raise ERR_CPM_MEASURE_NO_VALID_SAMPLES, _
+                      "cPerformanceManager.MeasureOverhead_Samples", _
+                      "No measured cycle produced a value. " & _
+                      Read_StatusToText(LastFailure) & _
+                      " All " & CStr(Iterations) & " cycle(s) failed."
+        End If
+
+    'Trim to the cycles actually obtained
+        If ValidCount < Iterations Then
+            ReDim Preserve Samples(1 To ValidCount)
+        End If
 
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT

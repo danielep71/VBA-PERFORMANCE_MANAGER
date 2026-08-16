@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 70    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 71    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -522,6 +522,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: worker read failures"
         Test_Measure_SurfacesWorkerReadFailures
+
+    'Validate that failed reads never enter the sample vector
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: failed reads excluded"
+        Test_Measure_ExcludesFailedSamples
 
     'Validate the dispatch-matched baseline
         CurrentStep = CurrentStep + 1
@@ -9409,9 +9414,11 @@ Private Sub Test_Measure_SurfacesWorkerReadFailures()
         Test_Assert_EqualLong CLng(cPM_ReadQpcFailed), CLng(LastStatus), _
                               "The reported status names the failure"
 
-    'Assert the vector still has one entry per iteration
-        Test_Assert_EqualLong 4, cPM.Stats_Count(Samples), _
-                              "A failed read still yields a sample slot"
+    'A failed read contributes no sample, so the vector is short by exactly the
+    'number of failures. Storing the zero would make the failure look like the
+    'fastest run in the set
+        Test_Assert_EqualLong 2, cPM.Stats_Count(Samples), _
+                              "Failed reads are excluded from the sample vector"
 
 '------------------------------------------------------------------------------
 ' ASSERT THE CALLER STATE IS UNDISTURBED
@@ -9768,3 +9775,158 @@ CleanFail:
         Resume CleanExit
 
 End Sub
+
+Private Sub Test_Measure_ExcludesFailedSamples()
+'
+'==============================================================================
+'                  TEST MEASURE EXCLUDES FAILED SAMPLES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that a failed read contributes no sample to the returned vector
+'
+' WHY THIS EXISTS
+'   In non-strict mode a failed endpoint read returns zero. Recording that zero
+'   would make the failure look like the fastest run in the set: Stats_Min would
+'   return it, and on small samples the median would move too
+'
+'   A rare native failure would then be indistinguishable from a genuinely fast
+'   iteration, which is the worst way for a benchmark to be wrong
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Class under test
+    Dim Samples()   As Double                 'Per-run samples
+    Dim FailedReads As Long                   'Reported failure count
+    Dim LastStatus  As cPM_ReadStatus         'Reported failure status
+    Dim Raised      As Boolean                'TRUE when the expected error was raised
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: failed reads are excluded from the vector"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance in non-strict mode, where a failed read
+    'returns zero instead of raising
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = False
+
+'------------------------------------------------------------------------------
+' ASSERT A HEALTHY RUN IS UNAFFECTED
+'------------------------------------------------------------------------------
+    'Every iteration should contribute a sample when nothing fails
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 6, 1, _
+                                       cPM_MethodQPC, FailedReads, LastStatus)
+        Test_Assert_EqualLong 6, cPM.Stats_Count(Samples), _
+                              "A healthy run returns one sample per iteration"
+        Test_Assert_EqualLong 0, FailedReads, _
+                              "A healthy run reports no failed reads"
+
+'------------------------------------------------------------------------------
+' ASSERT FAILED READS DO NOT ENTER THE VECTOR
+'------------------------------------------------------------------------------
+    'Force two of the six measured reads to fail
+        cPM.Test_ForceWorkerReadFailures 2
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 6, 1, _
+                                       cPM_MethodQPC, FailedReads, LastStatus)
+
+    'The vector must be short by exactly the number of failures
+        Test_Assert_EqualLong 4, cPM.Stats_Count(Samples), _
+                              "Failed reads contribute no sample to the vector"
+        Test_Assert_EqualLong 2, FailedReads, _
+                              "The failure count is reported"
+        Test_Assert_EqualLong CLng(cPM_ReadQpcFailed), CLng(LastStatus), _
+                              "The reported status names the failure"
+
+'------------------------------------------------------------------------------
+' ASSERT THE STATISTICS ARE NOT POISONED
+'------------------------------------------------------------------------------
+    'This is the defect: a stored zero would become the minimum
+        Test_Assert_True (cPM.Stats_Min(Samples) > 0#), _
+                         "No zero-valued failed read survives as the minimum"
+        Test_Assert_True (cPM.Stats_Median(Samples) > 0#), _
+                         "The median is computed only from real readings"
+
+'------------------------------------------------------------------------------
+' ASSERT THE SHORTFALL IS SELF-DESCRIBING
+'------------------------------------------------------------------------------
+    'Iterations minus the sample count is the measured-failure count
+        Test_Assert_EqualLong 2, 6 - cPM.Stats_Count(Samples), _
+                              "The shortfall against Iterations is the failure count"
+
+'------------------------------------------------------------------------------
+' ASSERT A TOTAL FAILURE RAISES
+'------------------------------------------------------------------------------
+    'An empty vector is not a measurement, so it must not be returned
+        cPM.Test_ForceWorkerReadFailures 4
+
+        Raised = False
+        On Error Resume Next
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 4, 1, _
+                                       cPM_MethodQPC, FailedReads, LastStatus)
+        If Err.Number <> 0 Then
+            Raised = True
+            Err.Clear
+        End If
+        On Error GoTo CleanFail
+
+    'Assert the run was rejected rather than returning nothing
+        Test_Assert_True Raised, _
+                         "A run in which every read failed raises"
+
+'------------------------------------------------------------------------------
+' ASSERT THE CALLER IS UNDISTURBED AND INJECTION IS CLEARED
+'------------------------------------------------------------------------------
+    'The harness must not overwrite the caller's own status
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
+                              "The harness does not overwrite the caller's LastReadStatus"
+
+    'A later run must not inherit the previous injection
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 5, 1, _
+                                       cPM_MethodQPC, FailedReads, LastStatus)
+        Test_Assert_EqualLong 5, cPM.Stats_Count(Samples), _
+                              "A later run returns a full vector again"
+        Test_Assert_EqualLong 0, FailedReads, _
+                              "Worker fault injection does not leak into a later run"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Measure_ExcludesFailedSamples"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+

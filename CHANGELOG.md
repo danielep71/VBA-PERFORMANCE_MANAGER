@@ -48,6 +48,8 @@ fresh rather than reconstructed at release time.
   harness measures on an isolated worker released before the vector is returned,
   so a run where every read failed was previously indistinguishable from a run
   of a procedure that does nothing. (#21)
+- **`ERR_CPM_MEASURE_NO_VALID_SAMPLES`** (+1036), raised when no measured read
+  in a harness run produced a value.
 - **Release provenance.** `tools/release_provenance.py` emits a SHA-256 for every
   shipped file and Release asset, the commit the release was cut from, and the
   Excel build and bitness the suite was certified on. Missing fields are marked
@@ -82,6 +84,12 @@ fresh rather than reconstructed at release time.
   *sample validity cannot be established; inspect the observations*. Those mean
   different things and previously collapsed into one message.
 
+- **`Elapsed_ComputeSeconds` no longer raises for read failures**, reporting
+  them through its status output instead. Two raises remain deliberately: the
+  defensive invalid-method branch, which has no corresponding read status, and
+  `Elapsed_Validate` for a backwards-moving clock, which is arithmetic
+  validation rather than a read.
+
 - **`MeasureProcedure` qualifies an unqualified procedure name with
   `ThisWorkbook`.** `Application.Run` previously resolved against the active
   workbook, so the harness could measure a same-named procedure in whichever
@@ -93,37 +101,47 @@ fresh rather than reconstructed at release time.
   produced an unlabelled report while appearing to set one. It now passes the
   label to `StartTimer`. The examples module also had no coverage of anything
   added in v1.2.0. (#17)
-  
-- **`Elapsed_ComputeSeconds` no longer raises for read failures**, reporting
-  them through its status output instead. Two raises remain deliberately: the
-  defensive invalid-method branch, which has no corresponding read status, and
-  `Elapsed_Validate` for a backwards-moving clock, which is arithmetic
-  validation rather than a read.
-  
+
 ### Fixed
 
 - **`Stats_IsContaminated` rejects a negative `CvThreshold`.** A negative
   threshold reported every sample set as contaminated, since the coefficient of
   variation is never negative — a silently useless answer rather than an
   error. (#8)
-  
+
 - **`LastReadStatus` now describes the failed read after a strict-mode error.**
   Strict mode raised from inside the private reader, before the status could be
   returned, and the public operation had already reset `LastReadStatus` to
   `cPM_ReadOK` — so a caller who trapped the error and inspected the status was
   told the last read succeeded.
+
   The error was never silent; `Err.Number` carried the right condition. But the
   two public surfaces disagreed, and the one documented as authoritative was the
   one that lied. Read policy now lives in `ElapsedSeconds` and `Checkpoint`,
   which publish the status and then decide whether to fail — the shape
   `StartTimer` already used. (CPM120-P2-01)
 
+- **The measurement harness no longer stores a failed read as a zero sample.**
+  In non-strict mode a failed endpoint read returns zero, and the harness
+  recorded it. That zero then became the minimum of the sample set, so a rare
+  native failure was indistinguishable from a genuinely fast iteration — and on
+  small samples it moved the median too.
+
+  Failed reads are now **excluded** from the vector rather than stored, so
+  `Stats_Count` may be less than `Iterations` and the shortfall is itself the
+  measured-failure count. A run in which every read failed raises
+  `ERR_CPM_MEASURE_NO_VALID_SAMPLES`, because an empty vector is not a
+  measurement. Warm-up failures are counted too, so `FailedReadsOut` can exceed
+  the shortfall. (CPM120-P2-02)
+
 ### Known limitations
 
-- **Samples returned by `MeasureProcedure` cannot be diagnosed through
-  `LastReadStatus`.** The harness runs its reads on an isolated worker instance
-  that is released before the vector is returned, so the caller's own status is
-  untouched by them. Tracked separately.
+- **`LastReadStatus` does not cover harness reads.** The harness measures on an
+  isolated worker released before the vector is returned, so the caller's own
+  status describes only its own direct reads. Harness outcomes arrive through
+  the `FailedReadsOut` and `LastFailureStatusOut` arguments instead. This is by
+  design rather than an outstanding gap, but it is easy to reach for the wrong
+  surface.
 
 ---
 
