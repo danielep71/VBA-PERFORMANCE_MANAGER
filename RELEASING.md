@@ -86,13 +86,11 @@ leaving the reader to assume both.
 
 ## 4. Generate the provenance block
 
-```bash
-python3 tools/release_provenance.py --version 1.3.0 \
-    --tag v1.3.0 \
-    --asset "demo/PERFORMANCE MANAGER.xlsm" \
-    --out release-manifest.json \
-    --excel "Microsoft 365 MSO, Version 2606, Build 16.0.20131.20152" \
-    --bitness 64-bit --cases 72 --assertions 480
+Open a shell that can see git — **GitHub Desktop → Repository → Open in Command
+Prompt** — and run it on one line:
+
+```
+python tools\release_provenance.py --version 1.3.0 --tag v1.3.0 --asset "demo\PERFORMANCE MANAGER.xlsm" --out release-manifest.json --excel "Microsoft 365 MSO, Version 2606, Build 16.0.20131.20152" --bitness 64-bit --cases 72 --assertions 511
 ```
 
 `--tag` compares every hashed source against that tag's blob and exits non-zero
@@ -134,8 +132,19 @@ Push everything first, then:
       > `main` without it having run. That trade is deliberate for daily work
       > and wrong at release time, which is why this step is manual and explicit.
 
-- [ ] **Releases → Draft a new release**
+Create the tag **before** drafting the release. The provenance script in step 4
+needs it to exist, and a tag can be deleted quietly where a published release
+cannot.
+
+- [ ] GitHub Desktop → **History** → right-click the release commit → **Create Tag…**
 - [ ] Tag: `vX.Y.Z` — **lowercase `v`**, matching `v1.0.0`, `v1.1.0`, `v1.2.0`
+- [ ] **Push origin** — this pushes the tag
+- [ ] Confirm with `git tag` that it is listed locally
+
+Then, once step 4 has passed:
+
+- [ ] **Releases → Draft a new release**
+- [ ] Choose the **existing** `vX.Y.Z` tag rather than creating a new one
 - [ ] Target: `main`
 - [ ] **Check the commit shown next to the target.** It must be the merge you
       intend to release
@@ -168,11 +177,13 @@ Push everything first, then:
 
 Do not skip this. It is the check that failed in v1.2.0.
 
-```bash
+From **Repository → Open in Command Prompt**:
+
+```
 git fetch --tags --force
-git log vX.Y.Z --oneline -1          # is this the commit you meant?
-git show vX.Y.Z:test/M_cPM_Test.bas | grep TotalSteps
-git show vX.Y.Z:src/classes/cPerformanceManager.cls | grep "VERSION:"
+git log vX.Y.Z --oneline -1
+git show vX.Y.Z:test/M_cPM_Test.bas | findstr TotalSteps
+git show vX.Y.Z:src/classes/cPerformanceManager.cls | findstr "VERSION:"
 ```
 
 The tag should resolve to your merge commit, and the tagged tree should carry
