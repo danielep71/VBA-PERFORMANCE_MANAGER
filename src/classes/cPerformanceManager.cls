@@ -372,6 +372,8 @@ Attribute VB_Exposed = False
         Private Const ERR_CPM_STATS_NO_SAMPLES          As Long = vbObjectError + 1030
         Private Const ERR_CPM_STATS_BAD_PERCENTILE      As Long = vbObjectError + 1031
         Private Const ERR_CPM_MEASURE_BLANK_PROC        As Long = vbObjectError + 1032
+        Private Const ERR_CPM_STATS_UNDEFINED_CV        As Long = vbObjectError + 1033
+        Private Const ERR_CPM_STATS_BAD_CV_THRESHOLD    As Long = vbObjectError + 1034
 
     'Coefficient-of-variation above which a sample set is reported as noisy
         Private Const CPM_CV_CONTAMINATION_THRESHOLD    As Double = 0.25
@@ -5142,16 +5144,27 @@ Public Function Stats_CoefficientOfVariation( _
 '
 ' RETURNS
 '   Double
-'     Coefficient of variation.
-'     Returns 0 when the mean is zero
+'     Coefficient of variation
+'
+' BEHAVIOR
+'   Delegates the validity decision to Stats_TryCoefficientOfVariation and
+'   raises when the quantity is undefined
 '
 ' ERROR POLICY
-'   Raises on an empty sample vector
+'   - Raises on an empty sample vector
+'   - Raises ERR_CPM_STATS_UNDEFINED_CV when the mean is not strictly positive
+'
+' BEHAVIOURAL CORRECTION IN 1.3.0
+'   Earlier releases returned 0 when the mean was zero. For non-negative timing
+'   data a zero mean means every sample was zero, which is what a run of failed
+'   non-strict reads produces. Returning 0 then made Stats_IsContaminated report
+'   that run as perfectly stable - certifying a failed measurement as clean.
+'
+'   The quantity is undefined here, so the routine now says so.
 '
 ' DEPENDENCIES
 '   - Stats_RequireSamples
-'   - Stats_Mean
-'   - Stats_StdDev
+'   - Stats_TryCoefficientOfVariation
 '
 ' NOTES
 '   As a rough guide: below 0.05 is a clean run, above
@@ -5159,13 +5172,13 @@ Public Function Stats_CoefficientOfVariation( _
 '   re-running on a quieter machine
 '
 ' UPDATED
-'   2026-08-15
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim Avg     As Double   'Arithmetic mean
+    Dim Cv      As Double   'Computed coefficient of variation
 
 '------------------------------------------------------------------------------
 ' VALIDATE
@@ -5174,20 +5187,23 @@ Public Function Stats_CoefficientOfVariation( _
         Stats_RequireSamples Samples, "Stats_CoefficientOfVariation"
 
 '------------------------------------------------------------------------------
-' ROUTINE
+' COMPUTE
 '------------------------------------------------------------------------------
-    'Guard against division by a zero mean
-        Avg = Stats_Mean(Samples)
-        If Avg = 0# Then
-            Stats_CoefficientOfVariation = 0#
-            Exit Function
+    'Reject a sample set for which the quantity is not defined
+        If Not Stats_TryCoefficientOfVariation(Samples, Cv) Then
+            Err.Raise ERR_CPM_STATS_UNDEFINED_CV, _
+                      "cPerformanceManager.Stats_CoefficientOfVariation", _
+                      "The coefficient of variation is undefined because the sample " & _
+                      "mean is not strictly positive. For timing data this means every " & _
+                      "observation was zero, which usually indicates failed reads " & _
+                      "rather than a fast operation."
         End If
 
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
     'Return spread expressed relative to the mean
-        Stats_CoefficientOfVariation = Stats_StdDev(Samples) / Avg
+        Stats_CoefficientOfVariation = Cv
 
 End Function
 
@@ -5213,32 +5229,79 @@ Public Function Stats_IsContaminated( _
 '
 '   CvThreshold (optional)
 '     Coefficient-of-variation threshold above which the run is reported as
-'     contaminated
+'     contaminated. Must not be negative
 '
 ' RETURNS
 '   Boolean
-'     TRUE  => spread exceeds the threshold; re-run before trusting the result
+'     TRUE  => spread exceeds the threshold, or validity cannot be established
 '     FALSE => spread is within the threshold
 '
+' BEHAVIOR
+'   - Rejects a negative threshold
+'   - Returns TRUE when the coefficient of variation is undefined
+'   - Otherwise compares relative spread against the threshold
+'
 ' ERROR POLICY
-'   Raises on an empty sample vector
+'   - Raises on an empty sample vector
+'   - Raises ERR_CPM_STATS_BAD_CV_THRESHOLD on a negative threshold
+'   - Does NOT raise when the coefficient of variation is undefined
+'
+' FAIL-SAFE POLICY
+'   This routine deliberately differs from Stats_CoefficientOfVariation. That
+'   function answers a mathematical question and raises when the answer does not
+'   exist. This one answers a judgement question - "should I trust this run?" -
+'   and a sample set whose validity cannot be established is exactly the kind
+'   that should not be trusted.
+'
+'   Reporting FALSE there would certify a failed measurement as clean, which is
+'   the defect this correction removes.
 '
 ' DEPENDENCIES
-'   - Stats_CoefficientOfVariation
+'   - Stats_RequireSamples
+'   - Stats_TryCoefficientOfVariation
 '
 ' NOTES
 '   This is a heuristic, not a statistical test. It flags runs worth repeating;
 '   it does not prove a result is wrong
 '
 ' UPDATED
-'   2026-08-15
+'   2026-08-16
 '==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Cv      As Double   'Computed coefficient of variation
+
+'------------------------------------------------------------------------------
+' VALIDATE
+'------------------------------------------------------------------------------
+    'Reject an empty sample vector
+        Stats_RequireSamples Samples, "Stats_IsContaminated"
+
+    'Reject a negative threshold. A negative threshold would report every
+    'sample set as contaminated, since the coefficient of variation is never
+    'negative, which is a silently useless answer rather than an error
+        If CvThreshold < 0# Then
+            Err.Raise ERR_CPM_STATS_BAD_CV_THRESHOLD, _
+                      "cPerformanceManager.Stats_IsContaminated", _
+                      "CvThreshold cannot be negative."
+        End If
+
+'------------------------------------------------------------------------------
+' FAIL SAFE WHEN VALIDITY CANNOT BE ESTABLISHED
+'------------------------------------------------------------------------------
+    'Treat an undefined coefficient of variation as suspect rather than clean
+        If Not Stats_TryCoefficientOfVariation(Samples, Cv) Then
+            Stats_IsContaminated = True
+            Exit Function
+        End If
 
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
     'Compare relative spread against the supplied threshold
-        Stats_IsContaminated = (Stats_CoefficientOfVariation(Samples) > CvThreshold)
+        Stats_IsContaminated = (Cv > CvThreshold)
 
 End Function
 
@@ -5290,6 +5353,7 @@ Public Function Stats_Text( _
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim S       As String   'Accumulated summary text
+    Dim Cv      As Double   'Computed coefficient of variation
 
 '------------------------------------------------------------------------------
 ' VALIDATE
@@ -5322,13 +5386,24 @@ Public Function Stats_Text( _
     'Report the mean and spread afterwards
         S = S & vbCrLf & "Mean              : " & Format$(Stats_Mean(Samples), "0.000000000") & " s"
         S = S & vbCrLf & "StdDev            : " & Format$(Stats_StdDev(Samples), "0.000000000") & " s"
-        S = S & vbCrLf & "CoeffOfVariation  : " & Format$(Stats_CoefficientOfVariation(Samples), "0.0000")
+    'Report the coefficient of variation, or say plainly that it is undefined.
+    'Stats_Text is a diagnostic surface and must not raise on the very sample
+    'set a caller is trying to diagnose.
+        If Stats_TryCoefficientOfVariation(Samples, Cv) Then
+            S = S & vbCrLf & "CoeffOfVariation  : " & Format$(Cv, "0.0000")
+        Else
+            S = S & vbCrLf & "CoeffOfVariation  : undefined (mean is not positive)"
+        End If
 
 '------------------------------------------------------------------------------
 ' APPEND CONTAMINATION WARNING
 '------------------------------------------------------------------------------
-    'Tell the caller explicitly when the run looks too noisy to trust
-        If Stats_IsContaminated(Samples) Then
+    'Tell the caller explicitly when the run looks too noisy to trust, and
+    'distinguish "noisy" from "not demonstrably valid at all"
+        If Not Stats_TryCoefficientOfVariation(Samples, Cv) Then
+            S = S & vbCrLf & "WARNING           : sample validity cannot be established; " & _
+                             "inspect the observations."
+        ElseIf Cv > CPM_CV_CONTAMINATION_THRESHOLD Then
             S = S & vbCrLf & "WARNING           : high variance; re-run on a quieter machine."
         End If
 
@@ -5549,6 +5624,82 @@ Private Sub Stats_RequireSamples( _
         End If
 
 End Sub
+
+Private Function Stats_TryCoefficientOfVariation( _
+    ByRef Samples() As Double, _
+    ByRef CvOut As Double) _
+    As Boolean
+'
+'==============================================================================
+'                  STATS TRY COEFFICIENT OF VARIATION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Computes the coefficient of variation and reports whether it is defined
+'
+' WHY THIS EXISTS
+'   Three public members need to know whether the coefficient of variation
+'   exists, and each responds differently: Stats_CoefficientOfVariation raises,
+'   Stats_IsContaminated fails safe, and Stats_Text reports it diagnostically.
+'
+'   Duplicating the validity decision across all three would let those policies
+'   drift apart. This helper is the single definition; the callers hold only the
+'   policy
+'
+' INPUTS
+'   Samples
+'     Sample vector
+'
+'   CvOut
+'     Receives the coefficient of variation. Written ONLY when it is defined,
+'     so a caller cannot consume a value that does not exist
+'
+' RETURNS
+'   Boolean
+'     TRUE  => the mean is strictly positive and CvOut holds StdDev / Mean
+'     FALSE => the mean is not strictly positive and CvOut is untouched
+'
+' BEHAVIOR
+'   - Computes the arithmetic mean
+'   - Reports FALSE when that mean is zero or negative
+'   - Otherwise divides the sample standard deviation by the mean
+'
+' ERROR POLICY
+'   Does not raise. The caller decides what an undefined value means
+'
+' NOTES
+'   For non-negative timing data a mean of zero implies every observation was
+'   zero, which in practice means the reads failed rather than that the work was
+'   instantaneous. A negative mean cannot arise from valid timing data at all;
+'   it is handled here for completeness rather than because it is expected
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Avg     As Double   'Arithmetic mean
+
+'------------------------------------------------------------------------------
+' VALIDATE THE DENOMINATOR
+'------------------------------------------------------------------------------
+    'The quantity is only defined for a strictly positive mean
+        Avg = Stats_Mean(Samples)
+
+        If Avg <= 0# Then
+            Stats_TryCoefficientOfVariation = False
+            Exit Function
+        End If
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Publish the value only now that it is known to be defined
+        CvOut = Stats_StdDev(Samples) / Avg
+        Stats_TryCoefficientOfVariation = True
+
+End Function
 
 Private Function Stats_SortedCopy( _
     ByRef Samples() As Double) _
@@ -6040,6 +6191,7 @@ Public Property Get TW_CalculationExempted() As Boolean
         TW_CalculationExempted = PM_TW_CalculationExempted()
 
 End Property
+
 
 
 
