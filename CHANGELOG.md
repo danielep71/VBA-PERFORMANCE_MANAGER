@@ -27,6 +27,17 @@ fresh rather than reconstructed at release time.
   **`ERR_CPM_STATS_BAD_CV_THRESHOLD`** (+1034).
 - **Three regression cases** covering the coefficient-of-variation semantics
   below. Suite 63 → 66 cases, 447 assertions.
+- **`cPM_TimerMethod`, `cPM_PauseMethod`, `cPM_Error` and `cPM_TWError` enums.**
+  Timing backends, pause strategies and error numbers are now selectable by
+  name. Values are unchanged, so existing numeric calls keep working. Separate
+  timer and pause types make the two non-interchangeable at compile time, which
+  v1.2.0 could only warn about in documentation. (#13, #14)
+- **Issue forms and a pull request template.** The bug form requires the Excel
+  build, bitness, bound backend, `StrictMode` and import order — the facts
+  without which a timing report cannot be triaged, since several code paths are
+  selected by `#If Win64`. The pull request template records the regression
+  suite result and the environment it ran on, which is the manual stand-in for
+  the headless Excel gate in #11. (#21)
 
 ### Changed
 
@@ -253,11 +264,6 @@ Initial public release.
   as the safety net.
 - Shared time-waster suppression through the required companion module.
 - Demo, usage-example, and regression-test modules.
-- **`cPM_TimerMethod`, `cPM_PauseMethod`, `cPM_Error` and `cPM_TWError` enums.**
-  Timing backends, pause strategies and error numbers are now selectable by
-  name. Values are unchanged, so existing numeric calls keep working. Separate
-  timer and pause types make the two non-interchangeable at compile time, which
-  v1.2.0 could only warn about in documentation. (#13, #14)
 
 ---
 
