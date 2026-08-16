@@ -175,6 +175,20 @@ fresh rather than reconstructed at release time.
   The remaining criteria in this finding were already met by the qualification
   work. (CPM120-P2-05)
 
+- **The 32-bit tick-count path no longer carries its own arithmetic.** Both
+  32-bit branches of `Get_TickCountSeconds` had the signed-to-unsigned
+  correction written out inline — the same logic as `UInt32ToDouble`, in code
+  that cannot execute during a 64-bit test run. They now call it.
+
+  The correction is verified at all four boundary values on whichever bitness
+  the suite runs, so what remains bitness-specific is the declaration binding,
+  the API return and the `RolloverSeconds` constant. A materially smaller
+  untested surface, though not zero: 32-bit execution evidence is now a
+  documented step for major releases. `UInt32ToDouble` also states its caller
+  contract explicitly, since passing it a genuinely signed value returns a
+  plausible-looking number near 4.29e9 and the misuse cannot be detected from
+  the value. (CPM120-P2-06)
+
 ### Known limitations
 
 - **`LastReadStatus` does not cover harness reads.** The harness measures on an

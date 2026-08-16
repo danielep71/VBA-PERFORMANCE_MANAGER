@@ -3120,6 +3120,16 @@ Friend Function UInt32ToDouble( _
 '   Value32
 '     Signed VBA Long containing a native unsigned 32-bit value.
 '
+' CALLER CONTRACT
+'   Value32 MUST have originated as a DWORD returned by a Windows API. This
+'   routine reinterprets the bit pattern; it does not convert a signed quantity.
+'
+'   Passing a genuinely signed value - an elapsed delta, a difference between
+'   two counters, any arithmetic result - returns a number close to 4.29e9
+'   rather than the negative value intended, and that number will look
+'   plausible. There is no way to detect the misuse from the value alone, which
+'   is why the contract is stated rather than validated.
+'
 ' RETURNS
 '   Double
 '     Logical unsigned value in the range 0 to 4,294,967,295.
@@ -3651,14 +3661,13 @@ Private Function Get_TickCountSeconds() As Double
 ' PURPOSE
 '   Returns the system uptime tick counter in seconds as a Double.
 '
-'   - Win64: uses GetTickCount64 (no practical rollover)
-'   - Win32: uses GetTickCount (32-bit unsigned ms counter; wraps at 2^32 ms)
+'     - Win64: uses GetTickCount64 (no practical rollover)
+'     - Win32: uses GetTickCount (32-bit unsigned ms counter; wraps at 2^32 ms)
 '
 ' WHY THIS EXISTS
 '   VBA Long is signed. On 32-bit, GetTickCount returns a signed Long even
-'   though the underlying counter is logically unsigned. When the high bit is
-'   set, the returned Long is negative. This helper corrects that by remapping
-'   the value into the unsigned 32-bit range in Double space.
+'   though the underlying counter is logically unsigned, so once the high bit is
+'   set the returned value reads as negative.
 '
 ' INPUTS
 '   None.
@@ -3668,9 +3677,9 @@ Private Function Get_TickCountSeconds() As Double
 '     Seconds since boot (subject to rollover on 32-bit).
 '
 ' BEHAVIOR
-'   - On Win64, uses GetTickCount64 and converts milliseconds to seconds.
-'   - On Win32/pre-VBA7, uses GetTickCount and corrects signed Long values into
-'     the logical unsigned 32-bit range before converting to seconds.
+'   - On Win64, converts the 64-bit millisecond counter directly.
+'   - On 32-bit, delegates the signed-to-unsigned reinterpretation to
+'     UInt32ToDouble rather than repeating it inline.
 '
 ' ERROR POLICY
 '   Does not raise errors.
@@ -3678,21 +3687,29 @@ Private Function Get_TickCountSeconds() As Double
 ' DEPENDENCIES
 '   - GetTickCount
 '   - GetTickCount64 (Win64/VBA7)
+'   - UInt32ToDouble
 '   - Conditional compilation symbols: VBA7, Win64
 '
+' BITNESS COVERAGE
+'   The 32-bit branches cannot execute during a 64-bit test run, so they were
+'   previously untestable in full. They no longer contain any arithmetic of
+'   their own: the reinterpretation is UInt32ToDouble, which is Friend and is
+'   verified at all four boundary values on whichever bitness the suite runs.
+'
+'   What remains bitness-specific here is the declaration binding and the API
+'   return itself, not the semantics. That is a materially smaller surface, but
+'   it is not zero, which is why 32-bit execution evidence is still required
+'   before a major release.
+'
 ' NOTES
-'   - Uses only a small number of branches and avoids Currency conversion here.
-'   - 4294967296# is the exact 2^32 constant expressed as a Double literal.
+'   The pre-VBA7 branch targets Office 2007 and earlier. VBA7 arrived with
+'   Office 2010, so that branch is retained for completeness rather than because
+'   any supported host reaches it. Whether to keep carrying it is a separate
+'   decision from this one.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-08-16
 '==============================================================================
-
-'------------------------------------------------------------------------------
-' DECLARE
-'------------------------------------------------------------------------------
-    Dim tc32    As Long     'Signed 32-bit tick value from GetTickCount (Win32 only)
-    Dim u32     As Double   'Unsigned 32-bit tick value mapped into Double space (Win32 only)
 
 '------------------------------------------------------------------------------
 ' ROUTINE
@@ -3702,28 +3719,13 @@ Private Function Get_TickCountSeconds() As Double
         '64-bit: GetTickCount64 returns a 64-bit millisecond counter; convert to seconds
             Get_TickCountSeconds = CDbl(GetTickCount64()) / 1000#
     #Else
-        '32-bit: GetTickCount returns a signed Long; map to unsigned range [0..2^32-1]
-            tc32 = GetTickCount()
-
-            If tc32 < 0 Then
-                u32 = 4294967296# + CDbl(tc32)
-            Else
-                u32 = CDbl(tc32)
-            End If
-
-            Get_TickCountSeconds = u32 / 1000#
+        '32-bit: GetTickCount returns a DWORD in a signed Long, so reinterpret
+        'it through the shared helper rather than repeating the correction here
+            Get_TickCountSeconds = UInt32ToDouble(GetTickCount()) / 1000#
     #End If
 #Else
-        'Pre-VBA7: 32-bit only; same signed-to-unsigned correction
-            tc32 = GetTickCount()
-
-            If tc32 < 0 Then
-                u32 = 4294967296# + CDbl(tc32)
-            Else
-                u32 = CDbl(tc32)
-            End If
-
-            Get_TickCountSeconds = u32 / 1000#
+        'Pre-VBA7: 32-bit only; identical reinterpretation
+            Get_TickCountSeconds = UInt32ToDouble(GetTickCount()) / 1000#
 #End If
 End Function
 
@@ -6882,4 +6884,6 @@ Public Property Get TW_CalculationExempted() As Boolean
         TW_CalculationExempted = PM_TW_CalculationExempted()
 
 End Property
+
+
 

@@ -558,9 +558,19 @@ Last certified run: **0 failures**, 2026-08-16, on Excel for Microsoft 365 MSO
 Version 2606 Build 16.0.20131.20152, 64-bit.
 
 > [!NOTE]
-> On 64-bit Office, backend 2 compiles to `GetTickCount64`, so `RolloverSeconds`
-> is certified on its `Win64` branch only. The 32-bit wrap-correction branch is
-> compiled out and is not exercised by a 64-bit run.
+> A run certifies one bitness. On 64-bit Office, backend 2 compiles to
+> `GetTickCount64`, so the 32-bit wrap-correction path is compiled out and not
+> exercised.
+>
+> The *semantics* of that path are shared: the signed-to-unsigned
+> reinterpretation is `UInt32ToDouble`, verified at all four boundary values on
+> whichever bitness the suite runs. What remains bitness-specific is the
+> declaration binding, the API return, and the `RolloverSeconds` constant — a
+> materially smaller surface than the whole branch, but not zero.
+>
+> **32-bit is therefore supported by construction and by shared arithmetic, but
+> is not execution-certified.** Certification before a major release is tracked
+> as a release step.
 
 Coverage includes:
 

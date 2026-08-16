@@ -67,8 +67,20 @@ Record from the summary and from **File → Account → About Excel**:
 | Bitness | |
 
 > [!NOTE]
-> A 64-bit run certifies the `Win64` branch of `RolloverSeconds` and not the
-> Win32 one, and vice versa. Say which was tested rather than implying both.
+> A run certifies one bitness. Say which was tested rather than implying both.
+
+### For a major release, certify both bitnesses
+
+- [ ] Suite run and recorded on **64-bit** Office
+- [ ] Suite run and recorded on **32-bit** Office
+
+Office bitnesses cannot coexist on one machine, so this needs a VM or a second
+host. It is not required for a minor release: the arithmetic shared between the
+two paths is verified on whichever bitness runs, and only the declaration
+binding, the API return and the `RolloverSeconds` constant are bitness-specific.
+
+Where only one bitness was run, say so in the provenance block rather than
+leaving the reader to assume both.
 
 ---
 
