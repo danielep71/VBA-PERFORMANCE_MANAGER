@@ -59,6 +59,19 @@ fresh rather than reconstructed at release time.
   medians, subtracting a dispatch-matched baseline, and telling a failed read
   apart from a genuinely fast operation. (#17)
 
+### Fixed
+
+- **`LastReadStatus` now describes the failed read after a strict-mode error.**
+  Strict mode raised from inside the private reader, before the status could be
+  returned, and the public operation had already reset `LastReadStatus` to
+  `cPM_ReadOK` — so a caller who trapped the error and inspected the status was
+  told the last read succeeded.
+  The error was never silent; `Err.Number` carried the right condition. But the
+  two public surfaces disagreed, and the one documented as authoritative was the
+  one that lied. Read policy now lives in `ElapsedSeconds` and `Checkpoint`,
+  which publish the status and then decide whether to fail — the shape
+  `StartTimer` already used. (CPM120-P2-01)
+  
 ### Changed
 
 - **BEHAVIORAL CORRECTION: `Stats_CoefficientOfVariation` now raises when the
