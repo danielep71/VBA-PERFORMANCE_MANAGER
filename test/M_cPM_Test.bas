@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 63    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 66    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -492,6 +492,21 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics boundaries and errors"
         Test_Stats_BoundariesAndErrors
+
+    'Validate that the coefficient of variation is undefined for a non-positive mean
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics: CV undefined"
+        Test_Stats_CV_UndefinedForNonPositiveMean
+
+    'Validate fail-safe contamination reporting and threshold validation
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics: IsContaminated fails safe"
+        Test_Stats_IsContaminated_FailsSafe
+
+    'Validate that the summary reports an undefined CV rather than raising
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics: Stats_Text undefined CV"
+        Test_Stats_Text_ReportsUndefinedCV
 
     'Validate the repeated-measurement harness
         CurrentStep = CurrentStep + 1
@@ -8736,6 +8751,384 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_FaultInject_SystemTimeFormatInvalid"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Stats_CV_UndefinedForNonPositiveMean()
+'
+'==============================================================================
+'              TEST STATS CV UNDEFINED FOR NON-POSITIVE MEAN
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that the coefficient of variation is returned when defined and
+'   raises when it is not
+'
+' WHY THIS EXISTS
+'   Earlier releases returned 0 for a zero mean. For non-negative timing data a
+'   zero mean means every observation was zero, which is what a run of failed
+'   non-strict reads produces. Returning 0 made that run look perfectly stable
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM                 As cPerformanceManager    'Class under test
+    Dim Samples(1 To 10)    As Double                 'Ascending known vector
+    Dim AllZero(1 To 5)     As Double                 'Every observation zero
+    Dim Negative(1 To 3)    As Double                 'Impossible for timing data
+    Dim i                   As Long                   'Loop index
+    Dim Raised              As Boolean                'TRUE when the expected error was raised
+    Dim Dummy               As Double                 'Discarded return value
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Statistics: CV undefined for a non-positive mean"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+    'Build the ascending sample vector 1..10
+        For i = 1 To 10
+            Samples(i) = CDbl(i)
+        Next i
+
+    'AllZero is left at its default of zero throughout
+
+    'Build a vector that could not arise from valid timing data
+        Negative(1) = -1#: Negative(2) = -2#: Negative(3) = -3#
+
+'------------------------------------------------------------------------------
+' ASSERT A DEFINED VALUE IS RETURNED
+'------------------------------------------------------------------------------
+    'Assert the known vector still returns its hand-computed value
+        Test_Assert_ApproxDouble 0.5504818826, cPM.Stats_CoefficientOfVariation(Samples), 0.000001, _
+                                 "CV returns the expected value for a positive mean"
+
+'------------------------------------------------------------------------------
+' ASSERT AN ALL-ZERO VECTOR RAISES
+'------------------------------------------------------------------------------
+    'Expect a raise rather than a misleading zero
+        Raised = False
+        On Error Resume Next
+        Dummy = cPM.Stats_CoefficientOfVariation(AllZero)
+        If Err.Number <> 0 Then
+            Raised = True
+            Err.Clear
+        End If
+        On Error GoTo CleanFail
+
+    'Assert the undefined quantity was reported as undefined
+        Test_Assert_True Raised, _
+                         "CV raises for an all-zero vector rather than returning 0"
+
+'------------------------------------------------------------------------------
+' ASSERT A NEGATIVE MEAN RAISES
+'------------------------------------------------------------------------------
+    'Expect a raise for a mean that cannot arise from valid timing data
+        Raised = False
+        On Error Resume Next
+        Dummy = cPM.Stats_CoefficientOfVariation(Negative)
+        If Err.Number <> 0 Then
+            Raised = True
+            Err.Clear
+        End If
+        On Error GoTo CleanFail
+
+    'Assert the negative mean was rejected
+        Test_Assert_True Raised, _
+                         "CV raises for a negative mean"
+
+'------------------------------------------------------------------------------
+' ASSERT THE OTHER STATISTICS ARE UNAFFECTED
+'------------------------------------------------------------------------------
+    'An all-zero vector still has a well-defined mean and spread
+        Test_Assert_ApproxDouble 0#, cPM.Stats_Mean(AllZero), 0.000000001, _
+                                 "Stats_Mean is still defined for an all-zero vector"
+        Test_Assert_ApproxDouble 0#, cPM.Stats_StdDev(AllZero), 0.000000001, _
+                                 "Stats_StdDev is still defined for an all-zero vector"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Stats_CV_UndefinedForNonPositiveMean"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Stats_IsContaminated_FailsSafe()
+'
+'==============================================================================
+'                   TEST STATS IS CONTAMINATED FAILS SAFE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that a sample set whose validity cannot be established is reported
+'   as contaminated rather than clean, and that a negative threshold is rejected
+'
+' WHY THIS EXISTS
+'   This is the regression test for the practical consequence of the old
+'   zero-mean behaviour. A vector of zeros produced by failed non-strict reads
+'   was reported as perfectly stable - a failed measurement certified as clean,
+'   which is the worst direction for the error to point
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM                 As cPerformanceManager    'Class under test
+    Dim Samples(1 To 10)    As Double                 'Ascending known vector
+    Dim Steady(1 To 5)      As Double                 'Low-variance positive vector
+    Dim FailedReads(1 To 30) As Double                'Every read returned zero
+    Dim Negative(1 To 3)    As Double                 'Impossible for timing data
+    Dim i                   As Long                   'Loop index
+    Dim Raised              As Boolean                'TRUE when the expected error was raised
+    Dim Dummy               As Boolean                'Discarded return value
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Statistics: IsContaminated fails safe"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+    'Build the ascending sample vector 1..10
+        For i = 1 To 10
+            Samples(i) = CDbl(i)
+        Next i
+
+    'Build a tight positive vector that should read as clean
+        For i = 1 To 5
+            Steady(i) = 1# + (CDbl(i) * 0.001)
+        Next i
+
+    'FailedReads models the vector a non-strict run of failed reads produces:
+    'every ElapsedSeconds returned 0 because no endpoint could be read
+    'and it is left at its default of zero throughout
+
+    'Build a vector that could not arise from valid timing data
+        Negative(1) = -1#: Negative(2) = -2#: Negative(3) = -3#
+
+'------------------------------------------------------------------------------
+' ASSERT THE ORDINARY CASES STILL WORK
+'------------------------------------------------------------------------------
+    'Assert a tight positive vector reads as clean
+        Test_Assert_EqualBoolean False, cPM.Stats_IsContaminated(Steady), _
+                                 "A low-variance positive vector is not contaminated"
+
+    'Assert a wide positive vector reads as contaminated
+        Test_Assert_EqualBoolean True, cPM.Stats_IsContaminated(Samples), _
+                                 "A high-variance positive vector is contaminated"
+
+'------------------------------------------------------------------------------
+' ASSERT A FAILED-READ VECTOR IS NOT CERTIFIED AS CLEAN
+'------------------------------------------------------------------------------
+    'This is the defect: an all-zero vector from failed reads reported FALSE
+        Test_Assert_EqualBoolean True, cPM.Stats_IsContaminated(FailedReads), _
+                                 "A failed-read all-zero vector is reported as contaminated"
+
+    'Assert the same holds for a negative mean
+        Test_Assert_EqualBoolean True, cPM.Stats_IsContaminated(Negative), _
+                                 "A negative-mean vector is reported as contaminated"
+
+'------------------------------------------------------------------------------
+' ASSERT THRESHOLD VALIDATION
+'------------------------------------------------------------------------------
+    'A zero threshold is valid: any positive spread exceeds it
+        Test_Assert_EqualBoolean True, cPM.Stats_IsContaminated(Samples, 0#), _
+                                 "A zero threshold is accepted and reports any spread"
+
+    'Expect a raise for a negative threshold
+        Raised = False
+        On Error Resume Next
+        Dummy = cPM.Stats_IsContaminated(Samples, -0.5)
+        If Err.Number <> 0 Then
+            Raised = True
+            Err.Clear
+        End If
+        On Error GoTo CleanFail
+
+    'Assert the nonsensical threshold was rejected
+        Test_Assert_True Raised, _
+                         "A negative CvThreshold raises"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Stats_IsContaminated_FailsSafe"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Stats_Text_ReportsUndefinedCV()
+'
+'==============================================================================
+'                   TEST STATS TEXT REPORTS UNDEFINED CV
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that the summary reports an undefined coefficient of variation
+'   diagnostically rather than raising
+'
+' WHY THIS EXISTS
+'   Stats_Text is the surface a caller reaches for when trying to understand a
+'   suspect run. Raising on the very sample set being diagnosed would be
+'   precisely the wrong behaviour
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM                 As cPerformanceManager    'Class under test
+    Dim Samples(1 To 10)    As Double                 'Ascending known vector
+    Dim AllZero(1 To 5)     As Double                 'Every observation zero
+    Dim i                   As Long                   'Loop index
+    Dim TextOut             As String                 'Generated summary
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Statistics: Stats_Text reports an undefined CV"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+    'Build the ascending sample vector 1..10
+        For i = 1 To 10
+            Samples(i) = CDbl(i)
+        Next i
+
+    'AllZero is left at its default of zero throughout
+
+'------------------------------------------------------------------------------
+' ASSERT A NUMERIC CV IS STILL PRINTED
+'------------------------------------------------------------------------------
+    'A positive mean must still produce a numeric coefficient of variation
+        TextOut = cPM.Stats_Text(Samples, "Positive mean")
+        Test_Assert_ContainsString TextOut, "CoeffOfVariation", _
+                                   "Stats_Text reports the coefficient of variation"
+    'Assert a numeric value was printed rather than the undefined marker.
+    'The formatted number itself is locale-dependent - VBA's Format$ uses the
+    'system decimal separator - so asserting on its text would make this case
+    'pass or fail according to regional settings rather than behaviour.
+        Test_Assert_True (InStr(1, TextOut, "undefined", vbTextCompare) = 0), _
+                         "Stats_Text prints a numeric CV, not 'undefined', for a positive mean"
+
+'------------------------------------------------------------------------------
+' ASSERT AN UNDEFINED CV IS REPORTED, NOT RAISED
+'------------------------------------------------------------------------------
+    'The summary must survive the sample set it is being used to diagnose
+        TextOut = cPM.Stats_Text(AllZero, "Failed reads")
+        Test_Assert_ContainsString TextOut, "undefined", _
+                                   "Stats_Text reports an undefined CV rather than raising"
+        Test_Assert_ContainsString TextOut, "validity cannot be established", _
+                                   "Stats_Text warns that validity cannot be established"
+
+'------------------------------------------------------------------------------
+' ASSERT THE TWO WARNINGS ARE DISTINGUISHABLE
+'------------------------------------------------------------------------------
+    'A merely noisy run gets the variance warning, not the validity warning
+        TextOut = cPM.Stats_Text(Samples, "Noisy")
+        Test_Assert_ContainsString TextOut, "high variance", _
+                                   "A noisy but valid run gets the variance warning"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Stats_Text_ReportsUndefinedCV"
     'Continue through centralized cleanup
         Resume CleanExit
 
