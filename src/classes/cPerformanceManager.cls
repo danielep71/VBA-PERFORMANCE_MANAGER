@@ -145,6 +145,33 @@ Attribute VB_Exposed = False
         Cursor = 16
     End Enum
 
+    'Timing backend selector.
+    '
+    'The values are unchanged from earlier releases, so StartTimer 5 and
+    'StartTimer cPM_MethodQPC are identical. The enum exists so the choice is
+    'legible at the call site and selectable from IntelliSense.
+    Public Enum cPM_TimerMethod
+        cPM_MethodSession       = 0     'Use the backend bound to the active session
+        cPM_MethodTimer         = 1     'VBA Timer, seconds since midnight
+        cPM_MethodTickCount     = 2     'GetTickCount / GetTickCount64
+        cPM_MethodTimeGetTime   = 3     'winmm timeGetTime
+        cPM_MethodSystemTime    = 4     'winmm timeGetSystemTime via MMTIME
+        cPM_MethodQPC           = 5     'QueryPerformanceCounter - default
+        cPM_MethodNow           = 6     'Now() * 86400, wall clock
+    End Enum
+
+    'Pause strategy selector.
+    '
+    'These share the numbers 1 to 4 with the timing backends above and mean
+    'something entirely different. Separate enum types make the two
+    'non-interchangeable at compile time rather than only in the documentation.
+    Public Enum cPM_PauseMethod
+        cPM_PauseSleep          = 1     'Sleep API, lowest overhead, no DoEvents
+        cPM_PauseTimerLoop      = 2     'Timer delta with DoEvents
+        cPM_PauseAppWait        = 3     'Application.Wait plus a Timer bound
+        cPM_PauseNowLoop        = 4     'Now loop with DoEvents plus a Timer bound
+    End Enum
+
     'Outcome of the most recent native timing read.
     '
     'A non-OK value means the reported elapsed value is not a measurement. In
@@ -199,7 +226,7 @@ Attribute VB_Exposed = False
             NoteText                As String    'Optional checkpoint note
             DeltaSecondsValue       As Double    'Elapsed seconds since previous checkpoint
             ElapsedSecondsValue     As Double    'Cumulative elapsed seconds since StartTimer
-            MethodID                As Integer   'Active method identifier
+            MethodID                As cPM_TimerMethod   'Active method identifier
             MethodNameText          As String    'Active method descriptive name
             RunLabelText            As String    'Optional run label
         End Type
@@ -346,34 +373,44 @@ Attribute VB_Exposed = False
     'Finite-loop guard for tick-alignment polling
         Private Const CPM_ALIGN_MAX_SPINS               As Long = 1000000
 
-    'Method validation / session-binding errors
-        Private Const ERR_CPM_INVALID_START_METHOD      As Long = vbObjectError + 1000
-        Private Const ERR_CPM_QPC_UNAVAILABLE           As Long = vbObjectError + 1001
-        Private Const ERR_CPM_NO_ACTIVE_SESSION         As Long = vbObjectError + 1002
-        Private Const ERR_CPM_INVALID_ELAPSED_METHOD    As Long = vbObjectError + 1003
-        Private Const ERR_CPM_METHOD_MISMATCH           As Long = vbObjectError + 1004
-        Private Const ERR_CPM_RESOLVED_METHOD_INVALID   As Long = vbObjectError + 1005
+    'Error numbers raised by this class.
+    '
+    'Public so callers can trap a specific condition by name rather than by a
+    'magic offset. The values are unchanged from earlier releases, so code
+    'already comparing against vbObjectError + N keeps working.
+    '
+    'The gaps between groups are deliberate: a new error can join any group
+    'without disturbing the numbering of the others.
+    Public Enum cPM_Error
+        'Method validation and session binding
+        ERR_CPM_INVALID_START_METHOD     = vbObjectError + 1000
+        ERR_CPM_QPC_UNAVAILABLE          = vbObjectError + 1001
+        ERR_CPM_NO_ACTIVE_SESSION        = vbObjectError + 1002
+        ERR_CPM_INVALID_ELAPSED_METHOD   = vbObjectError + 1003
+        ERR_CPM_METHOD_MISMATCH          = vbObjectError + 1004
+        ERR_CPM_RESOLVED_METHOD_INVALID  = vbObjectError + 1005
 
-    'Timing source / environment errors
-        Private Const ERR_CPM_QPC_READ_FAILED           As Long = vbObjectError + 1007
-        Private Const ERR_CPM_TIMEBEGINPERIOD_FAILED    As Long = vbObjectError + 1008
-        Private Const ERR_CPM_TIMEENDPERIOD_FAILED      As Long = vbObjectError + 1009
-        Private Const ERR_CPM_ALIGN_TICK_TIMEOUT        As Long = vbObjectError + 1010
-        Private Const ERR_CPM_TIMEGETSYSTEMTIME_FAILED  As Long = vbObjectError + 1011
-        Private Const ERR_CPM_TIMEGETSYSTEMTIME_FORMAT  As Long = vbObjectError + 1012
-        Private Const ERR_CPM_NEGATIVE_ELAPSED          As Long = vbObjectError + 1013
-        Private Const ERR_CPM_START_CAPTURE_FAILED      As Long = vbObjectError + 1014
+        'Timing source and environment
+        ERR_CPM_QPC_READ_FAILED          = vbObjectError + 1007
+        ERR_CPM_TIMEBEGINPERIOD_FAILED   = vbObjectError + 1008
+        ERR_CPM_TIMEENDPERIOD_FAILED     = vbObjectError + 1009
+        ERR_CPM_ALIGN_TICK_TIMEOUT       = vbObjectError + 1010
+        ERR_CPM_TIMEGETSYSTEMTIME_FAILED = vbObjectError + 1011
+        ERR_CPM_TIMEGETSYSTEMTIME_FORMAT = vbObjectError + 1012
+        ERR_CPM_NEGATIVE_ELAPSED         = vbObjectError + 1013
+        ERR_CPM_START_CAPTURE_FAILED     = vbObjectError + 1014
 
-    'Checkpoint / structured reporting errors
-        Private Const ERR_CPM_CHECKPOINT_NO_SESSION     As Long = vbObjectError + 1020
-        Private Const ERR_CPM_RUNLABEL_AFTER_CAPTURE    As Long = vbObjectError + 1021
+        'Checkpoints and structured reporting
+        ERR_CPM_CHECKPOINT_NO_SESSION    = vbObjectError + 1020
+        ERR_CPM_RUNLABEL_AFTER_CAPTURE   = vbObjectError + 1021
 
-    'Statistics / measurement-harness errors
-        Private Const ERR_CPM_STATS_NO_SAMPLES          As Long = vbObjectError + 1030
-        Private Const ERR_CPM_STATS_BAD_PERCENTILE      As Long = vbObjectError + 1031
-        Private Const ERR_CPM_MEASURE_BLANK_PROC        As Long = vbObjectError + 1032
-        Private Const ERR_CPM_STATS_UNDEFINED_CV        As Long = vbObjectError + 1033
-        Private Const ERR_CPM_STATS_BAD_CV_THRESHOLD    As Long = vbObjectError + 1034
+        'Statistics and the measurement harness
+        ERR_CPM_STATS_NO_SAMPLES         = vbObjectError + 1030
+        ERR_CPM_STATS_BAD_PERCENTILE     = vbObjectError + 1031
+        ERR_CPM_MEASURE_BLANK_PROC       = vbObjectError + 1032
+        ERR_CPM_STATS_UNDEFINED_CV       = vbObjectError + 1033
+        ERR_CPM_STATS_BAD_CV_THRESHOLD   = vbObjectError + 1034
+    End Enum
 
     'Coefficient-of-variation above which a sample set is reported as noisy
         Private Const CPM_CV_CONTAMINATION_THRESHOLD    As Double = 0.25
@@ -400,7 +437,7 @@ Attribute VB_Exposed = False
     '--------------------------------------------------------------------------
     ' ACTIVE TIMER SESSION STATE
     '--------------------------------------------------------------------------
-        Private m_ActiveMethodID  As Integer   'Backend currently bound to the active session
+        Private m_ActiveMethodID  As cPM_TimerMethod   'Backend currently bound to the active session
         Private m_HasActiveSession  As Boolean   'TRUE once StartTimer has established a session
         Private m_QpcAvailable  As Boolean   'TRUE when QPC is available on this machine
 
@@ -543,12 +580,12 @@ Private Sub Class_Initialize()
         m_Mmt.wType = CPM_TIME_MS
 
     'Load the human-readable timing backend labels
-        m_MethodName(1) = "Timer"
-        m_MethodName(2) = "GetTickCount / GetTickCount64"
-        m_MethodName(3) = "timeGetTime"
-        m_MethodName(4) = "timeGetSystemTime"
-        m_MethodName(5) = "QPC"
-        m_MethodName(6) = "Now()"
+        m_MethodName(cPM_MethodTimer) = "Timer"
+        m_MethodName(cPM_MethodTickCount) = "GetTickCount / GetTickCount64"
+        m_MethodName(cPM_MethodTimeGetTime) = "timeGetTime"
+        m_MethodName(cPM_MethodSystemTime) = "timeGetSystemTime"
+        m_MethodName(cPM_MethodQPC) = "QPC"
+        m_MethodName(cPM_MethodNow) = "Now()"
 
 '------------------------------------------------------------------------------
 ' INITIALIZE (SESSION / LIFECYCLE STATE)
@@ -639,7 +676,7 @@ End Sub
 '------------------------------------------------------------------------------
 '
 
-Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
+Public Sub StartTimer(Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC, _
                       Optional ByVal AlignToNextTick As Boolean = False, _
                       Optional ByVal RunLabel As String = vbNullString)
 '
@@ -707,7 +744,7 @@ Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim NewMethod       As Integer          'Method to bind to the new session
+    Dim NewMethod       As cPM_TimerMethod   'Method to bind to the new session
     Dim NewT1           As Double           'Generic start timestamp
     Dim NewQpcStart     As Currency         'QPC start tick for method 5
     Dim CaptureStatus   As cPM_ReadStatus   'Outcome of the capture attempt
@@ -739,7 +776,7 @@ Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
                 End If
 
             'Non-strict mode: fall back to method 2 BEFORE committing anything
-                NewMethod = 2
+                NewMethod = cPM_MethodTickCount
                 NewQpcStart = 0@
 
                 If Not Start_TryCapture(NewMethod, AlignToNextTick, _
@@ -769,7 +806,7 @@ Public Sub StartTimer(Optional ByVal iMethod As Integer = 5, _
         m_ET = 0#
         m_qpcEnd = 0@
     'Store the QPC start tick only for a genuine QPC session
-        If NewMethod = 5 Then
+        If NewMethod = cPM_MethodQPC Then
             m_qpcStart = NewQpcStart
         Else
             m_qpcStart = 0@
@@ -791,7 +828,7 @@ End Sub
 
 
 Private Function Start_TryCapture( _
-    ByVal MethodID As Integer, _
+    ByVal MethodID As cPM_TimerMethod, _
     ByVal AlignToNextTick As Boolean, _
     ByRef T1Out As Double, _
     ByRef QpcOut As Currency, _
@@ -840,7 +877,7 @@ Private Function Start_TryCapture( _
 ' QPC PATH
 '------------------------------------------------------------------------------
     'Method 5 works in Currency ticks and has its own capture path
-        If MethodID = 5 Then
+        If MethodID = cPM_MethodQPC Then
             If AlignToNextTick Then
                 If Not QPC_TryGetNextTick(QpcOut) Then
                     StatusOut = cPM_ReadQpcFailed
@@ -873,7 +910,7 @@ Private Function Start_TryCapture( _
 End Function
 
 
-Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Double
+Public Property Get ElapsedSeconds(Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodSession) As Double
 '
 '==============================================================================
 '                               ELAPSED SECONDS
@@ -915,7 +952,7 @@ Public Property Get ElapsedSeconds(Optional ByVal iMethod As Integer = 0) As Dou
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim ResolvedMethod  As Integer          'Validated method for this read
+    Dim ResolvedMethod  As cPM_TimerMethod          'Validated method for this read
     Dim EndStamp        As Double           'Raw end timestamp
     Dim QpcEnd          As Currency         'Raw QPC end tick
     Dim Seconds         As Double           'Computed elapsed seconds
@@ -966,7 +1003,7 @@ End Property
 
 
 Public Function ElapsedTime( _
-    Optional ByVal iMethod As Integer = 0, _
+    Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodSession, _
     Optional ByVal ElapsedSecondsIn As Variant) _
     As String
 '
@@ -1307,7 +1344,7 @@ Public Property Let StrictMode(ByVal Value As Boolean)
         m_StrictMode = Value
 End Property
 
-Public Property Get ActiveMethodID() As Integer
+Public Property Get ActiveMethodID() As cPM_TimerMethod
 '------------------------------------------------------------------------------
 '                               ACTIVE METHOD ID
 '------------------------------------------------------------------------------
@@ -1330,7 +1367,7 @@ Public Property Get HasActiveSession() As Boolean
 End Property
 
 Public Property Get MethodName( _
-    ByVal Idx As Integer) _
+    ByVal Idx As cPM_TimerMethod) _
     As String
 '
 '==============================================================================
@@ -1383,7 +1420,7 @@ Public Property Get MethodName( _
 ' VALIDATE
 '------------------------------------------------------------------------------
     'Guard against invalid indices to avoid subscript errors
-        If (Idx < 1) Or (Idx > 6) Then
+        If (Idx < cPM_MethodTimer) Or (Idx > cPM_MethodNow) Then
             MethodName = vbNullString
             Exit Property
         End If
@@ -1438,7 +1475,7 @@ End Property
 '
 
 Public Function OverheadMeasurement_Seconds( _
-    Optional ByVal iMethod As Integer = 5, _
+    Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC, _
     Optional ByVal Iterations As Long = 1000) _
     As Double
 '
@@ -1497,7 +1534,7 @@ Public Function OverheadMeasurement_Seconds( _
 '------------------------------------------------------------------------------
     Dim K                   As Long                  'Loop counter
     Dim TotalS              As Double                'Accumulated elapsed seconds
-    Dim ResolvedMethod      As Integer               'Validated timer method
+    Dim ResolvedMethod      As cPM_TimerMethod               'Validated timer method
     Dim DiscardedElapsedS   As Double                'Throwaway elapsed value used only for warm-up
     Dim cPM_Work            As cPerformanceManager   'Isolated worker instance
     Dim ErrNumber           As Long                  'Captured error number
@@ -1585,7 +1622,7 @@ Err_Handler:
 End Function
 
 Public Property Get OverheadMeasurement_Text( _
-    Optional ByVal iMethod As Integer = 5, _
+    Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC, _
     Optional ByVal Iterations As Long = 1000, _
     Optional ByVal OverheadSecondsIn As Variant) _
     As String
@@ -1653,7 +1690,7 @@ Public Property Get OverheadMeasurement_Text( _
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim AvgS            As Double    'Average measurement overhead in seconds
-    Dim ResolvedMethod  As Integer   'Validated timer method
+    Dim ResolvedMethod  As cPM_TimerMethod   'Validated timer method
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
@@ -1936,7 +1973,7 @@ End Property
 
 Public Sub Pause( _
     ByVal dSeconds As Double, _
-    Optional ByVal iMethod As Integer = 1)
+    Optional ByVal iMethod As cPM_PauseMethod = cPM_PauseSleep)
 '
 '==============================================================================
 '                                     PAUSE
@@ -2048,14 +2085,14 @@ Public Sub Pause( _
 '------------------------------------------------------------------------------
     Select Case iMethod
 
-        Case 1
+        Case cPM_PauseSleep
             'Sleep takes milliseconds; coerce seconds to Long milliseconds
                 Ms = CLng(PauseTime * 1000#)
 
             'Sleep(0) yields the remainder of the thread's timeslice; allow it explicitly
                 Sleep Ms
 
-        Case 2
+        Case cPM_PauseTimerLoop
             'Capture the Timer() start snapshot
                 StartS = Timer
 
@@ -2074,7 +2111,7 @@ Public Sub Pause( _
                         DoEvents
                 Loop
 
-        Case 3
+        Case cPM_PauseAppWait
             'Application.Wait is coarse and second-based, so use it only for the
             'whole-second portion and then finish with a Timer()-based loop
                 WholeS = CLng(Fix(PauseTime))
@@ -2570,7 +2607,7 @@ Public Sub Checkpoint( _
     Dim DeltaS              As Double           'Elapsed seconds since previous checkpoint
     Dim NextSeq             As Long             'Next checkpoint sequence number
     Dim EffectiveName       As String           'Normalized checkpoint label
-    Dim ResolvedMethod      As Integer          'Validated method for this read
+    Dim ResolvedMethod      As cPM_TimerMethod          'Validated method for this read
     Dim DiscardEndStamp     As Double           'Raw endpoint, discarded by design
     Dim DiscardQpcEnd       As Currency         'Raw QPC endpoint, discarded by design
     Dim Status              As cPM_ReadStatus   'Outcome of the read
@@ -2592,7 +2629,7 @@ Public Sub Checkpoint( _
         m_LastReadStatus = cPM_ReadOK
 
     'Resolve the session method and read elapsed seconds directly
-        ResolvedMethod = Method_ResolveElapsed(0)
+        ResolvedMethod = Method_ResolveElapsed(cPM_MethodSession)
         CurrentS = Elapsed_ComputeSeconds(ResolvedMethod, _
                                           DiscardEndStamp, DiscardQpcEnd, Status)
 
@@ -3007,8 +3044,8 @@ Friend Function Elapsed_Validate( _
 End Function
 
 Private Function Method_NormalizeStart( _
-    ByVal iMethod As Integer) _
-    As Integer
+    ByVal iMethod As cPM_TimerMethod) _
+    As cPM_TimerMethod
 '
 '==============================================================================
 '                          NORMALIZE START METHOD
@@ -3061,13 +3098,13 @@ Private Function Method_NormalizeStart( _
 ' VALIDATE METHOD RANGE
 '------------------------------------------------------------------------------
     'Reject or coerce out-of-range method values
-        If (iMethod < 1) Or (iMethod > 6) Then
+        If (iMethod < cPM_MethodTimer) Or (iMethod > cPM_MethodNow) Then
             If m_StrictMode Then
                 Err.Raise ERR_CPM_INVALID_START_METHOD, _
                           "cPerformanceManager.Method_NormalizeStart", _
                           "Invalid timer method passed to StartTimer."
             Else
-                iMethod = 5
+                iMethod = cPM_MethodQPC
             End If
         End If
 
@@ -3075,13 +3112,13 @@ Private Function Method_NormalizeStart( _
 ' VALIDATE BACKEND AVAILABILITY
 '------------------------------------------------------------------------------
     'Reject or downgrade a QPC request when QPC is unavailable
-        If iMethod = 5 And Not m_QpcAvailable Then
+        If iMethod = cPM_MethodQPC And Not m_QpcAvailable Then
             If m_StrictMode Then
                 Err.Raise ERR_CPM_QPC_UNAVAILABLE, _
                           "cPerformanceManager.Method_NormalizeStart", _
                           "QPC is unavailable on this system."
             Else
-                iMethod = 2
+                iMethod = cPM_MethodTickCount
             End If
         End If
 
@@ -3093,8 +3130,8 @@ Private Function Method_NormalizeStart( _
 End Function
 
 Private Function Method_ResolveElapsed( _
-    ByVal iMethod As Integer) _
-    As Integer
+    ByVal iMethod As cPM_TimerMethod) _
+    As cPM_TimerMethod
 '
 '==============================================================================
 '                          RESOLVE ELAPSED METHOD
@@ -3163,7 +3200,7 @@ Private Function Method_ResolveElapsed( _
 ' RESOLVE IMPLICIT METHOD
 '------------------------------------------------------------------------------
     'Method 0 means "use the active session method"
-        If iMethod = 0 Then
+        If iMethod = cPM_MethodSession Then
             Method_ResolveElapsed = m_ActiveMethodID
             Exit Function
         End If
@@ -3172,7 +3209,7 @@ Private Function Method_ResolveElapsed( _
 ' VALIDATE EXPLICIT METHOD RANGE
 '------------------------------------------------------------------------------
     'Reject out-of-range explicit method values
-        If (iMethod < 1) Or (iMethod > 6) Then
+        If (iMethod < cPM_MethodTimer) Or (iMethod > cPM_MethodNow) Then
             If m_StrictMode Then
                 Err.Raise ERR_CPM_INVALID_ELAPSED_METHOD, _
                           "cPerformanceManager.Method_ResolveElapsed", _
@@ -3617,7 +3654,7 @@ End Function
 
 
 Friend Function RolloverSeconds( _
-    ByVal iMethod As Integer) _
+    ByVal iMethod As cPM_TimerMethod) _
     As Double
 '
 '==============================================================================
@@ -3672,7 +3709,7 @@ Friend Function RolloverSeconds( _
 ' ROUTINE
 '------------------------------------------------------------------------------
     Select Case iMethod
-        Case 2
+        Case cPM_MethodTickCount
             #If VBA7 Then
                 #If Win64 Then
                         RolloverSeconds = 0#
@@ -3682,7 +3719,7 @@ Friend Function RolloverSeconds( _
             #Else
                     RolloverSeconds = 4294967296# / 1000#
             #End If
-        Case 3, 4
+        Case cPM_MethodTimeGetTime, cPM_MethodSystemTime
                 RolloverSeconds = 4294967296# / 1000#
         Case Else
                 RolloverSeconds = 0#
@@ -3763,7 +3800,7 @@ Private Sub EnsureTimerResolution1ms()
 End Sub
 
 Private Function Timestamp_TryGetCurrentSeconds( _
-    ByVal iMethod As Integer, _
+    ByVal iMethod As cPM_TimerMethod, _
     ByRef ValueOut As Double, _
     ByRef StatusOut As cPM_ReadStatus) _
     As Boolean
@@ -3820,20 +3857,20 @@ Private Function Timestamp_TryGetCurrentSeconds( _
 '------------------------------------------------------------------------------
     Select Case iMethod
 
-        Case 1
+        Case cPM_MethodTimer
                 ValueOut = Timer
                 Timestamp_TryGetCurrentSeconds = True
 
-        Case 2
+        Case cPM_MethodTickCount
                 ValueOut = Get_TickCountSeconds()
                 Timestamp_TryGetCurrentSeconds = True
 
-        Case 3
+        Case cPM_MethodTimeGetTime
                 EnsureTimerResolution1ms
                 ValueOut = UInt32ToDouble(timeGetTime()) / 1000#
                 Timestamp_TryGetCurrentSeconds = True
 
-        Case 4
+        Case cPM_MethodSystemTime
                 'The only non-QPC backend with a real failure path
                 If Not SystemTime_TryReadMs(Ms, StatusOut) Then
                     Timestamp_TryGetCurrentSeconds = False
@@ -3842,7 +3879,7 @@ Private Function Timestamp_TryGetCurrentSeconds( _
                 ValueOut = Ms / 1000#
                 Timestamp_TryGetCurrentSeconds = True
 
-        Case 6
+        Case cPM_MethodNow
                 ValueOut = Now() * 86400#
                 Timestamp_TryGetCurrentSeconds = True
 
@@ -3856,7 +3893,7 @@ End Function
 
 
 Private Function Timestamp_TryGetNextSeconds( _
-    ByVal iMethod As Integer, _
+    ByVal iMethod As cPM_TimerMethod, _
     ByRef ValueOut As Double, _
     ByRef StatusOut As cPM_ReadStatus) _
     As Boolean
@@ -3915,7 +3952,7 @@ Private Function Timestamp_TryGetNextSeconds( _
 '------------------------------------------------------------------------------
     Select Case iMethod
 
-        Case 1
+        Case cPM_MethodTimer
                 A = Timer
                 Do
                     SpinCount = SpinCount + 1
@@ -3927,7 +3964,7 @@ Private Function Timestamp_TryGetNextSeconds( _
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
 
-        Case 2
+        Case cPM_MethodTickCount
                 A = Get_TickCountSeconds()
                 Do
                     SpinCount = SpinCount + 1
@@ -3939,7 +3976,7 @@ Private Function Timestamp_TryGetNextSeconds( _
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
 
-        Case 3
+        Case cPM_MethodTimeGetTime
                 EnsureTimerResolution1ms
                 A = UInt32ToDouble(timeGetTime())
                 Do
@@ -3952,7 +3989,7 @@ Private Function Timestamp_TryGetNextSeconds( _
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
 
-        Case 4
+        Case cPM_MethodSystemTime
                 'Abandon alignment entirely if the initial read fails
                 If Not SystemTime_TryReadMs(A, StatusOut) Then
                     Timestamp_TryGetNextSeconds = False
@@ -3973,7 +4010,7 @@ Private Function Timestamp_TryGetNextSeconds( _
                     End If
                 Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
 
-        Case 6
+        Case cPM_MethodNow
                 'Now() cannot be meaningfully aligned at this granularity
                 ValueOut = Now() * 86400#
                 Timestamp_TryGetNextSeconds = True
@@ -4288,7 +4325,7 @@ Public Function MeasureProcedure( _
     ByVal ProcedureName As String, _
     Optional ByVal Iterations As Long = 30, _
     Optional ByVal WarmupIterations As Long = 3, _
-    Optional ByVal iMethod As Integer = 5) _
+    Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC) _
     As Double()
 '
 '==============================================================================
@@ -4366,7 +4403,7 @@ Public Function MeasureProcedure( _
 '------------------------------------------------------------------------------
     Dim Samples()           As Double                'Per-run elapsed seconds
     Dim K                   As Long                  'Loop counter
-    Dim ResolvedMethod      As Integer               'Validated timer method
+    Dim ResolvedMethod      As cPM_TimerMethod               'Validated timer method
     Dim cPM_Work            As cPerformanceManager   'Isolated worker instance
     Dim DiscardedElapsedS   As Double                'Throwaway warm-up value
     Dim ErrNumber           As Long                  'Captured error number
@@ -4472,7 +4509,7 @@ End Function
 Public Function MeasureOverhead_Samples( _
     Optional ByVal Iterations As Long = 1000, _
     Optional ByVal WarmupIterations As Long = 10, _
-    Optional ByVal iMethod As Integer = 5) _
+    Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC) _
     As Double()
 '
 '==============================================================================
@@ -4533,7 +4570,7 @@ Public Function MeasureOverhead_Samples( _
 '------------------------------------------------------------------------------
     Dim Samples()           As Double                'Per-cycle overhead in seconds
     Dim K                   As Long                  'Loop counter
-    Dim ResolvedMethod      As Integer               'Validated timer method
+    Dim ResolvedMethod      As cPM_TimerMethod               'Validated timer method
     Dim cPM_Work            As cPerformanceManager   'Isolated worker instance
     Dim DiscardedElapsedS   As Double                'Throwaway warm-up value
     Dim ErrNumber           As Long                  'Captured error number
@@ -5424,7 +5461,7 @@ End Function
 '
 
 Private Function Elapsed_ComputeSeconds( _
-    ByVal ResolvedMethod As Integer, _
+    ByVal ResolvedMethod As cPM_TimerMethod, _
     ByRef EndStampOut As Double, _
     ByRef QpcEndOut As Currency, _
     ByRef StatusOut As cPM_ReadStatus) _
@@ -5493,29 +5530,29 @@ Private Function Elapsed_ComputeSeconds( _
 '------------------------------------------------------------------------------
     Select Case ResolvedMethod
 
-        Case 1
+        Case cPM_MethodTimer
                 EndStamp = Timer
                 Seconds = EndStamp - m_T1
                 'Correct midnight rollover for Timer()
                     If Seconds < 0# Then Seconds = Seconds + 86400#
                 Seconds = Elapsed_Validate(Seconds)
 
-        Case 2
+        Case cPM_MethodTickCount
                 EndStamp = Get_TickCountSeconds()
                 Seconds = EndStamp - m_T1
                 'Correct 32-bit millisecond-counter rollover where applicable
-                    If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(2)
+                    If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(cPM_MethodTickCount)
                 Seconds = Elapsed_Validate(Seconds)
 
-        Case 3
+        Case cPM_MethodTimeGetTime
                 EnsureTimerResolution1ms
                 EndStamp = UInt32ToDouble(timeGetTime()) / 1000#
                 Seconds = EndStamp - m_T1
                 'Correct 32-bit millisecond-counter rollover
-                    If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(3)
+                    If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(cPM_MethodTimeGetTime)
                 Seconds = Elapsed_Validate(Seconds)
 
-        Case 4
+        Case cPM_MethodSystemTime
                 'Validate the read BEFORE any arithmetic touches it
                 If Not SystemTime_TryReadMs(Ms, StatusOut) Then
                     If m_StrictMode Then
@@ -5531,10 +5568,10 @@ Private Function Elapsed_ComputeSeconds( _
                 EndStamp = Ms / 1000#
                 Seconds = EndStamp - m_T1
                 'Correct 32-bit millisecond-counter rollover
-                    If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(4)
+                    If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(cPM_MethodSystemTime)
                 Seconds = Elapsed_Validate(Seconds)
 
-        Case 5
+        Case cPM_MethodQPC
                 'Validate the read BEFORE any arithmetic touches it
                 If Not QPC_TryReadTick(QpcNow) Then
                     StatusOut = cPM_ReadQpcFailed
@@ -5553,7 +5590,7 @@ Private Function Elapsed_ComputeSeconds( _
                 EndStamp = CDbl(QpcNow)
                 QpcEndOut = QpcNow
 
-        Case 6
+        Case cPM_MethodNow
                 EndStamp = Now() * 86400#
                 Seconds = EndStamp - m_T1
                 Seconds = Elapsed_Validate(Seconds)

@@ -155,13 +155,21 @@ Attribute VB_Name = "M_cPM_TimeWasters"
         Private Const PM_TW_MASK_CURSOR             As Long = 16
         Private Const PM_TW_MASK_ALL                As Long = 31
 
-    'Module error numbers
-        Private Const ERR_TW_BEGIN_BLANK_KEY        As Long = vbObjectError + 2200
-        Private Const ERR_TW_END_BLANK_KEY          As Long = vbObjectError + 2201
-        Private Const ERR_TW_ISACTIVE_BLANK_KEY     As Long = vbObjectError + 2202
-        Private Const ERR_TW_CALCULATION_UNAVAILABLE As Long = vbObjectError + 2203
-        Private Const ERR_TW_REPORT_NO_INSTANCE     As Long = vbObjectError + 2600
-        Private Const ERR_TW_REPORT_NO_TARGET       As Long = vbObjectError + 2601
+    'Error numbers raised by this module.
+    '
+    'Public so callers can trap a specific condition by name rather than by a
+    'magic offset. The values are unchanged from earlier releases.
+    Public Enum cPM_TWError
+        'Shared session registration
+        ERR_TW_BEGIN_BLANK_KEY = vbObjectError + 2200
+        ERR_TW_END_BLANK_KEY = vbObjectError + 2201
+        ERR_TW_ISACTIVE_BLANK_KEY = vbObjectError + 2202
+        ERR_TW_CALCULATION_UNAVAILABLE = vbObjectError + 2203
+
+        'Structured report output
+        ERR_TW_REPORT_NO_INSTANCE = vbObjectError + 2600
+        ERR_TW_REPORT_NO_TARGET = vbObjectError + 2601
+    End Enum
 
     'Structured report column positions
     '
@@ -1496,5 +1504,7 @@ Public Function PM_TW_CalculationExempted() As Boolean
         PM_TW_CalculationExempted = g_TW_CalcExempted
 
 End Function
+
+
 
 
