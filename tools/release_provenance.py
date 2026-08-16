@@ -64,13 +64,36 @@ def sha256(path: Path) -> str:
 
 
 def git(*args: str) -> str | None:
+    """Run a git command, returning None on any failure.
+
+    The encoding is pinned deliberately. subprocess decodes with the locale
+    codepage by default, which on Windows is cp1252, so UTF-8 output from git
+    came back mangled and every comparison against a file read as UTF-8 failed
+    on the first non-ASCII character.
+    """
+    
     try:
         out = subprocess.run(
-            ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True
+            ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True,
+            encoding="utf-8", errors="replace"
         )
         return out.stdout.strip()
     except Exception:
         return None
+
+
+def git_error(*args: str) -> str:
+    """Return git's own message for a failing command, for reporting."""
+    try:
+        out = subprocess.run(
+            ["git", *args], cwd=ROOT, capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+        )
+        return (out.stderr or out.stdout).strip()
+    except FileNotFoundError:
+        return "git executable not found on PATH"
+    except Exception as e:  # pragma: no cover - defensive
+        return str(e)
 
 
 def verify_against_tag(tag: str, paths: list[str]) -> list[str]:
@@ -90,7 +113,8 @@ def verify_against_tag(tag: str, paths: list[str]) -> list[str]:
         return [
             f"tag {tag} does not exist in this clone",
             "  If the release is still a draft, GitHub creates the tag on publish.",
-            "  If it is published, run: git fetch --tags",
+            "  If it is published, fetch it: GitHub Desktop -> Fetch origin,",
+            "  or git fetch --tags from a shell that can see git.",
         ]
 
     problems: list[str] = []
@@ -107,6 +131,29 @@ def verify_against_tag(tag: str, paths: list[str]) -> list[str]:
         if on_disk.replace("\r\n", "\n") != blob.replace("\r\n", "\n"):
             problems.append(f"{rel}: differs from {tag}")
     return problems
+
+
+GIT_MISSING_HINT = (
+    "Common causes:\n"
+    "  - git is not on PATH. GitHub Desktop ships its own copy: open a shell\n"
+    "    that can see it with Repository -> Open in Command Prompt.\n"
+    "  - Windows refuses the folder as dubious ownership, which happens often\n"
+    "    under OneDrive. Run the git config command git suggests above."
+)
+
+
+def git_usable() -> bool:
+    """Whether git can read THIS repository.
+
+    Checking `git --version` is not enough. It succeeds whenever the executable
+    exists, including when git then refuses to operate on the repository - most
+    commonly Windows' dubious-ownership guard, which trips on folders under
+    OneDrive and fails every repository command.
+
+    That produced a manifest with a TODO commit and every tag reported as
+    missing, which points the reader at the tags rather than at the real cause.
+    """
+    return git("rev-parse", "--git-dir") is not None
 
 
 def rows(paths: list[str]) -> list[str]:
@@ -132,6 +179,18 @@ def main() -> int:
     ap.add_argument("--tag", help="Verify every hashed source matches this tag's blob")
     ap.add_argument("--out", metavar="PATH", help="Also write the manifest as JSON")
     args = ap.parse_args()
+
+    if not git_usable():
+        print("git cannot read this repository, so nothing could be verified.",
+              file=sys.stderr)
+        print("", file=sys.stderr)
+        print("git said:", file=sys.stderr)
+        for line in git_error("rev-parse", "--git-dir").splitlines():
+            print(f"  {line}", file=sys.stderr)
+        print("", file=sys.stderr)
+        print(GIT_MISSING_HINT, file=sys.stderr)
+        print("", file=sys.stderr)
+        return 1
 
     commit = git("rev-parse", "HEAD")
     dirty = git("status", "--porcelain")
@@ -310,7 +369,9 @@ def main() -> int:
         print(f"\nmanifest written to {out_path}", file=sys.stderr)
 
     if tag_problems:
-        print(f"\n{len(tag_problems)} source file(s) do not match {args.tag}.", file=sys.stderr)
+        # Hint lines are indented; only the unindented entries are real findings.
+        findings = [p for p in tag_problems if not p.startswith("  ")]
+        print(f"\n{len(findings)} problem(s) verifying against {args.tag}.", file=sys.stderr)
         return 1
 
     missing = text.count(TODO)

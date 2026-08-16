@@ -3,3 +3,12 @@
 ~$*
 *.xlam
 *.bak
+
+# Release provenance output.
+#
+# The manifest is a Release asset describing a specific tag, not source. A copy
+# in the repository would go stale the moment anything changes, and the first
+# one committed here recorded a failed verification - exactly the misleading
+# artifact the manifest exists to prevent.
+release-manifest.json
+vba-lint-results.json

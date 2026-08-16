@@ -356,7 +356,14 @@ def check_version_consistency(rep: Report) -> None:
 
 
 def _changelog_sections(text: str) -> dict[str, str]:
-    """Split a changelog into {version: body}, keyed by the heading label."""
+    """Split a changelog into {version: body}, keyed by the heading label.
+
+    Line endings are normalised first. A Windows checkout holds CRLF while
+    `git show` returns the blob with LF, so comparing them raw reports every
+    released section as changed - a failure that depends on the reader's
+    platform rather than on the content.
+    """
+    text = text.replace("\r\n", "\n")
     out: dict[str, str] = {}
     current, buf = None, []
     for line in text.split("\n"):
@@ -374,10 +381,18 @@ def _changelog_sections(text: str) -> dict[str, str]:
 
 
 def _git(*args: str) -> str | None:
-    """Run a git command, returning None if git or the repository is unavailable."""
+    """Run a git command, returning None if git or the repository is unavailable.
+
+    The encoding is pinned deliberately. subprocess decodes with the locale
+    codepage by default, which on Windows is cp1252, so UTF-8 output from git
+    came back mangled and every comparison against a file read as UTF-8 failed
+    on the first non-ASCII character.
+    """
     try:
-        r = subprocess.run(["git", *args], cwd=ROOT,
-                           capture_output=True, text=True, check=True)
+        r = subprocess.run(
+            ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True,
+            encoding="utf-8", errors="replace",
+        )
         return r.stdout.strip()
     except Exception:
         return None
@@ -386,7 +401,8 @@ def _git(*args: str) -> str | None:
 def _git_show(ref: str, path: str) -> str | None:
     try:
         r = subprocess.run(["git", "show", f"{ref}:{path}"], cwd=ROOT,
-                           capture_output=True, text=True, check=True)
+                           capture_output=True, text=True, check=True,
+            encoding="utf-8", errors="replace")
         return r.stdout
     except Exception:
         return None
@@ -405,6 +421,19 @@ def check_changelog_released_sections_frozen(rep: Report) -> None:
     """
     if not CHANGELOG_FILE.exists():
         rep.check("released changelog sections frozen", ["CHANGELOG.md not found"])
+        return
+
+    # Checking `git --version` is not enough: it succeeds whenever the binary
+    # exists, including when git then refuses the repository - most commonly
+    # Windows' dubious-ownership guard under OneDrive. That reported every tag
+    # as missing, pointing the reader at the tags rather than the real cause.
+    if _git("rev-parse", "--git-dir") is None:
+        rep.check("released changelog sections frozen", [])
+        print("note  git cannot read this repository, so no released section was verified.")
+        print("      Run 'git status' to see why. Two common causes: git is not on")
+        print("      PATH (use Repository -> Open in Command Prompt), or Windows")
+        print("      refuses the folder as dubious ownership, which is frequent")
+        print("      under OneDrive.")
         return
 
     current = _changelog_sections(CHANGELOG_FILE.read_text(encoding="utf-8"))
