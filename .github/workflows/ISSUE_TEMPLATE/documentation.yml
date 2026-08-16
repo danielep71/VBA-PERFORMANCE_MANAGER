@@ -1,0 +1,71 @@
+name: 📄 Documentation
+description: Something in the README, wiki or procedure headers is wrong, unclear or missing.
+title: "[Docs] "
+labels: ["documentation"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Documentation defects are treated as real defects here. A README that
+        overstates a guarantee is a correctness problem, not a cosmetic one —
+        several have been fixed on exactly those grounds.
+
+  - type: dropdown
+    id: location
+    attributes:
+      label: Where
+      options:
+        - README
+        - Wiki
+        - CHANGELOG
+        - Procedure headers in the source
+        - Demo or usage-example modules
+        - Issue or pull request templates
+    validations:
+      required: true
+
+  - type: input
+    id: page
+    attributes:
+      label: Specific page or procedure
+      description: The wiki page name, README section heading, or procedure name.
+      placeholder: "Statistics and Measurement — the harness section"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong
+      description: >
+        Quote the passage if you can. If it is a missing topic rather than an
+        incorrect one, describe what you went looking for.
+      placeholder: |
+        The page says MeasureOverhead_Samples can be subtracted from
+        MeasureProcedure results as a baseline. It cannot — the two do not
+        dispatch through the same path.
+    validations:
+      required: true
+
+  - type: textarea
+    id: correction
+    attributes:
+      label: What it should say
+      description: >
+        Your understanding of the correct behaviour. An approximation is fine; if
+        you are unsure, saying so is still a useful report.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of problem
+      options:
+        - "Factually incorrect"
+        - "Overstates a guarantee"
+        - "Out of date with the current release"
+        - "Unclear or ambiguous"
+        - "Missing entirely"
+        - "Broken link or formatting"
+    validations:
+      required: true

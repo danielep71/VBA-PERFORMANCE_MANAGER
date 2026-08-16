@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/danielep71/vba-performance_manager/wiki
+    about: Installation, the API reference, benchmarking guidance and known limitations.
+
+  - name: ❓ Questions and usage help
+    url: https://github.com/danielep71/vba-performance_manager/discussions
+    about: How do I measure X, why is my result unstable, which backend should I use.
+
+  - name: 📜 Changelog
+    url: https://github.com/danielep71/vba-performance_manager/blob/main/CHANGELOG.md
+    about: Check whether the behaviour you are seeing changed in a recent release.

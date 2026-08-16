@@ -1,0 +1,165 @@
+name: 🐛 Bug report
+description: Something behaves incorrectly or produces a wrong measurement.
+title: "[Bug] "
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Timing behaviour depends on facts that are invisible from a description alone.
+        A report saying "the elapsed time is wrong" cannot be triaged without the
+        environment and session details below — several code paths are selected by
+        `#If Win64`, so a defect may exist on one bitness and not the other.
+
+        Most of this takes under a minute to gather.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+      placeholder: |
+        Expected ElapsedSeconds to return roughly 2.0 after a two-second workload.
+        Got 4294967.29 instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: >
+        The smallest procedure that shows the problem. Please include the
+        `StartTimer` call and how the result is read.
+      render: vb
+      placeholder: |
+        Public Sub Repro()
+            Dim cPM As cPerformanceManager
+            Set cPM = New cPerformanceManager
+
+            cPM.StartTimer cPM_MethodQPC
+            cPM.Pause 2#, cPM_PauseSleep
+            Debug.Print cPM.ElapsedSeconds
+
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End Sub
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Component version
+      description: >
+        The `VERSION` stamp in the header of `cPerformanceManager.cls`, or the
+        release tag you imported.
+      placeholder: "1.2.0"
+    validations:
+      required: true
+
+  - type: input
+    id: excel-build
+    attributes:
+      label: Excel version and build
+      description: >
+        File → Account → About Excel. Please paste the whole line — the build
+        number matters, not just the year.
+      placeholder: "Microsoft 365 MSO, Version 2606, Build 16.0.20131.20152"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: bitness
+    attributes:
+      label: Office bitness
+      description: >
+        Shown at the end of the same About line. This selects between different
+        code paths, so a defect may exist on only one.
+      options:
+        - 64-bit
+        - 32-bit
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Timing backend requested
+      description: The value passed to `StartTimer`.
+      options:
+        - "cPM_MethodQPC (5) — default"
+        - "cPM_MethodTimer (1)"
+        - "cPM_MethodTickCount (2)"
+        - "cPM_MethodTimeGetTime (3)"
+        - "cPM_MethodSystemTime (4)"
+        - "cPM_MethodNow (6)"
+        - "Not applicable — the problem is not in a timing session"
+    validations:
+      required: true
+
+  - type: input
+    id: active-method
+    attributes:
+      label: ActiveMethodID after StartTimer
+      description: >
+        `Debug.Print cPM.ActiveMethodID`. If this differs from what you requested,
+        a non-strict fallback occurred and that is very likely the cause.
+      placeholder: "5"
+
+  - type: dropdown
+    id: strict
+    attributes:
+      label: StrictMode
+      description: >
+        Non-strict mode substitutes documented fallbacks rather than raising, so a
+        returned zero may be a suppressed failure.
+      options:
+        - "True (default)"
+        - "False"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: read-status
+    attributes:
+      label: LastReadStatus
+      description: >
+        `Debug.Print cPM.LastReadStatus`. Distinguishes a real measurement from a
+        failed read. Note that this does not apply to samples returned by
+        `MeasureProcedure`, which measures on an isolated instance.
+      placeholder: "0 (cPM_ReadOK)"
+
+  - type: checkboxes
+    id: imports
+    attributes:
+      label: Import checklist
+      description: The single most common cause of unexpected behaviour.
+      options:
+        - label: "`M_cPM_TIMEWASTERS.bas` was imported **before** `cPerformanceManager.cls`"
+          required: true
+        - label: "Debug → Compile VBAProject completes with no errors"
+          required: true
+
+  - type: dropdown
+    id: suite
+    attributes:
+      label: Regression suite result
+      description: >
+        `Run_cPerformanceManager_RegressionSuite`, if you imported the test module.
+        A failing suite on your machine narrows the problem down considerably.
+      options:
+        - "All cases pass"
+        - "Some cases fail — details below"
+        - "Not run"
+        - "Test module not imported"
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: >
+        Failing case names, workbook size, whether the machine was under load,
+        regional settings if the problem involves formatted output.

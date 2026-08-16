@@ -1,0 +1,70 @@
+name: ✨ Feature request
+description: Propose a new capability or a change to the public surface.
+title: "[Feature] "
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The most useful proposals start from the problem rather than the solution.
+        A clear description of what you are unable to do today often leads to a
+        better design than the one either of us had in mind first.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve
+      description: >
+        What you are trying to measure or control, and where the current API stops
+        you. Please describe the situation rather than the feature.
+      placeholder: |
+        I need to benchmark a procedure that takes arguments. Today that requires
+        writing a wrapper Sub for every parameter combination, and the wrapper also
+        has to reset state between iterations, which then gets included in the
+        measured span.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed surface
+      description: >
+        What you would like to call, and what it would return. A rough signature is
+        more useful than a precise one.
+      render: vb
+      placeholder: |
+        S = cPM.MeasureProcedure("Transform", 30, 3, cPM_MethodQPC, _
+                                 SetupProcedureName:="ResetSourceData", _
+                                 Args:=Array(22400, "Q3"))
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: >
+        How you are handling this today, and what it costs. If there is no
+        workaround, say so — that is useful information.
+
+  - type: dropdown
+    id: compatibility
+    attributes:
+      label: Backwards compatibility
+      description: >
+        Would this change behaviour for code that already works? Additive changes
+        can ship in a minor release; changes to existing behaviour usually cannot.
+      options:
+        - "Purely additive — new members or new optional arguments"
+        - "Changes existing behaviour"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: >
+        Other shapes this could take, and why you prefer the one above. Naming the
+        trade-offs usually shortens the discussion.
