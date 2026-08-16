@@ -106,6 +106,17 @@ Build 16.0.20131.20152, 64-bit.
 - **Contamination detection** — `Stats_IsContaminated` reports when the
   coefficient of variation exceeds 0.25, and `Stats_Text` appends a warning so a
   noisy run cannot be mistaken for a precise one.
+- **`MeasureBaseline`.** Runs an empty procedure through the same
+  `Application.Run` path as a real workload, so its median can legitimately be
+  subtracted from a `MeasureProcedure` result. `MeasureOverhead_Samples` cannot
+  — it does not dispatch through `Application.Run`. The caller supplies the
+  empty procedure; `Application.Run` cannot reach anything in a module declared
+  `Option Private Module`. (#7)
+- **`FailedReadsOut` and `LastFailureStatusOut`** on `MeasureProcedure`. The
+  harness measures on an isolated worker released before the vector is returned,
+  so a run where every read failed was previously indistinguishable from a run
+  of a procedure that does nothing. (#21)
+  
 
 #### Read-status reporting
 
@@ -159,6 +170,11 @@ Build 16.0.20131.20152, 64-bit.
   `PM_RPT_COL_CUMULATIVE`).
 - The demo workbook is distributed as a **Release asset** rather than versioned
   in the repository.
+- **`MeasureProcedure` qualifies an unqualified procedure name with
+  `ThisWorkbook`.** `Application.Run` previously resolved against the active
+  workbook, so the harness could measure a same-named procedure in whichever
+  workbook the user had in front. An explicit qualification is honored
+  unchanged. (#9)
 
 ### Fixed
 
