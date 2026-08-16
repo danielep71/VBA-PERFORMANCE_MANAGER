@@ -1,9 +1,9 @@
 blank_issues_enabled: false
 
 contact_links:
-  - name: 📚 Documentation
+  - name: 📚 Read the Wiki
     url: https://github.com/danielep71/vba-performance_manager/wiki
-    about: Installation, the API reference, benchmarking guidance and known limitations.
+    about: Installation, the API reference, benchmarking guidance, and known limitations.
 
   - name: ❓ Questions and usage help
     url: https://github.com/danielep71/vba-performance_manager/discussions
@@ -11,4 +11,4 @@ contact_links:
 
   - name: 📜 Changelog
     url: https://github.com/danielep71/vba-performance_manager/blob/main/CHANGELOG.md
-    about: Check whether the behaviour you are seeing changed in a recent release.
+    about: Check whether the behavior you are seeing changed in a recent release.
