@@ -6,12 +6,9 @@
   "built": "2026-08-16",
   "tag_verified": null,
   "tag_problems": [
-    "src/modules/M_cPM_TIMEWASTERS.bas: not present at v1.3.0",
-    "src/classes/cPerformanceManager.cls: not present at v1.3.0",
-    "test/M_cPM_Test.bas: not present at v1.3.0",
-    "demo/M_cPM_DEMO.bas: not present at v1.3.0",
-    "demo/M_cPM_USAGE_EXAMPLES.bas: not present at v1.3.0",
-    "demo/M_DEMO_BUILDER.bas: not present at v1.3.0"
+    "tag v1.3.0 does not exist in this clone",
+    "  If the release is still a draft, GitHub creates the tag on publish.",
+    "  If it is published, run: git fetch --tags"
   ],
   "certification": {
     "cases": 72,
