@@ -6304,12 +6304,18 @@ Private Sub Test_ElapsedValidate_StrictAndNonStrict()
 '                  TEST ELAPSED VALIDATE STRICT AND NON-STRICT
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Validates negative-elapsed handling in both strict and non-strict modes
+'   Validates that a backwards-moving timing source is reported as such, and
+'   that the clamped value never passes as a real measurement
 '
 ' WHY THIS EXISTS
-'   This guard is what stops a backwards-moving clock from being reported as a
-'   real duration, which is the failure mode the Win64 method 2 path previously
-'   allowed through silently
+'   This guard is what stops a backwards-moving clock being reported as a real
+'   duration, which is the failure mode the Win64 method 2 path allows through
+'   otherwise.
+'
+'   Clamping alone was not enough. It produced "zero seconds, status OK", which
+'   is indistinguishable from a genuine measurement of zero, so a backward-clock
+'   event could be recorded as a valid checkpoint or kept as the fastest sample
+'   in a benchmark
 '
 ' INPUTS
 '   None
@@ -6318,15 +6324,21 @@ Private Sub Test_ElapsedValidate_StrictAndNonStrict()
 '   None
 '
 ' UPDATED
-'   2026-08-15
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim cPM         As cPerformanceManager    'Class under test
+    Dim Status      As cPM_ReadStatus         'Status reported by the validator
+    Dim Returned    As Double                 'Value returned by the validator
+    Dim ElapsedS    As Double                 'Elapsed value from a full read
+    Dim CountBefore As Long                   'Checkpoint count before the failure
     Dim Raised      As Boolean                'TRUE when the expected error was raised
-    Dim Returned    As Double                 'Value returned in non-strict mode
+    Dim Samples()   As Double                 'Harness samples
+    Dim FailedReads As Long                   'Harness failure count
+    Dim LastStatus  As cPM_ReadStatus         'Harness failure status
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
@@ -6341,41 +6353,96 @@ Private Sub Test_ElapsedValidate_StrictAndNonStrict()
 '------------------------------------------------------------------------------
 ' ASSERT PASS-THROUGH FOR VALID VALUES
 '------------------------------------------------------------------------------
-    'Assert that zero and positive values are returned unchanged
-        Test_Assert_ApproxDouble 0#, cPM.Elapsed_Validate(0#), 0.000000001, _
+    'A valid value is returned unchanged and leaves the status alone
+        Status = cPM_ReadOK
+        Test_Assert_ApproxDouble 0#, cPM.Elapsed_Validate(0#, Status), 0.000000001, _
                                  "Elapsed_Validate returns 0 unchanged"
-        Test_Assert_ApproxDouble 1.25, cPM.Elapsed_Validate(1.25), 0.000000001, _
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(Status), _
+                              "A valid value leaves the status at OK"
+
+        Status = cPM_ReadOK
+        Test_Assert_ApproxDouble 1.25, cPM.Elapsed_Validate(1.25, Status), 0.000000001, _
                                  "Elapsed_Validate returns a positive value unchanged"
 
 '------------------------------------------------------------------------------
-' ASSERT NON-STRICT CLAMP
+' ASSERT A NEGATIVE VALUE IS CLAMPED AND REPORTED
 '------------------------------------------------------------------------------
-    'Switch to non-strict policy
-        cPM.StrictMode = False
-    'Assert that a negative value is clamped to zero
-        Returned = cPM.Elapsed_Validate(-1#)
+    'The clamp must be accompanied by a status, or the zero is indistinguishable
+    'from a real measurement of zero
+        Status = cPM_ReadOK
+        Returned = cPM.Elapsed_Validate(-1#, Status)
+
         Test_Assert_ApproxDouble 0#, Returned, 0.000000001, _
-                                 "Elapsed_Validate clamps a negative value to 0 in non-strict mode"
+                                 "Elapsed_Validate clamps a negative value to 0"
+        Test_Assert_EqualLong CLng(cPM_ReadElapsedInvalid), CLng(Status), _
+                              "A clamped value reports cPM_ReadElapsedInvalid"
 
 '------------------------------------------------------------------------------
-' ASSERT STRICT RAISE
+' ASSERT NON-STRICT REPORTS THE CONDITION END TO END
 '------------------------------------------------------------------------------
-    'Switch back to strict policy
+    'Method 2 is used because method 5 does not route through Elapsed_Validate
+        cPM.StrictMode = False
+        cPM.StartTimer cPM_MethodTickCount
+        cPM.Pause 0.02, cPM_PauseSleep
+
+        cPM.Test_ForceNextNegativeElapsed
+        ElapsedS = cPM.ElapsedSeconds
+
+        Test_Assert_ApproxDouble 0#, ElapsedS, 0.000000001, _
+                                 "A backward source returns 0 in non-strict mode"
+        Test_Assert_EqualLong CLng(cPM_ReadElapsedInvalid), CLng(cPM.LastReadStatus), _
+                              "A backward source reports cPM_ReadElapsedInvalid"
+
+'------------------------------------------------------------------------------
+' ASSERT CHECKPOINT ABANDONS A CLAMPED RESULT
+'------------------------------------------------------------------------------
+    'Establish a session with one good checkpoint
+        cPM.StartTimer cPM_MethodTickCount, False, "Backward clock"
+        cPM.Pause 0.02, cPM_PauseSleep
+        cPM.Checkpoint "Phase 1"
+        CountBefore = cPM.CheckpointCount
+
+    'A clamped result must not become a checkpoint row
+        cPM.Test_ForceNextNegativeElapsed
+        cPM.Checkpoint "Phase 2 - should not be recorded"
+
+        Test_Assert_EqualLong CountBefore, cPM.CheckpointCount, _
+                              "Checkpoint abandons a clamped result"
+        Test_Assert_EqualLong CLng(cPM_ReadElapsedInvalid), CLng(cPM.LastReadStatus), _
+                              "The abandoned checkpoint reports the reason"
+
+'------------------------------------------------------------------------------
+' ASSERT STRICT MODE RAISES
+'------------------------------------------------------------------------------
+    'Strict mode must reject the condition rather than clamp it
         cPM.StrictMode = True
+        cPM.StartTimer cPM_MethodTickCount
+        cPM.Pause 0.02, cPM_PauseSleep
+        cPM.Test_ForceNextNegativeElapsed
 
-    'Expect a raise on a negative elapsed value
         Raised = False
         On Error Resume Next
-        Returned = cPM.Elapsed_Validate(-0.001)
+        ElapsedS = cPM.ElapsedSeconds
         If Err.Number <> 0 Then
             Raised = True
             Err.Clear
         End If
         On Error GoTo CleanFail
 
-    'Assert that strict mode rejected the negative value
         Test_Assert_True Raised, _
-                         "Elapsed_Validate raises on a negative value in strict mode"
+                         "A backward source raises in strict mode"
+        Test_Assert_EqualLong CLng(cPM_ReadElapsedInvalid), CLng(cPM.LastReadStatus), _
+                              "LastReadStatus reports the reason after a strict raise"
+
+'------------------------------------------------------------------------------
+' ASSERT THE HARNESS REJECTS A CLAMPED SAMPLE
+'------------------------------------------------------------------------------
+    'A clamped zero must not survive as the fastest sample in a benchmark
+        cPM.StrictMode = False
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 4, 1, _
+                                       cPM_MethodTickCount, FailedReads, LastStatus)
+        Test_Assert_EqualLong 4, cPM.Stats_Count(Samples), _
+                              "A healthy method-2 harness run returns a full vector"
 
 CleanExit:
 '------------------------------------------------------------------------------

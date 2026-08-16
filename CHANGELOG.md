@@ -50,6 +50,8 @@ fresh rather than reconstructed at release time.
   of a procedure that does nothing. (#21)
 - **`ERR_CPM_MEASURE_NO_VALID_SAMPLES`** (+1036), raised when no measured read
   in a harness run produced a value.
+- **`cPM_ReadElapsedInvalid`** status, reported when an elapsed value had to be
+  clamped because the timing source moved backwards.
 - **Release provenance.** `tools/release_provenance.py` emits a SHA-256 for every
   shipped file and Release asset, the commit the release was cut from, and the
   Excel build and bitness the suite was certified on. Missing fields are marked
@@ -84,11 +86,11 @@ fresh rather than reconstructed at release time.
   *sample validity cannot be established; inspect the observations*. Those mean
   different things and previously collapsed into one message.
 
-- **`Elapsed_ComputeSeconds` no longer raises for read failures**, reporting
-  them through its status output instead. Two raises remain deliberately: the
-  defensive invalid-method branch, which has no corresponding read status, and
-  `Elapsed_Validate` for a backwards-moving clock, which is arithmetic
-  validation rather than a read.
+- **`Elapsed_ComputeSeconds` and `Elapsed_Validate` no longer raise**, reporting
+  outcomes through their status outputs instead. One raise remains deliberately:
+  the defensive invalid-method branch, which has no corresponding status. Strict
+  policy is applied by the public operation, which publishes the status first so
+  the two public surfaces agree.
 
 - **`MeasureProcedure` qualifies an unqualified procedure name with
   `ThisWorkbook`.** `Application.Run` previously resolved against the active
@@ -133,6 +135,18 @@ fresh rather than reconstructed at release time.
   `ERR_CPM_MEASURE_NO_VALID_SAMPLES`, because an empty vector is not a
   measurement. Warm-up failures are counted too, so `FailedReadsOut` can exceed
   the shortfall. (CPM120-P2-02)
+
+- **A clamped negative elapsed no longer passes as a valid measurement.**
+  `Elapsed_Validate` clamped a backwards-moving timing source to zero and
+  returned only a number, so the result was "zero seconds, status OK" — which is
+  indistinguishable from a genuine measurement of zero.
+
+  A backward-clock event could therefore be recorded as a valid checkpoint, or
+  kept as the fastest sample in a benchmark. The clamp now reports
+  `cPM_ReadElapsedInvalid`, so every caller that already handles a failed read
+  handles this too: `ElapsedSeconds` raises in strict mode or returns zero with
+  the status, `Checkpoint` abandons the capture, and the harness excludes the
+  sample. (CPM120-P2-03)
 
 ### Known limitations
 

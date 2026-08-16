@@ -176,13 +176,18 @@ Attribute VB_Exposed = False
     '
     'A non-OK value means the reported elapsed value is not a measurement. In
     'non-strict mode the class returns 0 rather than raising, so callers need a
-    'way to distinguish "zero seconds elapsed" from "the read failed".
+    'way to distinguish "zero seconds elapsed" from "no valid value was obtained".
+    '
+    'The name says "read" because most failures are native read failures, but
+    'cPM_ReadElapsedInvalid covers the arithmetic validation that follows a
+    'successful read. Both make the returned zero meaningless in the same way.
     Public Enum cPM_ReadStatus
         cPM_ReadOK = 0
         cPM_ReadQpcFailed = 1
         cPM_ReadSystemTimeFailed = 2
         cPM_ReadSystemTimeFormatInvalid = 3
         cPM_ReadFallbackToMethod2 = 4
+        cPM_ReadElapsedInvalid = 5
     End Enum
 
 '------------------------------------------------------------------------------
@@ -505,6 +510,7 @@ Attribute VB_Exposed = False
         Private m_TestFailNextQpcRead        As Boolean
         Private m_TestFailNextSystemTimeRead As Boolean
         Private m_TestForceNextSystemTimeFormatInvalid As Boolean
+        Private m_TestForceNextNegativeElapsed As Boolean
         Private m_TestWorkerReadFailures As Long
 
 '
@@ -3147,14 +3153,16 @@ Friend Function UInt32ToDouble( _
 End Function
 
 Friend Function Elapsed_Validate( _
-    ByVal Seconds As Double) _
+    ByVal Seconds As Double, _
+    ByRef StatusOut As cPM_ReadStatus) _
     As Double
 '
 '==============================================================================
 '                              ELAPSED VALIDATE
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Validates a computed elapsed-seconds value after rollover correction.
+'   Validates a computed elapsed-seconds value after rollover correction, and
+'   reports whether it is a real measurement
 '
 ' WHY THIS EXISTS
 '   Once rollover correction has been applied, a negative elapsed time can only
@@ -3167,44 +3175,58 @@ Friend Function Elapsed_Validate( _
 '
 ' INPUTS
 '   Seconds
-'     Computed elapsed seconds after any applicable rollover correction.
+'     Computed elapsed seconds after any applicable rollover correction
+'
+'   StatusOut
+'     Receives cPM_ReadElapsedInvalid when the value had to be clamped, and is
+'     otherwise left untouched so an earlier failure is not overwritten
 '
 ' RETURNS
 '   Double
-'     The validated elapsed-seconds value.
+'     The validated elapsed-seconds value, clamped to zero when invalid
 '
 ' BEHAVIOR
-'   - Returns the value unchanged when it is zero or positive.
-'   - Raises in strict mode when the value is negative.
-'   - Clamps to zero in non-strict mode.
+'   - Returns the value unchanged when it is zero or positive
+'   - Clamps a negative value to zero and reports cPM_ReadElapsedInvalid
 '
 ' ERROR POLICY
-'   Raises ERR_CPM_NEGATIVE_ELAPSED in strict mode.
+'   NEVER raises. Strict-mode policy is applied by the public operation, which
+'   publishes the status first so the two public surfaces agree.
 '
-' DEPENDENCIES
-'   - m_StrictMode
+' WHY THE CLAMP IS STATUS-BEARING
+'   Clamping alone produced "zero seconds, status OK", which is indistinguishable
+'   from a genuine measurement of zero. A backward-clock event could therefore be
+'   recorded as a valid checkpoint, or kept as the fastest sample in a benchmark.
 '
 ' NOTES
 '   Method 5 (QPC) deliberately does not call this helper. QPC is monotonic and
 '   method 5 is the default hot path, so the extra call is not justified there.
 '
+'   Declared Friend rather than Private so the regression suite can test this
+'   arithmetic directly. Friend keeps it invisible outside the project.
+'
 ' UPDATED
-'   2026-08-15
+'   2026-08-16
 '==============================================================================
+
+'------------------------------------------------------------------------------
+' FAULT INJECTION
+'------------------------------------------------------------------------------
+    'Consume the one-shot forced-negative flag, if the suite armed it. A clock
+    'that moves backwards cannot be arranged on demand, so the condition is
+    'injected here rather than left permanently untested end to end
+        If m_TestForceNextNegativeElapsed Then
+            m_TestForceNextNegativeElapsed = False
+            Seconds = -1#
+        End If
 
 '------------------------------------------------------------------------------
 ' VALIDATE
 '------------------------------------------------------------------------------
-    'Reject or clamp a backwards-moving timing source
+    'Clamp a backwards-moving timing source and say that is what happened
         If Seconds < 0# Then
-            If m_StrictMode Then
-                Err.Raise ERR_CPM_NEGATIVE_ELAPSED, _
-                          "cPerformanceManager.Elapsed_Validate", _
-                          "Elapsed time is negative after rollover correction. " & _
-                          "The timing source moved backwards and the measurement is invalid."
-            Else
-                Seconds = 0#
-            End If
+            StatusOut = cPM_ReadElapsedInvalid
+            Seconds = 0#
         End If
 
 '------------------------------------------------------------------------------
@@ -5925,14 +5947,14 @@ Private Function Elapsed_ComputeSeconds( _
                 Seconds = EndStamp - m_T1
                 'Correct midnight rollover for Timer()
                     If Seconds < 0# Then Seconds = Seconds + 86400#
-                Seconds = Elapsed_Validate(Seconds)
+                Seconds = Elapsed_Validate(Seconds, StatusOut)
 
         Case cPM_MethodTickCount
                 EndStamp = Get_TickCountSeconds()
                 Seconds = EndStamp - m_T1
                 'Correct 32-bit millisecond-counter rollover where applicable
                     If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(cPM_MethodTickCount)
-                Seconds = Elapsed_Validate(Seconds)
+                Seconds = Elapsed_Validate(Seconds, StatusOut)
 
         Case cPM_MethodTimeGetTime
                 EnsureTimerResolution1ms
@@ -5940,7 +5962,7 @@ Private Function Elapsed_ComputeSeconds( _
                 Seconds = EndStamp - m_T1
                 'Correct 32-bit millisecond-counter rollover
                     If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(cPM_MethodTimeGetTime)
-                Seconds = Elapsed_Validate(Seconds)
+                Seconds = Elapsed_Validate(Seconds, StatusOut)
 
         Case cPM_MethodSystemTime
                 'Validate the read BEFORE any arithmetic touches it.
@@ -5955,7 +5977,7 @@ Private Function Elapsed_ComputeSeconds( _
                 Seconds = EndStamp - m_T1
                 'Correct 32-bit millisecond-counter rollover
                     If Seconds < 0# Then Seconds = Seconds + RolloverSeconds(cPM_MethodSystemTime)
-                Seconds = Elapsed_Validate(Seconds)
+                Seconds = Elapsed_Validate(Seconds, StatusOut)
 
         Case cPM_MethodQPC
                 'Validate the read BEFORE any arithmetic touches it.
@@ -5975,7 +5997,7 @@ Private Function Elapsed_ComputeSeconds( _
         Case cPM_MethodNow
                 EndStamp = Now() * 86400#
                 Seconds = EndStamp - m_T1
-                Seconds = Elapsed_Validate(Seconds)
+                Seconds = Elapsed_Validate(Seconds, StatusOut)
 
         Case Else
                 If m_StrictMode Then
@@ -5991,6 +6013,13 @@ Private Function Elapsed_ComputeSeconds( _
 '------------------------------------------------------------------------------
 ' PUBLISH ENDPOINT AND RESULT
 '------------------------------------------------------------------------------
+    'A clamped negative elapsed is not a measurement either. Report it the way a
+    'failed read is reported, so every caller already handles it
+        If StatusOut <> cPM_ReadOK Then
+            Elapsed_ComputeSeconds = 0#
+            Exit Function
+        End If
+
     'Only a validated read reaches this point
         EndStampOut = EndStamp
         Elapsed_ComputeSeconds = Seconds
@@ -6375,6 +6404,8 @@ Private Function Read_StatusToErrorNumber( _
                 Read_StatusToErrorNumber = ERR_CPM_TIMEGETSYSTEMTIME_FAILED
             Case cPM_ReadSystemTimeFormatInvalid
                 Read_StatusToErrorNumber = ERR_CPM_TIMEGETSYSTEMTIME_FORMAT
+            Case cPM_ReadElapsedInvalid
+                Read_StatusToErrorNumber = ERR_CPM_NEGATIVE_ELAPSED
             Case Else
                 Read_StatusToErrorNumber = ERR_CPM_START_CAPTURE_FAILED
         End Select
@@ -6420,6 +6451,9 @@ Private Function Read_StatusToText( _
                 Read_StatusToText = "timeGetSystemTime did not return TIME_MS format."
             Case cPM_ReadFallbackToMethod2
                 Read_StatusToText = "The requested backend was unreadable; method 2 was bound."
+            Case cPM_ReadElapsedInvalid
+                Read_StatusToText = "Elapsed time was negative after rollover correction; " & _
+                                    "the timing source moved backwards."
             Case Else
                 Read_StatusToText = "The timing read failed."
         End Select
@@ -6487,6 +6521,50 @@ Private Function Measure_QualifyProcedureName( _
         Measure_QualifyProcedureName = "'" & ThisWorkbook.Name & "'!" & ProcedureName
 
 End Function
+
+Friend Sub Test_ForceNextNegativeElapsed()
+'
+'==============================================================================
+'                      TEST FORCE NEXT NEGATIVE ELAPSED
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms a ONE-SHOT forced backward-clock condition on the next validated
+'   elapsed computation
+'
+' WHY THIS EXISTS
+'   A timing source that moves backwards cannot be arranged on demand. Without a
+'   seam, the clamp and its status could only be tested by calling
+'   Elapsed_Validate directly, leaving the end-to-end consequences permanently
+'   unverified: what ElapsedSeconds reports, whether Checkpoint records a row,
+'   and whether the harness keeps the sample.
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   None.
+'
+' BEHAVIOR
+'   The next call to Elapsed_Validate treats its input as negative, and clears
+'   the flag.
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' NOTES
+'   Method 5 does not call Elapsed_Validate, so this seam has no effect on a QPC
+'   session. Use methods 1, 2, 3, 4 or 6 to exercise it.
+'
+'   One-shot and self-clearing, for the same reasons as the other seams.
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+    'Arm a single forced backward-clock condition
+        m_TestForceNextNegativeElapsed = True
+
+End Sub
 
 Friend Sub Test_ForceWorkerReadFailures( _
     ByVal FailureCount As Long)
@@ -6718,5 +6796,14 @@ Public Property Get TW_CalculationExempted() As Boolean
         TW_CalculationExempted = PM_TW_CalculationExempted()
 
 End Property
+
+
+
+
+
+
+
+
+
 
 
