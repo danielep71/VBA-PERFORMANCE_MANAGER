@@ -116,6 +116,12 @@ Build 16.0.20131.20152, 64-bit.
   harness measures on an isolated worker released before the vector is returned,
   so a run where every read failed was previously indistinguishable from a run
   of a procedure that does nothing. (#21)
+- **Release provenance.** `tools/release_provenance.py` emits a SHA-256 for every
+  shipped file and Release asset, the commit the release was cut from, and the
+  Excel build and bitness the suite was certified on. Missing fields are marked
+  `TODO` and the script exits non-zero, so an incomplete block cannot ship
+  unnoticed. `RELEASING.md` records the process, including the three mechanical
+  failures that preceded a correct v1.2.0 tag. (#12)
   
 
 #### Read-status reporting
