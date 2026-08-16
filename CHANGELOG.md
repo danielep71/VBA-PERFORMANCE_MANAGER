@@ -54,6 +54,10 @@ fresh rather than reconstructed at release time.
   `TODO` and the script exits non-zero, so an incomplete block cannot ship
   unnoticed. `RELEASING.md` records the process, including the three mechanical
   failures that preceded a correct v1.2.0 tag. (#12)
+- **Four measurement usage examples** and the workload targets they need:
+  repeated benchmarking with statistics, comparing two implementations on
+  medians, subtracting a dispatch-matched baseline, and telling a failed read
+  apart from a genuinely fast operation. (#17)
 
 ### Changed
 
@@ -83,6 +87,12 @@ fresh rather than reconstructed at release time.
   workbook, so the harness could measure a same-named procedure in whichever
   workbook the user had in front. An explicit qualification is honored
   unchanged. (#9)
+
+- **The checkpoint usage example no longer sets the run label before
+  `StartTimer`.** Starting a session clears the label, so the shipped example
+  produced an unlabelled report while appearing to set one. It now passes the
+  label to `StartTimer`. The examples module also had no coverage of anything
+  added in v1.2.0. (#17)
 
 ### Fixed
 

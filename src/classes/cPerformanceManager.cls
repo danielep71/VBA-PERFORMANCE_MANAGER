@@ -2835,7 +2835,7 @@ Public Function ReportAsText() As String
 '                                REPORT AS TEXT
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Returns the structured checkpoint report as a readable multiline text block
+'   Returns the structured checkpoint report as an aligned multiline text table
 '
 ' WHY THIS EXISTS
 '   This provides a quick developer-facing report surface for:
@@ -2849,24 +2849,43 @@ Public Function ReportAsText() As String
 '
 ' RETURNS
 '   String
-'     Multiline text report
+'     Multiline text table
 '
 ' BEHAVIOR
 '   - Returns a short message when no checkpoints exist
-'   - Otherwise returns a readable multiline checkpoint report
+'   - Sizes every column to its widest value, so nothing is truncated and the
+'     columns line up whatever the checkpoint names happen to be
+'   - Right-aligns the numeric columns and left-aligns the text ones
 '
 ' ERROR POLICY
 '   Raises errors normally
 '
+' NOTES
+'   Column widths are computed from the data rather than fixed, because a fixed
+'   width would either truncate a long checkpoint name or waste space on short
+'   ones. The cost is a second pass over the rows, which is irrelevant for a
+'   diagnostic surface
+'
+'   The layout is developer-facing and not a stable contract. Use ReportAsArray
+'   for anything machine-readable
+'
 ' UPDATED
-'   2026-08-15
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim S       As String       'Accumulated report text
-    Dim i       As Long         'Checkpoint loop index
+    Dim S           As String       'Accumulated report text
+    Dim i           As Long         'Checkpoint loop index
+    Dim wSeq        As Long         'Width of the sequence column
+    Dim wName       As Long         'Width of the checkpoint-name column
+    Dim wDelta      As Long         'Width of the delta-seconds column
+    Dim wCum        As Long         'Width of the cumulative-seconds column
+    Dim wMethod     As Long         'Width of the method-name column
+    Dim wNote       As Long         'Width of the note column
+    Dim DeltaText   As String       'Formatted delta for the current row
+    Dim CumText     As String       'Formatted cumulative for the current row
 
 '------------------------------------------------------------------------------
 ' HANDLE EMPTY REPORT
@@ -2878,6 +2897,31 @@ Public Function ReportAsText() As String
         End If
 
 '------------------------------------------------------------------------------
+' SIZE THE COLUMNS
+'------------------------------------------------------------------------------
+    'Start from the header widths so a header is never clipped
+        wSeq = Len("Seq")
+        wName = Len("Checkpoint")
+        wDelta = Len("DeltaSeconds")
+        wCum = Len("CumulativeSeconds")
+        wMethod = Len("MethodName")
+        wNote = Len("Note")
+
+    'Widen each column to its widest value
+        For i = 1 To m_CheckpointCount
+            With m_Checkpoints(i)
+                If Len(CStr(.Seq)) > wSeq Then wSeq = Len(CStr(.Seq))
+                If Len(.NameText) > wName Then wName = Len(.NameText)
+                If Len(Format$(.DeltaSecondsValue, "0.000000000")) > wDelta Then _
+                    wDelta = Len(Format$(.DeltaSecondsValue, "0.000000000"))
+                If Len(Format$(.ElapsedSecondsValue, "0.000000000")) > wCum Then _
+                    wCum = Len(Format$(.ElapsedSecondsValue, "0.000000000"))
+                If Len(.MethodNameText) > wMethod Then wMethod = Len(.MethodNameText)
+                If Len(.NoteText) > wNote Then wNote = Len(.NoteText)
+            End With
+        Next i
+
+'------------------------------------------------------------------------------
 ' BUILD HEADER
 '------------------------------------------------------------------------------
     'Start the report title
@@ -2886,22 +2930,40 @@ Public Function ReportAsText() As String
         If Len(m_RunLabel) > 0 Then
             S = S & " | RunLabel=" & m_RunLabel
         End If
-    'Append the column legend line
+
+    'Append the column legend, padded to the resolved widths
         S = S & vbCrLf & _
-            "Seq | Checkpoint | DeltaSeconds | CumulativeSeconds | MethodName | Note"
+            Report_PadLeft("Seq", wSeq) & " | " & _
+            Report_PadRight("Checkpoint", wName) & " | " & _
+            Report_PadLeft("DeltaSeconds", wDelta) & " | " & _
+            Report_PadLeft("CumulativeSeconds", wCum) & " | " & _
+            Report_PadRight("MethodName", wMethod) & " | " & _
+            "Note"
+
+    'Append a rule so the header reads as a table heading
+        S = S & vbCrLf & _
+            String$(wSeq, "-") & "-+-" & _
+            String$(wName, "-") & "-+-" & _
+            String$(wDelta, "-") & "-+-" & _
+            String$(wCum, "-") & "-+-" & _
+            String$(wMethod, "-") & "-+-" & _
+            String$(wNote, "-")
 
 '------------------------------------------------------------------------------
-' BUILD DATA LINES
+' BUILD DATA ROWS
 '------------------------------------------------------------------------------
-    'Append one readable line per checkpoint
+    'Append one aligned line per checkpoint
         For i = 1 To m_CheckpointCount
             With m_Checkpoints(i)
+                DeltaText = Format$(.DeltaSecondsValue, "0.000000000")
+                CumText = Format$(.ElapsedSecondsValue, "0.000000000")
+
                 S = S & vbCrLf & _
-                    CStr(.Seq) & " | " & _
-                    .NameText & " | " & _
-                    Format$(.DeltaSecondsValue, "0.000000000") & " | " & _
-                    Format$(.ElapsedSecondsValue, "0.000000000") & " | " & _
-                    .MethodNameText & " | " & _
+                    Report_PadLeft(CStr(.Seq), wSeq) & " | " & _
+                    Report_PadRight(.NameText, wName) & " | " & _
+                    Report_PadLeft(DeltaText, wDelta) & " | " & _
+                    Report_PadLeft(CumText, wCum) & " | " & _
+                    Report_PadRight(.MethodNameText, wMethod) & " | " & _
                     .NoteText
             End With
         Next i
@@ -2909,8 +2971,87 @@ Public Function ReportAsText() As String
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
-    'Return the readable structured report text
+    'Return the aligned structured report text
         ReportAsText = S
+
+End Function
+
+Private Function Report_PadRight( _
+    ByVal Text As String, _
+    ByVal Width As Long) _
+    As String
+'
+'==============================================================================
+'                              REPORT PAD RIGHT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Left-aligns text within a fixed width by padding on the right
+'
+' INPUTS
+'   Text   - value to place
+'   Width  - column width
+'
+' RETURNS
+'   String
+'
+' BEHAVIOR
+'   Text longer than the width is returned unchanged, so a column can widen
+'   rather than silently losing content
+'
+' ERROR POLICY
+'   Does not raise
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+    'Pad on the right, never truncate
+        If Len(Text) >= Width Then
+            Report_PadRight = Text
+        Else
+            Report_PadRight = Text & String$(Width - Len(Text), " ")
+        End If
+
+End Function
+
+Private Function Report_PadLeft( _
+    ByVal Text As String, _
+    ByVal Width As Long) _
+    As String
+'
+'==============================================================================
+'                               REPORT PAD LEFT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Right-aligns text within a fixed width by padding on the left
+'
+' WHY THIS EXISTS
+'   Numeric columns read far better right-aligned, because the decimal points
+'   line up and magnitudes become comparable at a glance
+'
+' INPUTS
+'   Text   - value to place
+'   Width  - column width
+'
+' RETURNS
+'   String
+'
+' BEHAVIOR
+'   Text longer than the width is returned unchanged
+'
+' ERROR POLICY
+'   Does not raise
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+    'Pad on the left, never truncate
+        If Len(Text) >= Width Then
+            Report_PadLeft = Text
+        Else
+            Report_PadLeft = String$(Width - Len(Text), " ") & Text
+        End If
 
 End Function
 
@@ -6464,6 +6605,8 @@ Public Property Get TW_CalculationExempted() As Boolean
         TW_CalculationExempted = PM_TW_CalculationExempted()
 
 End Property
+
+
 
 
 

@@ -5055,8 +5055,16 @@ Private Sub Test_ReportAsText_WithCheckpoints()
         Test_Assert_ContainsString TextOut, "RunLabel=Run A", _
                                    "ReportAsText contains the run label"
     'Assert that the checkpoint legend line is present
-        Test_Assert_ContainsString TextOut, "Seq | Checkpoint | DeltaSeconds | CumulativeSeconds | MethodName | Note", _
-                                   "ReportAsText contains the column legend"
+    'The legend is padded to the widest value in each column, so assert on the
+    'column names rather than on a fixed concatenation that alignment would break
+        Test_Assert_ContainsString TextOut, "Seq", _
+                                   "ReportAsText contains the Seq column"
+        Test_Assert_ContainsString TextOut, "DeltaSeconds", _
+                                   "ReportAsText contains the DeltaSeconds column"
+        Test_Assert_ContainsString TextOut, "CumulativeSeconds", _
+                                   "ReportAsText contains the CumulativeSeconds column"
+        Test_Assert_ContainsString TextOut, "---+---", _
+                                   "ReportAsText contains the header rule"
     'Assert that the first checkpoint name is present
         Test_Assert_ContainsString TextOut, "Phase 1", _
                                    "ReportAsText contains the first checkpoint name"

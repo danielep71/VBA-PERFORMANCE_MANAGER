@@ -18,6 +18,10 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
 '     - how to benchmark with shared TW suppression
 '     - how to structure real-world cleanup safely
 '     - how to capture and export structured checkpoints
+'     - how to benchmark repeatedly and read the statistics honestly
+'     - how to compare two implementations without fooling yourself
+'     - how to subtract a dispatch-matched baseline
+'     - how to tell a failed read from a genuinely fast operation
 '
 '   This module therefore keeps only the examples that still add real teaching
 '   value beyond the demo sheets and tests
@@ -42,6 +46,12 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
 '   - cPerformanceManager
 '   - Excel Application object model
 '
+' MEASUREMENT TARGETS
+'   The measurement examples call procedures by name through Application.Run,
+'   which reaches only Public procedures in standard modules. The cPM_Usage_*
+'   workload procedures at the foot of this module exist for that purpose and
+'   are deliberately Public
+'
 ' NOTES
 '   - Place this code in a STANDARD MODULE
 '   - Results are printed primarily to the Immediate Window
@@ -49,7 +59,7 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
 '   - Run worksheet-writing examples from a safe workbook / worksheet
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '
 ' AUTHOR
 '   Daniele Penza
@@ -65,6 +75,14 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
 '------------------------------------------------------------------------------
     Private Const cPM_USAGE_SHEET_DATA           As String = "DATA_cPM"
     Private Const cPM_USAGE_CHECKPOINT_TOPLEFT   As String = "D3"
+
+    'Rows written by the comparison workloads.
+    '
+    'Both must write the same number or the comparison is meaningless. The value
+    'is small deliberately: cell-by-cell costs roughly a millisecond per cell, so
+    'ten thousand rows made a ten-iteration comparison take minutes and the
+    'variance alone was enough to make the run report as contaminated.
+        Private Const cPM_USAGE_WORKLOAD_ROWS        As Long = 500
 
 '
 '==============================================================================
@@ -105,12 +123,13 @@ Public Sub Run_All_UsageExamples()
 '   - Run_TimeWasterUsageExamples
 '   - Run_SafePatternUsageExamples
 '   - Run_CheckpointUsageExamples
+'   - Run_MeasurementUsageExamples
 '
 ' NOTES
 '   This is the best launcher when you want the full compact walkthrough
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -132,6 +151,8 @@ Public Sub Run_All_UsageExamples()
         Run_SafePatternUsageExamples
     'Run the checkpoint/report example
         Run_CheckpointUsageExamples
+    'Run the measurement and statistics examples
+        Run_MeasurementUsageExamples
 
 '------------------------------------------------------------------------------
 ' PRINT MODULE END BANNER
@@ -172,7 +193,7 @@ Public Sub Run_CoreUsageExamples()
 '   - Example_ElapsedTime_FromMeasuredSeconds
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -225,7 +246,7 @@ Public Sub Run_ValidationUsageExamples()
 '   - Example_NonStrictMode
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -275,7 +296,7 @@ Public Sub Run_TimeWasterUsageExamples()
 '   - Example_TimeWasters_Basic
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -322,7 +343,7 @@ Public Sub Run_SafePatternUsageExamples()
 '   - Example_SafePattern
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -369,7 +390,7 @@ Public Sub Run_CheckpointUsageExamples()
 '   - Example_CheckpointReport
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -420,7 +441,7 @@ Private Sub PrintModuleBanner( _
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -464,7 +485,7 @@ Private Sub PrintSectionBanner( _
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -508,7 +529,7 @@ Private Sub PrintExampleBanner( _
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -542,7 +563,7 @@ Private Function cPM_Usage_GetDataSheet() As Worksheet
 '   Raises errors normally if the expected worksheet is missing
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -601,7 +622,7 @@ Public Sub Example_BasicTiming_DefaultQPC()
 '   This is the preferred example to show the normal benchmark path
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -721,7 +742,7 @@ Public Sub Example_ElapsedTime_FromMeasuredSeconds()
 '   display-oriented output without double measurement
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -747,7 +768,7 @@ Public Sub Example_ElapsedTime_FromMeasuredSeconds()
 ' START TIMING
 '------------------------------------------------------------------------------
     'Start timing explicitly with QPC
-        cPM.StartTimer 5, False
+        cPM.StartTimer cPM_MethodQPC, False
 
 '------------------------------------------------------------------------------
 ' APPLY WORKLOAD
@@ -844,7 +865,7 @@ Public Sub Example_StrictMode()
 '   This example is intentionally invalid by design
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -873,7 +894,7 @@ Public Sub Example_StrictMode()
     'Enable strict validation behavior
         cPM.StrictMode = True
     'Start timing with method 5
-        cPM.StartTimer 5, False
+        cPM.StartTimer cPM_MethodQPC, False
 
 '------------------------------------------------------------------------------
 ' TRIGGER INTENTIONAL INVALID USAGE
@@ -881,7 +902,7 @@ Public Sub Example_StrictMode()
     'Switch to local expected-error handling
         On Error Resume Next
     'This is intentionally invalid because the active session uses method 5
-        Dummy = cPM.ElapsedSeconds(2)
+        Dummy = cPM.ElapsedSeconds(cPM_MethodTickCount)
     'Capture the expected error information
         ExpectedErrNum = Err.Number
         ExpectedErrDesc = Err.Description
@@ -968,7 +989,7 @@ Public Sub Example_NonStrictMode()
 '   This example contrasts directly with Example_StrictMode
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -995,19 +1016,19 @@ Public Sub Example_NonStrictMode()
     'Disable strict validation behavior
         cPM.StrictMode = False
     'Start timing with method 5
-        cPM.StartTimer 5, False
+        cPM.StartTimer cPM_MethodQPC, False
 
 '------------------------------------------------------------------------------
 ' APPLY SMALL DELAY
 '------------------------------------------------------------------------------
     'Pause briefly to make the elapsed reading visible
-        cPM.Pause 0.03, 1
+        cPM.Pause 0.03, cPM_PauseSleep
 
 '------------------------------------------------------------------------------
 ' READ RESULT
 '------------------------------------------------------------------------------
     'In non-strict mode this falls back to the active session method
-        ElapsedS = cPM.ElapsedSeconds(2)
+        ElapsedS = cPM.ElapsedSeconds(cPM_MethodTickCount)
     'Print the active method identifier
         Debug.Print "ActiveMethodID : " & cPM.ActiveMethodID
     'Print the active method name
@@ -1094,7 +1115,7 @@ Public Sub Example_TimeWasters_Basic()
 '   manager model rather than direct instance-local restoration
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1128,7 +1149,7 @@ Public Sub Example_TimeWasters_Basic()
 ' START TIMING
 '------------------------------------------------------------------------------
     'Start timing with QPC
-        cPM.StartTimer 5, False
+        cPM.StartTimer cPM_MethodQPC, False
 
 '------------------------------------------------------------------------------
 ' APPLY WORKLOAD
@@ -1223,7 +1244,7 @@ Public Sub Example_SafePattern()
 '   project code
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1252,7 +1273,7 @@ Public Sub Example_SafePattern()
     'Start shared TW suppression for this instance
         cPM.TW_Turn_OFF
     'Start timing with QPC
-        cPM.StartTimer 5, False
+        cPM.StartTimer cPM_MethodQPC, False
 
 '------------------------------------------------------------------------------
 ' APPLY WORKLOAD
@@ -1336,7 +1357,7 @@ Public Sub Example_CheckpointReport()
 '   - ReportAsArray
 '
 ' UPDATED
-'   2026-04-18
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1366,10 +1387,11 @@ Public Sub Example_CheckpointReport()
 '------------------------------------------------------------------------------
 ' INITIALIZE TIMING SESSION
 '------------------------------------------------------------------------------
-    'Assign a run label
-        cPM.SetRunLabel "ImportWorkflow"
-    'Start a fresh timing session
-        cPM.StartTimer 5, False
+    'Start a fresh timing session, labelling it in the same call.
+    '
+    'Setting the label BEFORE StartTimer does not work: starting a session
+    'clears the run label, so the report would come out unlabelled.
+        cPM.StartTimer cPM_MethodQPC, False, "ImportWorkflow" 
 
 '------------------------------------------------------------------------------
 ' CHECKPOINTED WORKLOAD
@@ -1434,3 +1456,674 @@ CleanFail:
 
 End Sub
 
+Public Sub Run_MeasurementUsageExamples()
+'
+'==============================================================================
+'                      RUN MEASUREMENT USAGE EXAMPLES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Executes the repeated-measurement and statistics demonstrations
+'
+' WHY THIS EXISTS
+'   A single timing sample tells you what happened once. It cannot tell you
+'   whether the number is stable, whether the machine was busy, or whether you
+'   would get the same answer again
+'
+'   These examples show the surface that answers those questions, and how to
+'   read its output without fooling yourself
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   Runs:
+'     - Example_Benchmark_WithStatistics
+'     - Example_Compare_TwoImplementations
+'     - Example_DispatchMatchedBaseline
+'     - Example_ReadStatus_Diagnostics
+'
+' ERROR POLICY
+'   Raises errors normally unless a called example handles errors internally
+'
+' DEPENDENCIES
+'   - Example_Benchmark_WithStatistics
+'   - Example_Compare_TwoImplementations
+'   - Example_DispatchMatchedBaseline
+'   - Example_ReadStatus_Diagnostics
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' PRINT SECTION BANNER
+'------------------------------------------------------------------------------
+    'Print the group banner
+        PrintSectionBanner "MEASUREMENT AND STATISTICS USAGE EXAMPLES"
+
+'------------------------------------------------------------------------------
+' RUN EXAMPLES
+'------------------------------------------------------------------------------
+    'Run the repeated-measurement example
+        PrintExampleBanner "Example_Benchmark_WithStatistics"
+        Example_Benchmark_WithStatistics
+    'Run the comparison example
+        PrintExampleBanner "Example_Compare_TwoImplementations"
+        Example_Compare_TwoImplementations
+    'Run the dispatch-matched baseline example
+        PrintExampleBanner "Example_DispatchMatchedBaseline"
+        Example_DispatchMatchedBaseline
+    'Run the read-status diagnostics example
+        PrintExampleBanner "Example_ReadStatus_Diagnostics"
+        Example_ReadStatus_Diagnostics
+
+End Sub
+
+Public Sub Example_Benchmark_WithStatistics()
+'
+'==============================================================================
+'                     EXAMPLE BENCHMARK WITH STATISTICS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Demonstrates repeated measurement of a procedure and how to read the result
+'
+' WHY THIS EXISTS
+'   Timing distributions are right-skewed. Work has a floor - the time it
+'   genuinely takes - but no ceiling, because the operating system can interrupt
+'   at any moment
+'
+'   That shape has a practical consequence: the arithmetic mean is the worst
+'   summary statistic for timing work, because a single scheduler preemption
+'   shifts it while barely moving the median
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Measures a workload procedure thirty times, discarding three warm-up runs
+'   - Prints the full statistics summary
+'   - Checks explicitly whether the run is trustworthy
+'
+' ERROR POLICY
+'   Raises errors normally after cleanup
+'
+' DEPENDENCIES
+'   - cPerformanceManager
+'   - cPM_Usage_Workload_BulkArray
+'
+' NOTES
+'   Read the median and the minimum. The minimum is the run least disturbed by
+'   scheduling and is the closest estimate of the true cost
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Performance manager instance
+    Dim Samples()   As Double                 'Per-run elapsed seconds
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Enable structured cleanup on failure
+        On Error GoTo CleanFail
+    'Create a fresh performance manager instance
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' MEASURE
+'------------------------------------------------------------------------------
+    'Thirty measured runs after three discarded warm-up runs
+        Samples = cPM.MeasureProcedure("cPM_Usage_Workload_BulkArray", 30, 3)
+
+'------------------------------------------------------------------------------
+' REPORT
+'------------------------------------------------------------------------------
+    'The summary reports median and minimum first, and the mean last
+        Debug.Print cPM.Stats_Text(Samples, "Bulk array write")
+
+    'Ask explicitly whether the result can be trusted
+        If cPM.Stats_IsContaminated(Samples) Then
+            Debug.Print ">>> Variance is high. Close background work and run again."
+        Else
+            Debug.Print ">>> Run looks clean. Use the median."
+        End If
+
+'------------------------------------------------------------------------------
+' USE THE NUMBERS
+'------------------------------------------------------------------------------
+    'The raw vector is yours, so any further analysis is possible
+        Debug.Print "Typical cost : " & Format$(cPM.Stats_Median(Samples), "0.000000000") & " s"
+        Debug.Print "Best case    : " & Format$(cPM.Stats_Min(Samples), "0.000000000") & " s"
+        Debug.Print "Tail (P95)   : " & Format$(cPM.Stats_Percentile(Samples, 95#), "0.000000000") & " s"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Report and continue through centralized cleanup
+        Debug.Print "Error " & Err.Number & " - " & Err.Description
+        Resume CleanExit
+
+End Sub
+
+Public Sub Example_Compare_TwoImplementations()
+'
+'==============================================================================
+'                    EXAMPLE COMPARE TWO IMPLEMENTATIONS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Demonstrates a defensible comparison between two implementations
+'
+' WHY THIS EXISTS
+'   Comparing two single measurements proves nothing. Comparing two means proves
+'   slightly less than nothing, because it compounds the contamination in each
+'
+'   This example shows the discipline that makes a speedup claim survive
+'   scrutiny: repeated runs, medians, and a contamination check on both sides
+'   before drawing any conclusion
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Measures two implementations of the same task, back to back
+'   - Reports both summaries
+'   - Refuses to state a speedup if either run looks contaminated
+'
+' ERROR POLICY
+'   Raises errors normally after cleanup
+'
+' DEPENDENCIES
+'   - cPerformanceManager
+'   - cPM_Usage_Workload_CellByCell
+'   - cPM_Usage_Workload_BulkArray
+'
+' NOTES
+'   Both runs must happen on the same machine in the same session. Yesterday's
+'   number compared against today's is not a comparison
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Performance manager instance
+    Dim Slow()      As Double                 'Samples for the cell-by-cell approach
+    Dim Fast()      As Double                 'Samples for the bulk-array approach
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Enable structured cleanup on failure
+        On Error GoTo CleanFail
+    'Create a fresh performance manager instance
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' MEASURE BOTH, BACK TO BACK
+'------------------------------------------------------------------------------
+    'Measure the two implementations under identical conditions
+        Slow = cPM.MeasureProcedure("cPM_Usage_Workload_CellByCell", 10, 2)
+        Fast = cPM.MeasureProcedure("cPM_Usage_Workload_BulkArray", 10, 2)
+
+'------------------------------------------------------------------------------
+' REPORT BOTH
+'------------------------------------------------------------------------------
+    'Show the full picture for each rather than a single number
+        Debug.Print cPM.Stats_Text(Slow, "Cell by cell")
+        Debug.Print cPM.Stats_Text(Fast, "Bulk array")
+
+'------------------------------------------------------------------------------
+' CONCLUDE ONLY IF BOTH RUNS ARE TRUSTWORTHY
+'------------------------------------------------------------------------------
+    'A speedup computed from a contaminated run is not evidence of anything
+        If cPM.Stats_IsContaminated(Slow) Or cPM.Stats_IsContaminated(Fast) Then
+            Debug.Print ">>> One or both runs are noisy. No conclusion drawn."
+            GoTo CleanExit
+        End If
+
+    'Compare medians, never means
+        Debug.Print "Median speedup: " & _
+                    Format$(cPM.Stats_Median(Slow) / cPM.Stats_Median(Fast), "0.00") & "x"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Report and continue through centralized cleanup
+        Debug.Print "Error " & Err.Number & " - " & Err.Description
+        Resume CleanExit
+
+End Sub
+
+Public Sub Example_DispatchMatchedBaseline()
+'
+'==============================================================================
+'                    EXAMPLE DISPATCH MATCHED BASELINE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Demonstrates subtracting the harness cost from a measured workload
+'
+' WHY THIS EXISTS
+'   MeasureProcedure calls its target through Application.Run, and that dispatch
+'   has a cost which is included in every sample. For work measured in
+'   milliseconds it is negligible; for very fast work it is not
+'
+'   MeasureOverhead_Samples cannot supply the correction, because it measures
+'   the timing cycle only and never dispatches. Subtracting it removes the wrong
+'   quantity and leaves the dispatch cost in place
+'
+'   MeasureBaseline runs an empty procedure through the identical path, so its
+'   median is a baseline that can legitimately be subtracted
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Measures an empty procedure and a real workload through the same path
+'   - Reports both, then the net cost
+'
+' ERROR POLICY
+'   Raises errors normally after cleanup
+'
+' DEPENDENCIES
+'   - cPerformanceManager
+'   - cPM_Usage_BaselineEmpty
+'   - cPM_Usage_Workload_BulkArray
+'
+' NOTES
+'   Subtract medians, not means. Both vectors are right-skewed, and subtracting
+'   two means compounds the contamination in each
+'
+'   The baseline is machine-specific and worth re-measuring on each host
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Performance manager instance
+    Dim Baseline()  As Double                 'Dispatch-only cost
+    Dim Workload()  As Double                 'Dispatch plus real work
+    Dim NetSeconds  As Double                 'Workload cost with dispatch removed
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Enable structured cleanup on failure
+        On Error GoTo CleanFail
+    'Create a fresh performance manager instance
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' MEASURE THE BASELINE AND THE WORKLOAD
+'------------------------------------------------------------------------------
+    'An empty procedure through the same dispatch path
+        Baseline = cPM.MeasureBaseline("cPM_Usage_BaselineEmpty", 20, 3)
+    'The real workload through that same path
+        Workload = cPM.MeasureProcedure("cPM_Usage_Workload_BulkArray", 20, 3)
+
+'------------------------------------------------------------------------------
+' REPORT
+'------------------------------------------------------------------------------
+    'Show what the harness itself costs on this machine
+        Debug.Print "Dispatch baseline : " & _
+                    Format$(cPM.Stats_Median(Baseline), "0.000000000") & " s"
+        Debug.Print "Measured workload : " & _
+                    Format$(cPM.Stats_Median(Workload), "0.000000000") & " s"
+
+    'Subtract medians to get the net cost of the work itself
+        NetSeconds = cPM.Stats_Median(Workload) - cPM.Stats_Median(Baseline)
+        Debug.Print "Net workload cost : " & Format$(NetSeconds, "0.000000000") & " s"
+
+'------------------------------------------------------------------------------
+' INTERPRET
+'------------------------------------------------------------------------------
+    'Say plainly when the correction does not matter
+        If cPM.Stats_Median(Baseline) < (cPM.Stats_Median(Workload) / 100#) Then
+            Debug.Print ">>> Dispatch is under 1% of the measurement. Correction optional."
+        Else
+            Debug.Print ">>> Dispatch is a material share of the measurement. Subtract it."
+        End If
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Report and continue through centralized cleanup
+        Debug.Print "Error " & Err.Number & " - " & Err.Description
+        Resume CleanExit
+
+End Sub
+
+Public Sub Example_ReadStatus_Diagnostics()
+'
+'==============================================================================
+'                     EXAMPLE READ STATUS DIAGNOSTICS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Demonstrates telling a failed read apart from a genuinely fast operation
+'
+' WHY THIS EXISTS
+'   In non-strict mode a failed timing read returns zero. Without a status, a
+'   caller cannot distinguish "this took no measurable time" from "no reading was
+'   obtained at all"
+'
+'   The second silently poisons any aggregate built from it, which is why the
+'   distinction is exposed rather than left to inference
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Takes an ordinary measurement and reports its status
+'   - Runs the harness and reports how many of its reads failed
+'   - Explains why the two use different surfaces
+'
+' ERROR POLICY
+'   Raises errors normally after cleanup
+'
+' DEPENDENCIES
+'   - cPerformanceManager
+'   - cPM_Usage_Workload_BulkArray
+'
+' NOTES
+'   LastReadStatus describes the reads made by THIS instance. The harness
+'   measures on an isolated worker that is released before the sample vector is
+'   returned, so its outcome arrives through the FailedReadsOut argument instead
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Performance manager instance
+    Dim ElapsedS    As Double                 'Directly measured elapsed seconds
+    Dim Samples()   As Double                 'Harness samples
+    Dim FailedReads As Long                   'Harness reads that did not succeed
+    Dim LastStatus  As cPM_ReadStatus         'Status of the last harness failure
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Enable structured cleanup on failure
+        On Error GoTo CleanFail
+    'Create a fresh performance manager instance
+        Set cPM = New cPerformanceManager
+    'Non-strict mode returns zero instead of raising, which is the case worth showing
+        cPM.StrictMode = False
+
+'------------------------------------------------------------------------------
+' A DIRECT MEASUREMENT
+'------------------------------------------------------------------------------
+    'Measure something on this instance
+        cPM.StartTimer cPM_MethodQPC
+        cPM.Pause 0.02, cPM_PauseSleep
+        ElapsedS = cPM.ElapsedSeconds
+
+    'A returned zero means nothing on its own; the status is what qualifies it
+        If cPM.LastReadStatus = cPM_ReadOK Then
+            Debug.Print "Direct measurement : " & Format$(ElapsedS, "0.000000000") & " s (valid)"
+        Else
+            Debug.Print "Direct measurement : no valid reading, status " & _
+                        CLng(cPM.LastReadStatus)
+        End If
+
+'------------------------------------------------------------------------------
+' A HARNESS RUN
+'------------------------------------------------------------------------------
+    'The harness reports its own outcome, because it measures on a worker
+    'instance that no longer exists by the time the samples come back
+        Samples = cPM.MeasureProcedure("cPM_Usage_Workload_BulkArray", 10, 2, _
+                                       cPM_MethodQPC, FailedReads, LastStatus)
+
+        Debug.Print "Harness samples    : " & cPM.Stats_Count(Samples)
+        Debug.Print "Failed reads       : " & FailedReads
+
+    'Only trust the statistics if every read produced a measurement
+        If FailedReads = 0 Then
+            Debug.Print "Median             : " & _
+                        Format$(cPM.Stats_Median(Samples), "0.000000000") & " s"
+        Else
+            Debug.Print ">>> " & FailedReads & " read(s) failed, last status " & _
+                        CLng(LastStatus) & ". The samples are not trustworthy."
+        End If
+
+'------------------------------------------------------------------------------
+' THE POINT
+'------------------------------------------------------------------------------
+    'Make the distinction explicit rather than leaving it implied
+        Debug.Print "Note: LastReadStatus covers this instance's own reads."
+        Debug.Print "      Harness reads are reported through FailedReadsOut."
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Report and continue through centralized cleanup
+        Debug.Print "Error " & Err.Number & " - " & Err.Description
+        Resume CleanExit
+
+End Sub
+
+'
+'==============================================================================
+'
+'                       PUBLIC: MEASUREMENT TARGETS
+'
+'==============================================================================
+'
+'   Application.Run reaches only Public procedures in standard modules, so these
+'   are deliberately Public. They exist to be measured, not to be called
+'   directly.
+'
+
+Public Sub cPM_Usage_BaselineEmpty()
+'
+'==============================================================================
+'                        CPM USAGE BASELINE EMPTY
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Empty procedure used as the target of MeasureBaseline
+'
+' WHY THIS EXISTS
+'   A dispatch-matched baseline needs a procedure that does nothing, reached
+'   through the same Application.Run path as a real workload
+'
+'   The component does not ship one. Application.Run cannot reach a procedure in
+'   a module declared Option Private Module, which the companion TW module uses
+'   to keep its internals out of the Macro dialog, so a bundled empty procedure
+'   would require a third file containing two lines
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+    'Deliberately empty
+
+End Sub
+
+Public Sub cPM_Usage_Workload_BulkArray()
+'
+'==============================================================================
+'                      CPM USAGE WORKLOAD BULK ARRAY
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Writes cPM_USAGE_WORKLOAD_ROWS values to a worksheet in a single assignment
+'
+' WHY THIS EXISTS
+'   Serves as the faster half of the comparison example, and as a general
+'   workload for the measurement examples
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' DEPENDENCIES
+'   - cPM_Usage_GetDataSheet
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim WS      As Worksheet    'Target worksheet
+    Dim Values  As Variant      'Values to write
+    Dim i       As Long         'Loop index
+
+'------------------------------------------------------------------------------
+' BUILD
+'------------------------------------------------------------------------------
+    'Resolve the target worksheet
+        Set WS = cPM_Usage_GetDataSheet()
+    'Build the whole block in memory first
+        ReDim Values(1 To cPM_USAGE_WORKLOAD_ROWS, 1 To 1)
+        For i = 1 To cPM_USAGE_WORKLOAD_ROWS
+            Values(i, 1) = i
+        Next i
+
+'------------------------------------------------------------------------------
+' WRITE
+'------------------------------------------------------------------------------
+    'One assignment for the entire range
+        WS.Range("H1").Resize(cPM_USAGE_WORKLOAD_ROWS, 1).Value = Values
+
+End Sub
+
+Public Sub cPM_Usage_Workload_CellByCell()
+'
+'==============================================================================
+'                     CPM USAGE WORKLOAD CELL BY CELL
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Writes cPM_USAGE_WORKLOAD_ROWS values to a worksheet one cell at a time
+'
+' WHY THIS EXISTS
+'   Serves as the slower half of the comparison example. The difference between
+'   this and the bulk-array version is the classic VBA performance lesson, and
+'   it is large enough to survive measurement noise
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' DEPENDENCIES
+'   - cPM_Usage_GetDataSheet
+'
+' NOTES
+'   Deliberately inefficient. Do not use this as a model for real code
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim WS      As Worksheet    'Target worksheet
+    Dim i       As Long         'Loop index
+
+'------------------------------------------------------------------------------
+' WRITE
+'------------------------------------------------------------------------------
+    'Resolve the target worksheet
+        Set WS = cPM_Usage_GetDataSheet()
+    'One assignment per cell, which is what makes this slow
+        For i = 1 To cPM_USAGE_WORKLOAD_ROWS
+            WS.Cells(i, 9).Value = i
+        Next i
+
+End Sub
