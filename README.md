@@ -12,7 +12,7 @@
 [![Pure VBA](https://img.shields.io/badge/Implementation-Pure_VBA-00599C?style=for-the-badge)](https://github.com/danielep71/vba-performance_manager)
 [![No External DLL](https://img.shields.io/badge/External_DLL-None-555555?style=for-the-badge)](#-installation)
 [![QPC](https://img.shields.io/badge/Default_Backend-QueryPerformanceCounter-c2185b?style=for-the-badge)](#-timing-backends)
-[![Regression](https://img.shields.io/badge/Regression-69_Cases_·_468_Assertions-d97706?style=for-the-badge)](#-testing-and-validation)
+[![Regression](https://img.shields.io/badge/Regression-72_Cases_·_511_Assertions-d97706?style=for-the-badge)](#-testing-and-validation)
 [![Statistics](https://img.shields.io/badge/Statistics-Median_·_P95_·_CV-0f766e?style=for-the-badge)](#-measurement-and-statistics)
 [![Version](https://img.shields.io/badge/Version-1.2.0-4c1d95?style=for-the-badge)](CHANGELOG.md)
 
@@ -63,8 +63,8 @@
 |---:|:---|
 | **6** | timing backends behind one session-bound interface |
 | **44** | public members — 25 methods and 19 properties |
-| **69** | regression cases running **468** deterministic assertions, all green |
-| **23** | named error constants; no bare error numbers anywhere |
+| **72** | regression cases running **511** deterministic assertions, all green |
+| **30** | named error constants, exposed as public enums; no bare error numbers anywhere |
 | **76 %** | of the class is documentation, at procedure level |
 | **2** | files to import. No reference, no add-in, no DLL |
 
@@ -546,13 +546,53 @@ Backends and pause strategies are named too — `cPM_TimerMethod` and `cPM_Pause
 
 ---
 
+# 🚦 Reading `LastReadStatus`
+
+A returned zero means nothing on its own. The status is what qualifies it.
+
+| Value | Meaning |
+|---|---|
+| `cPM_ReadOK` | The value is a real measurement |
+| `cPM_ReadQpcFailed` | `QueryPerformanceCounter` failed |
+| `cPM_ReadSystemTimeFailed` | `timeGetSystemTime` failed |
+| `cPM_ReadSystemTimeFormatInvalid` | `timeGetSystemTime` returned an unexpected format |
+| `cPM_ReadFallbackToMethod2` | The requested backend was unreadable; backend 2 was bound instead |
+| `cPM_ReadElapsedInvalid` | The timing source moved backwards; the value was clamped |
+
+`cPM_ReadFallbackToMethod2` is not a failure — the session is valid and the
+measurement usable. It records that the requested backend was coerced, so the
+coercion is visible rather than silent.
+
+> [!IMPORTANT]
+> `LastReadStatus` describes **this instance's own reads**. The measurement
+> harness runs on an isolated worker released before the sample vector is
+> returned, so its outcome arrives through `FailedReadsOut` and
+> `LastFailureStatusOut` instead.
+
+---
+
+# 📉 What the harness does with a failed read
+
+In non-strict mode a failed read returns zero. Storing that zero would make the
+failure look like the fastest run in the set, so it is **excluded** rather than
+recorded.
+
+| Consequence | |
+|---|---|
+| `Stats_Count(Samples)` | May be less than `Iterations` |
+| `Iterations - Stats_Count` | Is the measured-failure count |
+| `FailedReadsOut` | Counts every failed read, warm-up included, so it can exceed the shortfall |
+| No measured read succeeded | Raises `ERR_CPM_MEASURE_NO_VALID_SAMPLES` — an empty vector is not a measurement |
+
+---
+
 # 🧪 Testing and validation
 
 ```vb
 Run_cPerformanceManager_RegressionSuite
 ```
 
-**69 cases · 468 assertions**, written to a dedicated worksheet log and summarised in the Immediate Window.
+**72 cases · 511 assertions**, written to a dedicated worksheet log and summarised in the Immediate Window.
 
 Last certified run: **0 failures**, 2026-08-16, on Excel for Microsoft 365 MSO
 Version 2606 Build 16.0.20131.20152, 64-bit.
