@@ -52,6 +52,8 @@ fresh rather than reconstructed at release time.
   in a harness run produced a value.
 - **`cPM_ReadElapsedInvalid`** status, reported when an elapsed value had to be
   clamped because the timing source moved backwards.
+- **`ERR_CPM_STATS_OUT_OF_DOMAIN`** (+1037), raised when a sample vector
+  contains a negative or non-finite value.
 - **Release provenance.** `tools/release_provenance.py` emits a SHA-256 for every
   shipped file and Release asset, the commit the release was cut from, and the
   Excel build and bitness the suite was certified on. Missing fields are marked
@@ -147,6 +149,20 @@ fresh rather than reconstructed at release time.
   handles this too: `ElapsedSeconds` raises in strict mode or returns zero with
   the status, `Checkpoint` abandons the capture, and the harness excludes the
   sample. (CPM120-P2-03)
+
+- **The statistics contract no longer promises more than it delivers.** The
+  routines were documented as accepting any `Double()` vector while the
+  coefficient of variation already assumed positive timing data — a contract
+  broader than the implementation, which invites callers to rely on behavior
+  that was never designed.
+
+  The supported domain is now stated as **finite, non-negative timing
+  observations**, and anything else is rejected at a single gate naming the
+  offending index and reason. Not because `Stats_Min` breaks on a negative
+  number — it does not — but because a negative value means the vector is not a
+  timing vector, so every figure computed from it would describe something the
+  caller did not intend. Zero remains in domain: an operation can genuinely be
+  too fast to resolve. (CPM120-P2-04)
 
 ### Known limitations
 

@@ -354,7 +354,10 @@ cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Cursor
 
 ## The statistics
 
-All routines accept any `Double()` vector, so you can keep and post-process the raw samples.
+All routines accept a **timing observation vector** — a `Double()` of finite,
+non-negative values. Anything else is rejected at a single gate, naming the
+offending index. The vector is yours to keep, export and post-process; it simply
+has to remain a set of elapsed times.
 
 | Member | Returns |
 |---|---|

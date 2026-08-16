@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 71    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 72    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -492,6 +492,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics boundaries and errors"
         Test_Stats_BoundariesAndErrors
+
+    'Validate the supported statistics domain
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics: supported domain"
+        Test_Stats_DomainValidation
 
     'Validate that the coefficient of variation is undefined for a non-positive mean
         CurrentStep = CurrentStep + 1
@@ -7175,6 +7180,49 @@ CleanFail:
 
 End Sub
 
+Private Function Test_Stats_RaisesFor( _
+    ByVal cPM As cPerformanceManager, _
+    ByRef Samples() As Double) _
+    As Boolean
+'
+'==============================================================================
+'                          TEST STATS RAISES FOR
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns TRUE when Stats_IsContaminated raises for the supplied vector
+'
+' WHY THIS EXISTS
+'   Isolating the On Error Resume Next block keeps the calling case readable and
+'   stops a suppressed error leaking into later assertions
+'
+' INPUTS
+'   cPM       - instance under test
+'   Samples   - vector to attempt
+'
+' RETURNS
+'   Boolean
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Discarded   As Boolean  'Discarded return value
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Attempt the call and report whether it raised
+        On Error Resume Next
+        Discarded = cPM.Stats_IsContaminated(Samples)
+        Test_Stats_RaisesFor = (Err.Number <> 0)
+        Err.Clear
+        On Error GoTo 0
+
+End Function
+
 Private Sub Test_Stats_BoundariesAndErrors()
 '
 '==============================================================================
@@ -8948,9 +8996,11 @@ Private Sub Test_Stats_CV_UndefinedForNonPositiveMean()
         End If
         On Error GoTo CleanFail
 
-    'Assert the negative mean was rejected
+    'Assert the negative vector was rejected. It no longer reaches the CV
+    'arithmetic at all - Stats_RequireSamples rejects it as out of domain, since
+    'a negative value means the vector is not a set of timing observations
         Test_Assert_True Raised, _
-                         "CV raises for a negative mean"
+                         "A negative vector raises before reaching the CV arithmetic"
 
 '------------------------------------------------------------------------------
 ' ASSERT THE OTHER STATISTICS ARE UNAFFECTED
@@ -9071,9 +9121,11 @@ Private Sub Test_Stats_IsContaminated_FailsSafe()
         Test_Assert_EqualBoolean True, cPM.Stats_IsContaminated(FailedReads), _
                                  "A failed-read all-zero vector is reported as contaminated"
 
-    'Assert the same holds for a negative mean
-        Test_Assert_EqualBoolean True, cPM.Stats_IsContaminated(Negative), _
-                                 "A negative-mean vector is reported as contaminated"
+    'A negative vector is now rejected as out of domain rather than judged.
+    'Fail-safe applies to data that is in domain but unverifiable; data that
+    'should never have arrived is a different problem and gets a different answer
+        Test_Assert_True Test_Stats_RaisesFor(cPM, Negative), _
+                         "A negative vector raises rather than being judged contaminated"
 
 '------------------------------------------------------------------------------
 ' ASSERT THRESHOLD VALIDATION
@@ -9996,4 +10048,252 @@ CleanFail:
 
 End Sub
 
+Private Sub Test_Stats_DomainValidation()
+'
+'==============================================================================
+'                        TEST STATS DOMAIN VALIDATION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that the statistics accept only finite, non-negative timing
+'   observations, and reject anything else at a single gate
+'
+' WHY THIS EXISTS
+'   The statistics were documented as operating on any Double vector, while the
+'   coefficient of variation already assumed positive timing data. A contract
+'   broader than the implementation invites callers to rely on behavior that was
+'   never designed
+'
+'   Rejecting out-of-domain data is not about Stats_Min breaking on negatives -
+'   it does not. It is that a negative value means the vector is not a timing
+'   vector, so every figure computed from it describes something the caller did
+'   not intend
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
 
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Valid(1 To 4)   As Double                 'In-domain vector
+    Dim WithZero(1 To 3) As Double                'Zero is in domain
+    Dim WithNeg(1 To 3) As Double                 'Contains a negative value
+    Dim i               As Long                   'Loop index
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Statistics: supported domain"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+    'A plain, in-domain timing vector
+        For i = 1 To 4
+            Valid(i) = CDbl(i) * 0.001
+        Next i
+
+    'Zero is a legitimate observation: a operation can be too fast to resolve
+        WithZero(1) = 0#: WithZero(2) = 0.002: WithZero(3) = 0.004
+
+    'One negative value is enough to put the vector out of domain
+        WithNeg(1) = 0.001: WithNeg(2) = -0.002: WithNeg(3) = 0.003
+
+'------------------------------------------------------------------------------
+' ASSERT IN-DOMAIN DATA IS ACCEPTED
+'------------------------------------------------------------------------------
+    'Ordinary timing vectors must be unaffected
+        Test_Assert_ApproxDouble 0.001, cPM.Stats_Min(Valid), 0.000000001, _
+                                 "An in-domain vector is accepted"
+
+    'Zero is in domain, so a vector containing it must still compute
+        Test_Assert_ApproxDouble 0#, cPM.Stats_Min(WithZero), 0.000000001, _
+                                 "Zero is a valid timing observation"
+        Test_Assert_ApproxDouble 0.002, cPM.Stats_Median(WithZero), 0.000000001, _
+                                 "A vector containing zero still yields a median"
+
+'------------------------------------------------------------------------------
+' ASSERT A NEGATIVE SAMPLE IS REJECTED BY EVERY ROUTINE
+'------------------------------------------------------------------------------
+    'The gate is shared, so every statistic must reject the same vector
+        Test_Assert_True Test_Stats_MinRaisesFor(cPM, WithNeg), _
+                         "Stats_Min rejects a negative sample"
+        Test_Assert_True Test_Stats_MedianRaisesFor(cPM, WithNeg), _
+                         "Stats_Median rejects a negative sample"
+        Test_Assert_True Test_Stats_RaisesFor(cPM, WithNeg), _
+                         "Stats_IsContaminated rejects a negative sample"
+
+'------------------------------------------------------------------------------
+' ASSERT THE ERROR IDENTIFIES THE OFFENDING SAMPLE
+'------------------------------------------------------------------------------
+    'A domain error is only actionable if it says which value is wrong
+        Test_Assert_ContainsString Test_Stats_ErrorTextFor(cPM, WithNeg), "2", _
+                                   "The domain error names the offending index"
+        Test_Assert_ContainsString Test_Stats_ErrorTextFor(cPM, WithNeg), "negative", _
+                                   "The domain error names the reason"
+
+'------------------------------------------------------------------------------
+' ASSERT HARNESS OUTPUT IS ALWAYS IN DOMAIN
+'------------------------------------------------------------------------------
+    'Whatever the harness returns must be usable by the statistics without
+    'the caller having to sanitize it first
+        Test_Assert_True (cPM.Stats_Min(cPM.MeasureOverhead_Samples(20, 2)) >= 0#), _
+                         "Harness output is always within the supported domain"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Stats_DomainValidation"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Function Test_Stats_MinRaisesFor( _
+    ByVal cPM As cPerformanceManager, _
+    ByRef Samples() As Double) _
+    As Boolean
+'
+'==============================================================================
+'                        TEST STATS MIN RAISES FOR
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns TRUE when Stats_Min raises for the supplied vector
+'
+' INPUTS
+'   cPM       - instance under test
+'   Samples   - vector to attempt
+'
+' RETURNS
+'   Boolean
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Discarded   As Double   'Discarded return value
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Attempt the call and report whether it raised
+        On Error Resume Next
+        Discarded = cPM.Stats_Min(Samples)
+        Test_Stats_MinRaisesFor = (Err.Number <> 0)
+        Err.Clear
+        On Error GoTo 0
+
+End Function
+
+Private Function Test_Stats_MedianRaisesFor( _
+    ByVal cPM As cPerformanceManager, _
+    ByRef Samples() As Double) _
+    As Boolean
+'
+'==============================================================================
+'                      TEST STATS MEDIAN RAISES FOR
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns TRUE when Stats_Median raises for the supplied vector
+'
+' INPUTS
+'   cPM       - instance under test
+'   Samples   - vector to attempt
+'
+' RETURNS
+'   Boolean
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Discarded   As Double   'Discarded return value
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Attempt the call and report whether it raised
+        On Error Resume Next
+        Discarded = cPM.Stats_Median(Samples)
+        Test_Stats_MedianRaisesFor = (Err.Number <> 0)
+        Err.Clear
+        On Error GoTo 0
+
+End Function
+
+Private Function Test_Stats_ErrorTextFor( _
+    ByVal cPM As cPerformanceManager, _
+    ByRef Samples() As Double) _
+    As String
+'
+'==============================================================================
+'                       TEST STATS ERROR TEXT FOR
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the description raised by Stats_Min for the supplied vector
+'
+' WHY THIS EXISTS
+'   A domain error is only actionable if it identifies the offending sample, so
+'   the message content is worth asserting rather than only the fact of a raise
+'
+' INPUTS
+'   cPM       - instance under test
+'   Samples   - vector to attempt
+'
+' RETURNS
+'   String
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Discarded   As Double   'Discarded return value
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Attempt the call and capture the description
+        On Error Resume Next
+        Discarded = cPM.Stats_Min(Samples)
+        Test_Stats_ErrorTextFor = Err.Description
+        Err.Clear
+        On Error GoTo 0
+
+End Function

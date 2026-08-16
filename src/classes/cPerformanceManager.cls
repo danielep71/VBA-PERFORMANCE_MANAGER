@@ -417,6 +417,7 @@ Attribute VB_Exposed = False
         ERR_CPM_STATS_BAD_CV_THRESHOLD = vbObjectError + 1034
         ERR_CPM_MEASURE_NO_BASELINE = vbObjectError + 1035
         ERR_CPM_MEASURE_NO_VALID_SAMPLES = vbObjectError + 1036
+        ERR_CPM_STATS_OUT_OF_DOMAIN = vbObjectError + 1037
     End Enum
 
     'Coefficient-of-variation above which a sample set is reported as noisy
@@ -6032,14 +6033,24 @@ Private Sub Stats_RequireSamples( _
     ByVal SourceProc As String)
 '
 '==============================================================================
-'                            STATS REQUIRE SAMPLES
+'                           STATS REQUIRE SAMPLES
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Raises when a sample vector is empty or uninitialized
+'   Rejects a sample vector that lies outside the supported domain
 '
 ' WHY THIS EXISTS
-'   Every statistics routine needs the same guard. Centralizing it keeps the
-'   error number and message identical across the whole set
+'   Every statistics routine needs the same guard, so it lives here once.
+'
+' SUPPORTED DOMAIN
+'   Finite, non-negative timing observations.
+'
+'   The statistics exist to describe elapsed times, which cannot be negative.
+'   A negative value means the vector is not a timing vector, and every figure
+'   computed from it would then describe something the caller did not intend.
+'
+'   The objection that Stats_Min works perfectly well on negative numbers is
+'   true and beside the point: returning a confident answer over data that
+'   should not have reached the routine is the failure this rejects.
 '
 ' INPUTS
 '   Samples
@@ -6052,17 +6063,37 @@ Private Sub Stats_RequireSamples( _
 '   None
 '
 ' ERROR POLICY
-'   Raises ERR_CPM_STATS_NO_SAMPLES on an empty or uninitialized vector
+'   - Raises ERR_CPM_STATS_NO_SAMPLES on an empty or uninitialized vector
+'   - Raises ERR_CPM_STATS_OUT_OF_DOMAIN on a negative or non-finite value,
+'     naming the offending index and value
 '
 ' DEPENDENCIES
 '   - Stats_Count
 '
+' NOTES
+'   The scan is O(n) and runs once per public statistics call, so Stats_Text
+'   scans several times over. For a diagnostic surface over sample vectors that
+'   number in the thousands at most, that cost is not worth optimizing away with
+'   a validity cache that could go stale.
+'
+'   The non-finite test is a proxy rather than a rigorous IEEE classification.
+'   VBA raises on arithmetic overflow instead of producing infinities, and offers
+'   no IsFinite, so NaN and Inf can only arrive through deliberate construction
+'   or an API round-trip. The check costs nothing inside a scan that is already
+'   happening, and is worth having for that reason alone.
+'
 ' UPDATED
-'   2026-08-15
+'   2026-08-16
 '==============================================================================
 
 '------------------------------------------------------------------------------
-' VALIDATE
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim i       As Long     'Sample index
+    Dim v       As Double   'Sample under inspection
+
+'------------------------------------------------------------------------------
+' VALIDATE SIZE
 '------------------------------------------------------------------------------
     'Reject an empty or uninitialized sample vector
         If Stats_Count(Samples) < 1 Then
@@ -6070,6 +6101,38 @@ Private Sub Stats_RequireSamples( _
                       "cPerformanceManager." & SourceProc, _
                       "Statistics require at least one sample."
         End If
+
+'------------------------------------------------------------------------------
+' VALIDATE DOMAIN
+'------------------------------------------------------------------------------
+    'Reject anything that is not a finite, non-negative timing observation
+        For i = LBound(Samples) To UBound(Samples)
+            v = Samples(i)
+
+            'NaN is the only value that is not equal to itself
+                If v <> v Then
+                    Err.Raise ERR_CPM_STATS_OUT_OF_DOMAIN, _
+                              "cPerformanceManager." & SourceProc, _
+                              "Sample " & CStr(i) & " is not a number. Statistics " & _
+                              "accept finite, non-negative timing observations."
+                End If
+
+            'A negative elapsed time is not a timing observation
+                If v < 0# Then
+                    Err.Raise ERR_CPM_STATS_OUT_OF_DOMAIN, _
+                              "cPerformanceManager." & SourceProc, _
+                              "Sample " & CStr(i) & " is negative (" & CStr(v) & "). " & _
+                              "Statistics accept finite, non-negative timing observations."
+                End If
+
+            'Proxy for infinity: no real elapsed time approaches this magnitude
+                If v > 1E+300 Then
+                    Err.Raise ERR_CPM_STATS_OUT_OF_DOMAIN, _
+                              "cPerformanceManager." & SourceProc, _
+                              "Sample " & CStr(i) & " is not finite. Statistics " & _
+                              "accept finite, non-negative timing observations."
+                End If
+        Next i
 
 End Sub
 
@@ -6132,7 +6195,11 @@ Private Function Stats_TryCoefficientOfVariation( _
 '------------------------------------------------------------------------------
 ' VALIDATE THE DENOMINATOR
 '------------------------------------------------------------------------------
-    'The quantity is only defined for a strictly positive mean
+    'The quantity is only defined for a strictly positive mean.
+    '
+    'Only the zero case is reachable through the public API: Stats_RequireSamples
+    'rejects negative samples, so a negative mean cannot arrive. The <= test is
+    'retained as a defensive bound rather than narrowed to = 0
         Avg = Stats_Mean(Samples)
 
         If Avg <= 0# Then
@@ -6796,14 +6863,4 @@ Public Property Get TW_CalculationExempted() As Boolean
         TW_CalculationExempted = PM_TW_CalculationExempted()
 
 End Property
-
-
-
-
-
-
-
-
-
-
 
