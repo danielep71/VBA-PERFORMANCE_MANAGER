@@ -38,10 +38,26 @@ fresh rather than reconstructed at release time.
   selected by `#If Win64`. The pull request template records the regression
   suite result and the environment it ran on, which is the manual stand-in for
   the headless Excel gate in #11. (#21)
+- **`MeasureBaseline`.** Runs an empty procedure through the same
+  `Application.Run` path as a real workload, so its median can legitimately be
+  subtracted from a `MeasureProcedure` result. `MeasureOverhead_Samples` cannot
+  — it does not dispatch through `Application.Run`. The caller supplies the
+  empty procedure; `Application.Run` cannot reach anything in a module declared
+  `Option Private Module`. (#7)
+- **`FailedReadsOut` and `LastFailureStatusOut`** on `MeasureProcedure`. The
+  harness measures on an isolated worker released before the vector is returned,
+  so a run where every read failed was previously indistinguishable from a run
+  of a procedure that does nothing. (#21)
+- **Release provenance.** `tools/release_provenance.py` emits a SHA-256 for every
+  shipped file and Release asset, the commit the release was cut from, and the
+  Excel build and bitness the suite was certified on. Missing fields are marked
+  `TODO` and the script exits non-zero, so an incomplete block cannot ship
+  unnoticed. `RELEASING.md` records the process, including the three mechanical
+  failures that preceded a correct v1.2.0 tag. (#12)
 
 ### Changed
 
-- **BEHAVIOURAL CORRECTION: `Stats_CoefficientOfVariation` now raises when the
+- **BEHAVIORAL CORRECTION: `Stats_CoefficientOfVariation` now raises when the
   sample mean is not strictly positive.** Earlier releases returned zero.
 
   For non-negative timing data a zero mean means every observation was zero,
@@ -61,6 +77,12 @@ fresh rather than reconstructed at release time.
 - **`Stats_Text` distinguishes two warnings** — *high variance; re-run* from
   *sample validity cannot be established; inspect the observations*. Those mean
   different things and previously collapsed into one message.
+
+- **`MeasureProcedure` qualifies an unqualified procedure name with
+  `ThisWorkbook`.** `Application.Run` previously resolved against the active
+  workbook, so the harness could measure a same-named procedure in whichever
+  workbook the user had in front. An explicit qualification is honored
+  unchanged. (#9)
 
 ### Fixed
 
@@ -106,18 +128,6 @@ Build 16.0.20131.20152, 64-bit.
 - **Contamination detection** — `Stats_IsContaminated` reports when the
   coefficient of variation exceeds 0.25, and `Stats_Text` appends a warning so a
   noisy run cannot be mistaken for a precise one.
-- **`MeasureBaseline`.** Runs an empty procedure through the same
-  `Application.Run` path as a real workload, so its median can legitimately be
-  subtracted from a `MeasureProcedure` result. `MeasureOverhead_Samples` cannot
-  — it does not dispatch through `Application.Run`. The caller supplies the
-  empty procedure; `Application.Run` cannot reach anything in a module declared
-  `Option Private Module`. (#7)
-- **`FailedReadsOut` and `LastFailureStatusOut`** on `MeasureProcedure`. The
-  harness measures on an isolated worker released before the vector is returned,
-  so a run where every read failed was previously indistinguishable from a run
-  of a procedure that does nothing. (#21)
-  
-
 #### Read-status reporting
 
 - **`cPM_ReadStatus` enum and the `LastReadStatus` property.** In non-strict
@@ -126,7 +136,7 @@ Build 16.0.20131.20152, 64-bit.
   `cPM_ReadQpcFailed`, `cPM_ReadSystemTimeFailed`,
   `cPM_ReadSystemTimeFormatInvalid`, `cPM_ReadFallbackToMethod2`.
 - **`TW_CalculationExempted`** and **`PM_TW_CalculationExempted`** — report when
-  Calculation control could not be honoured on the current host.
+  Calculation control could not be honored on the current host.
 
 #### API
 
@@ -170,11 +180,6 @@ Build 16.0.20131.20152, 64-bit.
   `PM_RPT_COL_CUMULATIVE`).
 - The demo workbook is distributed as a **Release asset** rather than versioned
   in the repository.
-- **`MeasureProcedure` qualifies an unqualified procedure name with
-  `ThisWorkbook`.** `Application.Run` previously resolved against the active
-  workbook, so the harness could measure a same-named procedure in whichever
-  workbook the user had in front. An explicit qualification is honored
-  unchanged. (#9)
 
 ### Fixed
 
@@ -255,7 +260,7 @@ Build 16.0.20131.20152, 64-bit.
 - Per-session run labels via `SetRunLabel`.
 - `CheckpointCount`, `ClearCheckpoints`, `ReportAsArray`, `ReportAsText`.
 - `cPM_Report_WriteToRange` for direct worksheet output.
-- Expanded regression coverage for checkpoint and reporting behaviour.
+- Expanded regression coverage for checkpoint and reporting behavior.
 
 ### Changed
 
