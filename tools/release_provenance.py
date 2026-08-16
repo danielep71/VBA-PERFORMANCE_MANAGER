@@ -82,6 +82,24 @@ def git(*args: str) -> str | None:
         return None
 
 
+def git_raw(*args: str) -> str | None:
+    """Run a git command and return its output UNSTRIPPED.
+
+    git() strips, which is right for a commit SHA and wrong for file content:
+    it removes the trailing newlines a source file legitimately ends with, so
+    every file compared against its blob appeared to differ by whitespace that
+    was never there.
+    """
+    try:
+        out = subprocess.run(
+            ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True,
+            encoding="utf-8", errors="replace",
+        )
+        return out.stdout
+    except Exception:
+        return None
+
+
 def git_error(*args: str) -> str:
     """Return git's own message for a failing command, for reporting."""
     try:
@@ -120,7 +138,7 @@ def verify_against_tag(tag: str, paths: list[str]) -> list[str]:
     problems: list[str] = []
     for rel in paths:
         p = ROOT / rel
-        blob = git("show", f"{tag}:{rel}")
+        blob = git_raw("show", f"{tag}:{rel}")
         if blob is None:
             problems.append(f"{rel}: not present at {tag}")
             continue
