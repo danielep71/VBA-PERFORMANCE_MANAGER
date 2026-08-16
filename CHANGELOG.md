@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+Work merged to `main` but not yet released. Each entry is added by the pull
+request that introduces it, so the record is written while the reasoning is
+fresh rather than reconstructed at release time.
+
+### Added
+
+- **Static analysis gate.** `tools/vba_lint.py` runs eleven consistency checks
+  over the exported VBA sources — merge conflict markers, procedure and block
+  balance, reserved-word identifiers, error sources naming the right module,
+  bare error numbers, undefined local callees, test wiring, `TotalSteps` drift,
+  version-stamp agreement, and single-call-site native APIs. Run on every push
+  and pull request via `.github/workflows/static-checks.yml`, and required by
+  the `protect-main` ruleset. Six of the eleven correspond to defects that
+  actually reached this repository during v1.2.0. (#10)
+- **`ERR_CPM_STATS_UNDEFINED_CV`** (+1033) and
+  **`ERR_CPM_STATS_BAD_CV_THRESHOLD`** (+1034).
+- **Three regression cases** covering the coefficient-of-variation semantics
+  below. Suite 63 → 66 cases, 447 assertions.
+
+### Changed
+
+- **BEHAVIOURAL CORRECTION: `Stats_CoefficientOfVariation` now raises when the
+  sample mean is not strictly positive.** Earlier releases returned zero.
+
+  For non-negative timing data a zero mean means every observation was zero,
+  which is what a run of failed non-strict reads produces. Returning zero then
+  made `Stats_IsContaminated` report that run as perfectly stable — certifying a
+  failed measurement as clean, the worst direction for the error to point. (#6)
+
+- **`Stats_TryCoefficientOfVariation`** is now the single definition of
+  validity, with three deliberately different policies on top of it:
+
+  | Member | Non-positive mean |
+  |---|---|
+  | `Stats_CoefficientOfVariation` | Raises |
+  | `Stats_IsContaminated` | Returns `True` — validity unestablished is suspect |
+  | `Stats_Text` | Prints `undefined (mean is not positive)` |
+
+- **`Stats_Text` distinguishes two warnings** — *high variance; re-run* from
+  *sample validity cannot be established; inspect the observations*. Those mean
+  different things and previously collapsed into one message.
+
+### Fixed
+
+- **`Stats_IsContaminated` rejects a negative `CvThreshold`.** A negative
+  threshold reported every sample set as contaminated, since the coefficient of
+  variation is never negative — a silently useless answer rather than an
+  error. (#8)
+
+### Known limitations
+
+- **Samples returned by `MeasureProcedure` cannot be diagnosed through
+  `LastReadStatus`.** The harness runs its reads on an isolated worker instance
+  that is released before the vector is returned, so the caller's own status is
+  untouched by them. Tracked separately.
+
+---
+
 ## [1.2.0] — 2026-08-16
 
 Correctness hardening across the native timing reads, a distribution-aware
@@ -196,6 +256,7 @@ Initial public release.
 
 ---
 
+[Unreleased]: https://github.com/danielep71/vba-performance_manager/compare/v1.2.0...main
 [1.2.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.2.0
 [1.1.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.1.0
 [1.0.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.0.0
