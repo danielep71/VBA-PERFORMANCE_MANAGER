@@ -120,7 +120,7 @@ Attribute VB_Exposed = False
 ' AUTHOR
 '   Daniele Penza
 '
-' VERSION: 1.2.1
+' VERSION: 1.2.0
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -463,6 +463,7 @@ Attribute VB_Exposed = False
         'failure can never leak into a later test case.
         Private m_TestFailNextQpcRead        As Boolean
         Private m_TestFailNextSystemTimeRead As Boolean
+        Private m_TestForceNextSystemTimeFormatInvalid As Boolean
 
 '
 '------------------------------------------------------------------------------
@@ -3565,6 +3566,16 @@ Private Function SystemTime_TryReadMs( _
             Exit Function
         End If
 
+    'Consume the one-shot forced wrong-format flag, if the suite armed it.
+    'This models a successful API call that returns a format other than
+    'TIME_MS, which is a distinct condition from an outright failure.
+        If m_TestForceNextSystemTimeFormatInvalid Then
+            m_TestForceNextSystemTimeFormatInvalid = False
+            StatusOut = cPM_ReadSystemTimeFormatInvalid
+            SystemTime_TryReadMs = False
+            Exit Function
+        End If
+
 '------------------------------------------------------------------------------
 ' PREPARE STRUCTURE
 '------------------------------------------------------------------------------
@@ -4333,10 +4344,14 @@ Public Function MeasureProcedure( _
 '   - Application.Run only reaches Public procedures in standard modules. It
 '     cannot call Private procedures, class methods, or procedures in a module
 '     declared Option Private Module
-'   - Application.Run itself costs roughly tens of microseconds per call. That
-'     cost is included in every sample, so this harness is suited to procedures
-'     measured in milliseconds or longer. For sub-microsecond work, subtract a
-'     baseline measured with MeasureOverhead_Samples
+'   - Application.Run adds a dispatch cost to every sample. Measure it on the
+'     target machine rather than assuming a figure; it varies by Excel version,
+'     bitness and load. This harness suits procedures measured in milliseconds
+'     or longer
+'   - MeasureOverhead_Samples measures the backend timing cycle only and does
+'     NOT dispatch through Application.Run, so it is not a matched baseline for
+'     this routine. For a matched baseline, run MeasureProcedure against an
+'     empty Public Sub
 '   - Measurement runs on an isolated worker instance, so the caller's session
 '     and checkpoint state are untouched
 '
@@ -5927,6 +5942,54 @@ Friend Sub Test_ForceNextSystemTimeReadFailure()
 
 End Sub
 
+
+Friend Sub Test_ForceNextSystemTimeFormatInvalid()
+'
+'==============================================================================
+'              TEST FORCE NEXT SYSTEM TIME FORMAT INVALID
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms a ONE-SHOT forced wrong-format result from the next timeGetSystemTime
+'   read.
+'
+' WHY THIS EXISTS
+'   The runtime distinguishes an outright API failure from a successful call
+'   that returns a format other than TIME_MS, and reports them as
+'   cPM_ReadSystemTimeFailed and cPM_ReadSystemTimeFormatInvalid respectively.
+'
+'   Without a seam, only the first of those two paths could be exercised, so
+'   the distinction would be asserted by the code but never by a test.
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   None.
+'
+' BEHAVIOR
+'   The next call to SystemTime_TryReadMs returns FALSE with
+'   cPM_ReadSystemTimeFormatInvalid, and clears the flag.
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' NOTES
+'   One-shot and self-clearing, for the same reasons as the other seams: a
+'   sticky flag would make test ordering significant.
+'
+'   Armed independently of the read-failure flag. If both are armed, the
+'   read-failure flag is consumed first, matching the order in which the
+'   runtime checks them.
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
+
+    'Arm a single forced wrong-format result
+        m_TestForceNextSystemTimeFormatInvalid = True
+
+End Sub
+
 Public Property Get TW_CalculationExempted() As Boolean
 '
 '==============================================================================
@@ -5977,5 +6040,7 @@ Public Property Get TW_CalculationExempted() As Boolean
         TW_CalculationExempted = PM_TW_CalculationExempted()
 
 End Property
+
+
 
 

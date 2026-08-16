@@ -12,7 +12,7 @@
 [![Pure VBA](https://img.shields.io/badge/Implementation-Pure_VBA-00599C?style=for-the-badge)](https://github.com/danielep71/vba-performance_manager)
 [![No External DLL](https://img.shields.io/badge/External_DLL-None-555555?style=for-the-badge)](#-installation)
 [![QPC](https://img.shields.io/badge/Default_Backend-QueryPerformanceCounter-c2185b?style=for-the-badge)](#-timing-backends)
-[![Regression](https://img.shields.io/badge/Regression-52_Cases_·_288_Assertions-d97706?style=for-the-badge)](#-testing-and-validation)
+[![Regression](https://img.shields.io/badge/Regression-63_Cases_·_431_Assertions-d97706?style=for-the-badge)](#-testing-and-validation)
 [![Statistics](https://img.shields.io/badge/Statistics-Median_·_P95_·_CV-0f766e?style=for-the-badge)](#-measurement-and-statistics)
 [![Version](https://img.shields.io/badge/Version-1.2.0-4c1d95?style=for-the-badge)](CHANGELOG.md)
 
@@ -62,8 +62,8 @@
 | | |
 |---:|:---|
 | **6** | timing backends behind one session-bound interface |
-| **41** | public members — 24 methods and 18 properties |
-| **52** | regression cases running **288** deterministic assertions |
+| **43** | public members — 24 methods and 19 properties |
+| **63** | regression cases running **431** deterministic assertions |
 | **23** | named error constants; no bare error numbers anywhere |
 | **76 %** | of the class is documentation, at procedure level |
 | **2** | files to import. No reference, no add-in, no DLL |
@@ -484,6 +484,7 @@ cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Calculation
 | `ActiveMethodID` · `HasActiveSession` | Current session binding |
 | `MethodName(Index)` | Human-readable backend label |
 | `StrictMode` | Get/Let the error policy |
+| `LastReadStatus` | Outcome of the most recent native timing read |
 
 </details>
 
@@ -512,6 +513,7 @@ cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Calculation
 | `ResetEnvironment` | Releases timer resolution and ends this instance's TW session |
 | `TW_Turn_OFF([Except])` · `TW_Turn_ON` | Shared suppression control |
 | `TW_IsActive` · `TW_ActiveSessionCount` | Suppression state |
+| `TW_CalculationExempted` | Whether Calculation control could not be honoured |
 
 </details>
 
@@ -531,6 +533,7 @@ cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Calculation
 | QPC read failure | Raises | Returns 0 |
 | Tick alignment exceeds the spin guard | Raises | Returns a current timestamp |
 | Native read fails during a session start | Raises | Falls back to backend 2 before committing |
+| Native read fails during an elapsed read | Raises | Returns 0 and records the reason in `LastReadStatus` |
 
 All 23 raised error numbers are declared as named constants, so no bare `vbObjectError` offset appears anywhere in the code. Timing-method identifiers 1–6 remain numeric literals; naming those is tracked in [#13](https://github.com/danielep71/vba-performance_manager/issues/13).
 
@@ -542,7 +545,7 @@ All 23 raised error numbers are declared as named constants, so no bare `vbObjec
 Run_cPerformanceManager_RegressionSuite
 ```
 
-**52 cases · 288 assertions**, written to a dedicated worksheet log and summarised in the Immediate Window.
+**63 cases · 431 assertions**, written to a dedicated worksheet log and summarised in the Immediate Window.
 
 Coverage includes:
 
@@ -553,7 +556,10 @@ Coverage includes:
 - checkpoint storage integrity across 1 000 captures and ~10 `ReDim Preserve` cycles;
 - `Class_Terminate` releasing a shared TW session with all five Application flags restored;
 - 75 instance create/destroy cycles proving no stale TW registration survives;
-- statistics against a hand-computed vector, plus order independence and boundary behaviour.
+- statistics against a hand-computed vector, plus order independence and boundary behaviour;
+- **injected native-read failures** on both backends, covering strict-mode raises, non-strict fallback to backend 2, cache preservation, and checkpoint abandonment;
+- an injected **wrong-format** `timeGetSystemTime` result, proving it is reported distinctly from an outright read failure;
+- Calculation baseline validity, deliberate exemption, overlapping scopes, and proof that no synthetic baseline is ever written.
 
 ---
 

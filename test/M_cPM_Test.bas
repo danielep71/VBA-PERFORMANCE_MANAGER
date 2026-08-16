@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 62    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 63    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -522,6 +522,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault: method-4 elapsed, no rollover"
         Test_FaultInject_SystemTimeElapsedFailure_NoRollover
+
+    'Validate that a wrong-format read is a distinct reported condition
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault: method-4 wrong format"
+        Test_FaultInject_SystemTimeFormatInvalid
 
     'Validate checkpoint abandonment on a failed read
         CurrentStep = CurrentStep + 1
@@ -8586,4 +8591,152 @@ CleanFail:
 
 End Sub
 
+Private Sub Test_FaultInject_SystemTimeFormatInvalid()
+'
+'==============================================================================
+'                 TEST FAULT INJECT SYSTEM TIME FORMAT INVALID
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that a wrong-format timeGetSystemTime result is reported as a
+'   distinct condition from an outright read failure
+'
+' WHY THIS EXISTS
+'   The runtime distinguishes cPM_ReadSystemTimeFailed from
+'   cPM_ReadSystemTimeFormatInvalid, and raises a different error number for
+'   each. Without this case that distinction would be asserted by the code but
+'   never by a test, which is the gap identified in the acceptance criteria for
+'   the method-4 defect
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-08-16
+'==============================================================================
 
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim GoodET          As Double                 'Last good elapsed value
+    Dim FailedRead      As Double                 'Value returned by the failed read
+    Dim RolloverPeriod  As Double                 'The 32-bit rollover period in seconds
+    Dim Raised          As Boolean                'TRUE when the expected error was raised
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Fault injection: method-4 wrong format"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance in non-strict mode
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = False
+    'Resolve the value an unguarded rollover correction would produce
+        RolloverPeriod = 4294967296# / 1000#
+
+'------------------------------------------------------------------------------
+' ESTABLISH A GOOD MEASUREMENT
+'------------------------------------------------------------------------------
+    'Take a real method-4 measurement and retain it
+        cPM.StartTimer 4
+        cPM.Pause 0.05, 1
+        GoodET = cPM.ElapsedSeconds
+
+    'Assert the baseline measurement is genuine
+        Test_Assert_InRangeDouble 0#, 60#, GoodET, _
+                                  "The baseline method-4 measurement is a real interval"
+
+'------------------------------------------------------------------------------
+' FORCE A WRONG-FORMAT RESULT ON THE NEXT READ
+'------------------------------------------------------------------------------
+    'Arm a single forced wrong-format result, then attempt an elapsed read
+        cPM.Test_ForceNextSystemTimeFormatInvalid
+        FailedRead = cPM.ElapsedSeconds
+
+'------------------------------------------------------------------------------
+' ASSERT THE SPECIFIC CONDITION IS REPORTED
+'------------------------------------------------------------------------------
+    'Assert the status names the format problem, not a generic read failure
+        Test_Assert_EqualLong CLng(cPM_ReadSystemTimeFormatInvalid), CLng(cPM.LastReadStatus), _
+                              "LastReadStatus distinguishes a wrong format from a read failure"
+
+    'Assert the failed read returns zero
+        Test_Assert_ApproxDouble 0#, FailedRead, 0.000000001, _
+                                 "A wrong-format read returns 0 in non-strict mode"
+
+'------------------------------------------------------------------------------
+' ASSERT NO ROLLOVER CORRECTION WAS APPLIED
+'------------------------------------------------------------------------------
+    'A wrong-format result must never reach the rollover arithmetic
+        Test_Assert_True (Abs(FailedRead - RolloverPeriod) > 1000#), _
+                         "A wrong-format read is never inflated by rollover correction"
+
+'------------------------------------------------------------------------------
+' ASSERT THE CACHE SURVIVED
+'------------------------------------------------------------------------------
+    'Assert the last known good measurement was preserved
+        Test_Assert_ApproxDouble GoodET, cPM.ET, 0.000000001, _
+                                 "A wrong-format read does not overwrite the cached ET"
+
+'------------------------------------------------------------------------------
+' ASSERT STRICT MODE RAISES
+'------------------------------------------------------------------------------
+    'Switch to strict policy and force the condition again
+        cPM.StrictMode = True
+        cPM.Test_ForceNextSystemTimeFormatInvalid
+
+        Raised = False
+        On Error Resume Next
+        FailedRead = cPM.ElapsedSeconds
+        If Err.Number <> 0 Then
+            Raised = True
+            Err.Clear
+        End If
+        On Error GoTo CleanFail
+
+    'Assert the wrong format was rejected rather than tolerated
+        Test_Assert_True Raised, _
+                         "A wrong-format read raises in strict mode"
+
+'------------------------------------------------------------------------------
+' ASSERT THE INJECTION FLAG WAS ONE-SHOT
+'------------------------------------------------------------------------------
+    'Assert the next read succeeds, proving the flag self-cleared
+        cPM.StrictMode = False
+        Test_Assert_InRangeDouble 0#, 60#, cPM.ElapsedSeconds, _
+                                  "The next method-4 read succeeds and is sane"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
+                              "LastReadStatus resets to OK on a successful read"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_FaultInject_SystemTimeFormatInvalid"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
