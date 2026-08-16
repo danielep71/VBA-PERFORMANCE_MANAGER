@@ -107,6 +107,15 @@ incomplete block cannot slip through unnoticed. Keep the output for step 6.
 
 Push everything first, then:
 
+- [ ] **Confirm the Static checks run for this exact commit is green.**
+      Actions → Static checks → the run for your tag target. Download the
+      `vba-lint-results` artifact and check `"passed": true` and the `commit`
+      field matches.
+
+      > Branch protection does not require this check, so a commit can reach
+      > `main` without it having run. That trade is deliberate for daily work
+      > and wrong at release time, which is why this step is manual and explicit.
+
 - [ ] **Releases → Draft a new release**
 - [ ] Tag: `vX.Y.Z` — **lowercase `v`**, matching `v1.0.0`, `v1.1.0`, `v1.2.0`
 - [ ] Target: `main`
@@ -156,6 +165,7 @@ the release and start again from step 5.
 
 ## 8. Close out
 
+- [ ] Record the Static checks run URL alongside the provenance block
 - [ ] Close the milestone
 - [ ] Delete any merged release branch
 - [ ] Confirm the CHANGELOG release link resolves

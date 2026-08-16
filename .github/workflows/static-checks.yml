@@ -6,6 +6,9 @@ name: Static checks
 # One check needs git history: released changelog sections are compared against
 # their content at the matching tag, so the checkout fetches tags.
 #
+# The run publishes a machine-readable result document as a workflow artifact,
+# so a release can reference a verifiable run instead of a manual assertion.
+#
 # They cannot execute a single test. That is the job of the headless Excel
 # regression gate tracked in #11, which requires a self-hosted Windows runner.
 # What these checks do cover is the class of defect that reached this
@@ -41,4 +44,15 @@ jobs:
           python-version: "3.12"
 
       - name: Run static checks
-        run: python3 tools/vba_lint.py
+        run: python3 tools/vba_lint.py --json vba-lint-results.json
+
+      # Uploaded even when the checks fail, which is when the detail is most
+      # useful. A release can then point at a run rather than at a recollection
+      # that the checks were green.
+      - name: Publish results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vba-lint-results
+          path: vba-lint-results.json
+          retention-days: 90

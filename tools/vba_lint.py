@@ -13,9 +13,13 @@ Exit code 0 when all checks pass, 1 otherwise.
 
 from __future__ import annotations
 
+import argparse
+import json
+import platform
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -67,9 +71,15 @@ PROC_END = re.compile(r"^End\s+(?:Sub|Function|Property)\s*$")
 class Report:
     failures: list[str] = field(default_factory=list)
     checks_run: int = 0
+    results: list[dict] = field(default_factory=list)
 
     def check(self, name: str, problems: list[str]) -> None:
         self.checks_run += 1
+        self.results.append({
+            "check": name,
+            "passed": not problems,
+            "problems": list(problems),
+        })
         if problems:
             self.failures.append(name)
             print(f"FAIL  {name}")
@@ -363,6 +373,16 @@ def _changelog_sections(text: str) -> dict[str, str]:
     return out
 
 
+def _git(*args: str) -> str | None:
+    """Run a git command, returning None if git or the repository is unavailable."""
+    try:
+        r = subprocess.run(["git", *args], cwd=ROOT,
+                           capture_output=True, text=True, check=True)
+        return r.stdout.strip()
+    except Exception:
+        return None
+
+
 def _git_show(ref: str, path: str) -> str | None:
     try:
         r = subprocess.run(["git", "show", f"{ref}:{path}"], cwd=ROOT,
@@ -438,7 +458,36 @@ def check_api_declarations(rep: Report) -> None:
 # Entry point
 # --------------------------------------------------------------------------- #
 
+def write_json(rep: Report, path: Path) -> None:
+    """Emit a machine-readable result document.
+
+    A release currently rests on a human asserting that the checks passed. An
+    artifact lets that assertion be verified after the fact, and lets the
+    provenance block point at a run rather than a recollection.
+    """
+    payload = {
+        "tool": "vba_lint",
+        "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "commit": _git("rev-parse", "HEAD"),
+        "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
+        "dirty": bool(_git("status", "--porcelain")),
+        "platform": platform.platform(),
+        "checks_run": rep.checks_run,
+        "failures": len(rep.failures),
+        "passed": not rep.failures,
+        "results": rep.results,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(f"\nresults written to {path}")
+
+
 def main() -> int:
+    ap = argparse.ArgumentParser(description="Static consistency checks for the VBA sources.")
+    ap.add_argument("--json", metavar="PATH",
+                    help="Also write a machine-readable result document to PATH.")
+    args = ap.parse_args()
+
     missing = [p for p in VBA_SOURCES if not p.exists()]
     if missing:
         for p in missing:
@@ -463,6 +512,10 @@ def main() -> int:
     check_changelog_released_sections_frozen(rep)
 
     print("-" * 60)
+
+    if args.json:
+        write_json(rep, Path(args.json))
+
     if rep.failures:
         print(f"{len(rep.failures)} of {rep.checks_run} checks failed:")
         for f in rep.failures:

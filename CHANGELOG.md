@@ -189,6 +189,22 @@ fresh rather than reconstructed at release time.
   plausible-looking number near 4.29e9 and the misuse cannot be detected from
   the value. (CPM120-P2-06)
 
+- **The static checks now publish a machine-readable result document.**
+  `tools/vba_lint.py --json` emits the commit, branch, working-tree cleanliness,
+  and a per-check pass/fail record; the workflow uploads it as an artifact on
+  every run, including failing ones, where the detail is most useful.
+
+  This closes the last genuinely missing control from the finding. The other
+  three were already in place or are deliberate: the workflow runs on every push
+  and pull request, and branch protection restricts deletions but does not
+  require the check, because gating every commit meant a branch and a pull
+  request for a one-line documentation edit.
+
+  That trade is defensible for daily work and wrong at release time, since a tag
+  could otherwise be created against a commit whose checks never ran.
+  `RELEASING.md` therefore requires confirming the run for the exact tag target
+  and recording its URL. (CPM120-P2-07)
+
 ### Known limitations
 
 - **`LastReadStatus` does not cover harness reads.** The harness measures on an
