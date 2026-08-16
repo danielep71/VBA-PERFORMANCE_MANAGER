@@ -42,6 +42,7 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '
 '     - PM_TW_IsInstanceActive
 '     - PM_TW_EndAllSessions
+'     - PM_TW_CalculationExempted
 '
 '   Worksheet-output helper exposed here:
 '
@@ -78,6 +79,28 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '   guard on Workbooks.Count. All other supported flags remain safe to access
 '   in a workbook-less host
 '
+' CALCULATION BASELINE VALIDITY
+'   An unknown Calculation baseline and a baseline that happens to be Automatic
+'   are different states, and must never share a representation. Recording a
+'   synthetic Automatic when none could be read is what allowed a real baseline
+'   to be overwritten on a workbook that opened later
+'
+'   g_TW_CALCULATION_VALID therefore tracks whether a baseline was genuinely
+'   captured, separately from its value
+'
+' STABLE-HOST INVARIANT
+'   Calculation control requires the open-workbook set to remain stable for the
+'   life of the shared scope
+'
+'   When that invariant does not hold:
+'     - the flag is exempted rather than guessed
+'     - PM_TW_CalculationExempted reports the exemption
+'     - a strict participant causes PM_TW_BeginSession to raise
+'
+'   The manager deliberately does NOT lazily capture a baseline once a workbook
+'   opens mid-scope. Doing so would apply a baseline the scope never observed,
+'   and no event reapplies the aggregate state on workbook lifecycle changes
+'
 ' DEPENDENCIES
 '   - Excel Application object model
 '   - Late-bound Scripting.Dictionary via CreateObject("Scripting.Dictionary")
@@ -108,7 +131,7 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '   1.2.0
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '
 ' AUTHOR
 '   Daniele Penza
@@ -136,6 +159,7 @@ Attribute VB_Name = "M_cPM_TimeWasters"
         Private Const ERR_TW_BEGIN_BLANK_KEY        As Long = vbObjectError + 2200
         Private Const ERR_TW_END_BLANK_KEY          As Long = vbObjectError + 2201
         Private Const ERR_TW_ISACTIVE_BLANK_KEY     As Long = vbObjectError + 2202
+        Private Const ERR_TW_CALCULATION_UNAVAILABLE As Long = vbObjectError + 2203
         Private Const ERR_TW_REPORT_NO_INSTANCE     As Long = vbObjectError + 2600
         Private Const ERR_TW_REPORT_NO_TARGET       As Long = vbObjectError + 2601
 
@@ -156,11 +180,25 @@ Attribute VB_Name = "M_cPM_TimeWasters"
     '   item  = disable-mask (Long)
         Private g_TW_Sessions               As Object
 
+    'Dictionary:
+    '   key   = instance key (String)
+    '   item  = TRUE when that instance requested strict host semantics
+        Private g_TW_StrictKeys             As Object
+
     'Monotonic seed used to issue collision-proof instance keys
         Private g_TW_KeySeed                As Long
 
     'TRUE once the baseline Application state has been captured
         Private g_TW_BaselineSaved          As Boolean
+
+    'TRUE only when a REAL Calculation baseline was captured from a live
+    'workbook. An unknown baseline and a baseline that happens to be Automatic
+    'are different states and must never share a representation.
+        Private g_TW_CALCULATION_VALID      As Boolean
+
+    'TRUE when Calculation control could not be honoured on this host and has
+    'been exempted from the effective state for the life of the scope
+        Private g_TW_CalcExempted           As Boolean
 
     'Saved baseline Application state
         Private g_TW_SCREENUPDATING         As Boolean
@@ -218,7 +256,7 @@ Public Function PM_TW_NewInstanceKey() As String
 '   instance more than once
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -237,7 +275,8 @@ End Function
 
 Public Sub PM_TW_BeginSession( _
     ByVal InstanceKey As String, _
-    Optional ByVal ExceptMask As Long = 0)
+    Optional ByVal ExceptMask As Long = 0, _
+    Optional ByVal StrictHost As Boolean = False)
 '
 '==============================================================================
 '                             PM_TW_BEGINSESSION
@@ -294,7 +333,7 @@ Public Sub PM_TW_BeginSession( _
 '     - later calls for same instance => update requested mask
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -302,6 +341,7 @@ Public Sub PM_TW_BeginSession( _
 '------------------------------------------------------------------------------
     Dim HadKeyBefore            As Boolean   'TRUE when the instance was already registered
     Dim PrevDisableMask         As Long      'Previously stored disable-mask for this instance
+    Dim PrevStrictHost          As Boolean   'Previously stored strictness for this instance
     Dim WasFirstSession         As Boolean   'TRUE when this call began the first shared session
 
     Dim SavedErrNumber          As Long      'Captured original error number
@@ -330,6 +370,9 @@ Public Sub PM_TW_BeginSession( _
     'Capture the previous disable-mask when this is an update
         If HadKeyBefore Then
             PrevDisableMask = CLng(g_TW_Sessions(InstanceKey))
+            If g_TW_StrictKeys.Exists(InstanceKey) Then
+                PrevStrictHost = CBool(g_TW_StrictKeys(InstanceKey))
+            End If
         End If
 
 '------------------------------------------------------------------------------
@@ -345,6 +388,8 @@ Public Sub PM_TW_BeginSession( _
 '------------------------------------------------------------------------------
     'Store this instance's requested disable-mask
         g_TW_Sessions(InstanceKey) = PM_TW_DisableMaskFromExcept(ExceptMask)
+    'Store this instance's host-strictness preference alongside it
+        g_TW_StrictKeys(InstanceKey) = StrictHost
 
 '------------------------------------------------------------------------------
 ' APPLY EFFECTIVE SHARED STATE
@@ -352,6 +397,19 @@ Public Sub PM_TW_BeginSession( _
     'Recompute the aggregate disable-mask and apply it
         On Error GoTo ApplyFail
         PM_TW_ApplyEffectiveState PM_TW_AggregateDisableMask()
+
+    'Reject the session when Calculation control was requested but could not be
+    'honoured and at least one active instance asked for strict host semantics.
+    'Raising here routes through ApplyFail, which unwinds the registration.
+        If g_TW_CalcExempted And PM_TW_AnyStrict() Then
+            If (PM_TW_AggregateDisableMask() And PM_TW_MASK_CALCULATION) <> 0 Then
+                Err.Raise ERR_TW_CALCULATION_UNAVAILABLE, _
+                          "M_cPM_TimeWasters.PM_TW_BeginSession", _
+                          "Calculation suppression was requested but no Calculation " & _
+                          "baseline could be captured. Open a workbook before starting " & _
+                          "the scope, exempt TW_Enum.Calculation, or use non-strict mode."
+            End If
+        End If
         On Error GoTo 0
 
     Exit Sub
@@ -374,8 +432,12 @@ ApplyFail:
     'Restore the prior registration state
         If HadKeyBefore Then
             g_TW_Sessions(InstanceKey) = PrevDisableMask
+            g_TW_StrictKeys(InstanceKey) = PrevStrictHost
         ElseIf g_TW_Sessions.Exists(InstanceKey) Then
             g_TW_Sessions.Remove InstanceKey
+            If g_TW_StrictKeys.Exists(InstanceKey) Then
+                g_TW_StrictKeys.Remove InstanceKey
+            End If
         End If
 
 '------------------------------------------------------------------------------
@@ -457,7 +519,7 @@ Public Sub PM_TW_EndSession( _
 '     - if the instance is not present, no removal occurs
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -465,6 +527,7 @@ Public Sub PM_TW_EndSession( _
 '------------------------------------------------------------------------------
     Dim HadKeyBefore            As Boolean   'TRUE when the instance was registered before removal
     Dim PrevDisableMask         As Long      'Previously stored disable-mask for this instance
+    Dim PrevStrictHost          As Boolean   'Previously stored strictness for this instance
 
     Dim SavedErrNumber          As Long      'Captured original error number
     Dim SavedErrSource          As String    'Captured original error source
@@ -495,14 +558,24 @@ Public Sub PM_TW_EndSession( _
     'Capture the previous disable-mask when present
         If HadKeyBefore Then
             PrevDisableMask = CLng(g_TW_Sessions(InstanceKey))
+            If Not g_TW_StrictKeys Is Nothing Then
+                If g_TW_StrictKeys.Exists(InstanceKey) Then
+                    PrevStrictHost = CBool(g_TW_StrictKeys(InstanceKey))
+                End If
+            End If
         End If
 
 '------------------------------------------------------------------------------
 ' REMOVE INSTANCE (IF PRESENT)
 '------------------------------------------------------------------------------
-    'Remove the calling instance from the active session set
+    'Remove the calling instance from both shared stores
         If HadKeyBefore Then
             g_TW_Sessions.Remove InstanceKey
+            If Not g_TW_StrictKeys Is Nothing Then
+                If g_TW_StrictKeys.Exists(InstanceKey) Then
+                    g_TW_StrictKeys.Remove InstanceKey
+                End If
+            End If
         End If
 
 '------------------------------------------------------------------------------
@@ -547,6 +620,9 @@ ApplyFail:
     'Restore the removed instance registration when it existed before the call
         If HadKeyBefore Then
             g_TW_Sessions(InstanceKey) = PrevDisableMask
+            If Not g_TW_StrictKeys Is Nothing Then
+                g_TW_StrictKeys(InstanceKey) = PrevStrictHost
+            End If
         End If
 
 '------------------------------------------------------------------------------
@@ -603,7 +679,7 @@ Public Function PM_TW_ActiveCount() As Long
 '   This routine does not create the shared store on an idle read path
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -661,7 +737,7 @@ Public Function PM_TW_IsInstanceActive( _
 '   This routine does not create the shared store on an idle read path
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -732,7 +808,7 @@ Public Sub PM_TW_EndAllSessions()
 '   Normal callers should use PM_TW_EndSession for the specific active instance
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -792,7 +868,7 @@ Private Sub PM_TW_EnsureStore()
 '   idle project remains in a true idle state
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -802,6 +878,12 @@ Private Sub PM_TW_EnsureStore()
         If g_TW_Sessions Is Nothing Then
             Set g_TW_Sessions = CreateObject("Scripting.Dictionary")
             g_TW_Sessions.CompareMode = vbBinaryCompare
+        End If
+
+    'Create the parallel strictness store on the same lifetime
+        If g_TW_StrictKeys Is Nothing Then
+            Set g_TW_StrictKeys = CreateObject("Scripting.Dictionary")
+            g_TW_StrictKeys.CompareMode = vbBinaryCompare
         End If
 
 End Sub
@@ -844,7 +926,7 @@ Private Sub PM_TW_SaveBaseline()
 '   This routine should only be called when the first shared session begins
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -857,11 +939,17 @@ Private Sub PM_TW_SaveBaseline()
             g_TW_DISPLAYALERTS = .DisplayAlerts
             g_TW_CURSOR = .Cursor
 
-            'Calculation is only readable while at least one workbook is open
+            'Calculation is only readable while at least one workbook is open.
+            'When it cannot be read the baseline is UNKNOWN, which is a distinct
+            'state from "the baseline happened to be Automatic". Recording a
+            'synthetic value here is what allowed a real baseline to be
+            'overwritten later.
                 If .Workbooks.Count > 0 Then
                     g_TW_CALCULATION = .Calculation
+                    g_TW_CALCULATION_VALID = True
                 Else
                     g_TW_CALCULATION = xlCalculationAutomatic
+                    g_TW_CALCULATION_VALID = False
                 End If
         End With
 
@@ -910,14 +998,15 @@ Private Sub PM_TW_ResetSharedState()
 '   could still exist, which is exactly the collision hazard this design avoids
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' CLEAR SHARED STORE
 '------------------------------------------------------------------------------
-    'Release the shared session dictionary
+    'Release the shared session dictionaries
         Set g_TW_Sessions = Nothing
+        Set g_TW_StrictKeys = Nothing
 
 '------------------------------------------------------------------------------
 ' CLEAR BASELINE FLAGS / VALUES
@@ -930,6 +1019,8 @@ Private Sub PM_TW_ResetSharedState()
         g_TW_ENABLEEVENTS = False
         g_TW_DISPLAYALERTS = False
         g_TW_CALCULATION = xlCalculationAutomatic
+        g_TW_CALCULATION_VALID = False
+        g_TW_CalcExempted = False
         g_TW_CURSOR = xlDefault
 
 End Sub
@@ -979,7 +1070,7 @@ Private Function PM_TW_DisableMaskFromExcept( _
 '   apply path
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1027,7 +1118,7 @@ Private Function PM_TW_AggregateDisableMask() As Long
 '   expected to exist
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1111,7 +1202,7 @@ Private Sub PM_TW_ApplyEffectiveState( _
 '     cursor state
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1137,13 +1228,21 @@ Private Sub PM_TW_ApplyEffectiveState( _
                 Else
                     .DisplayAlerts = g_TW_DISPLAYALERTS
                 End If
-            'Calculation, only while at least one workbook is open
-                If .Workbooks.Count > 0 Then
+            'Calculation requires BOTH a live workbook and a real captured
+            'baseline. Without both, the flag is exempted rather than guessed.
+                If g_TW_CALCULATION_VALID And .Workbooks.Count > 0 Then
                     If (DisableMask And PM_TW_MASK_CALCULATION) <> 0 Then
                         .Calculation = xlCalculationManual
                     Else
                         .Calculation = g_TW_CALCULATION
                     End If
+                Else
+                    'Record the exemption when Calculation control was actually
+                    'wanted, or when a captured baseline can no longer be restored
+                        If ((DisableMask And PM_TW_MASK_CALCULATION) <> 0) _
+                           Or g_TW_CALCULATION_VALID Then
+                            g_TW_CalcExempted = True
+                        End If
                 End If
             'Cursor
                 If (DisableMask And PM_TW_MASK_CURSOR) <> 0 Then
@@ -1210,7 +1309,7 @@ Public Sub cPM_Report_WriteToRange( _
 '   without updating these constants would format the wrong columns silently
 '
 ' UPDATED
-'   2026-08-14
+'   2026-08-15
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1282,3 +1381,120 @@ Public Sub cPM_Report_WriteToRange( _
         OutputRange.EntireColumn.AutoFit
 
 End Sub
+
+Private Function PM_TW_AnyStrict() As Boolean
+'
+'==============================================================================
+'                                PM_TW_ANYSTRICT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns TRUE when any currently active instance requested strict host
+'   semantics
+'
+' WHY THIS EXISTS
+'   Host strictness is a per-instance preference, but the Application state it
+'   governs is shared. If any participant asked to be told when Calculation
+'   control cannot be honoured, the manager must tell it rather than silently
+'   degrading for everyone
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   Boolean
+'     TRUE  => at least one active instance requested strict host semantics
+'     FALSE => no active instance did, or no shared store exists
+'
+' BEHAVIOR
+'   - Returns FALSE when no strictness store currently exists
+'   - Otherwise ORs together every registered strictness flag
+'
+' ERROR POLICY
+'   Does not raise errors
+'
+' NOTES
+'   OR semantics mirror the aggregate disable-mask: the strictest active
+'   requirement wins, exactly as the broadest suppression request does
+'
+' UPDATED
+'   2026-08-15
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim K As Variant    'Dictionary key
+
+'------------------------------------------------------------------------------
+' VALIDATE STORE
+'------------------------------------------------------------------------------
+    'Return FALSE when no strictness store currently exists
+        If g_TW_StrictKeys Is Nothing Then
+            PM_TW_AnyStrict = False
+            Exit Function
+        End If
+
+'------------------------------------------------------------------------------
+' AGGREGATE
+'------------------------------------------------------------------------------
+    'Any single strict participant makes the whole scope strict
+        For Each K In g_TW_StrictKeys.Keys
+            If CBool(g_TW_StrictKeys(K)) Then
+                PM_TW_AnyStrict = True
+                Exit Function
+            End If
+        Next K
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'No active instance requested strict host semantics
+        PM_TW_AnyStrict = False
+
+End Function
+
+Public Function PM_TW_CalculationExempted() As Boolean
+'
+'==============================================================================
+'                        PM_TW_CALCULATIONEXEMPTED
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns TRUE when Calculation control could not be honoured on this host and
+'   has been exempted from the effective state
+'
+' WHY THIS EXISTS
+'   Application.Calculation cannot be read or written when no workbook is open.
+'   In non-strict mode the manager exempts the flag rather than guessing a
+'   baseline, and the caller needs a way to discover that rather than assuming
+'   its suppression request was applied
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   Boolean
+'     TRUE  => Calculation was requested or captured but could not be honoured
+'     FALSE => Calculation control is being applied normally, or was never wanted
+'
+' ERROR POLICY
+'   Does not raise errors
+'
+' NOTES
+'   The exemption persists for the life of the shared scope. Calculation control
+'   requires a stable open-workbook set: a baseline captured with no workbook
+'   open is unknown, and the manager will not lazily capture one later, because
+'   doing so would apply a baseline the scope never actually observed
+'
+' UPDATED
+'   2026-08-15
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'Report whether Calculation control has been exempted
+        PM_TW_CalculationExempted = g_TW_CalcExempted
+
+End Function
+
+

@@ -12,7 +12,7 @@
 [![Pure VBA](https://img.shields.io/badge/Implementation-Pure_VBA-00599C?style=for-the-badge)](https://github.com/danielep71/vba-performance_manager)
 [![No External DLL](https://img.shields.io/badge/External_DLL-None-555555?style=for-the-badge)](#-installation)
 [![QPC](https://img.shields.io/badge/Default_Backend-QueryPerformanceCounter-c2185b?style=for-the-badge)](#-timing-backends)
-[![Regression](https://img.shields.io/badge/Regression-52_Cases_·_288_Assertions-d97706?style=for-the-badge)](#-testing-and-validation)
+[![Regression](https://img.shields.io/badge/Regression-63_Cases_·_431_Assertions-d97706?style=for-the-badge)](#-testing-and-validation)
 [![Statistics](https://img.shields.io/badge/Statistics-Median_·_P95_·_CV-0f766e?style=for-the-badge)](#-measurement-and-statistics)
 [![Version](https://img.shields.io/badge/Version-1.2.0-4c1d95?style=for-the-badge)](CHANGELOG.md)
 
@@ -53,7 +53,7 @@
 > [!IMPORTANT]
 > **This is a timing *session manager*, not a `Timer()` wrapper.**
 >
-> A backend is bound when the session starts, and every elapsed-time read is validated against that same backend. Rollover arithmetic, backwards-clock detection, unsigned 32-bit conversion, timer-resolution lifecycle, and shared Excel state coordination are all handled explicitly rather than left to the caller.
+> A backend is bound when the session starts, and every elapsed-time read is validated against that same backend. Rollover arithmetic, unsigned 32-bit conversion, timer-resolution lifecycle, and shared Excel state coordination are all handled explicitly rather than left to the caller. Backwards-clock detection is applied to backends 2, 3, 4 and 6 — see the limitations on backend 1.
 
 <div align="center">
 
@@ -62,9 +62,9 @@
 | | |
 |---:|:---|
 | **6** | timing backends behind one session-bound interface |
-| **41** | public members — 24 methods and 18 properties |
-| **52** | regression cases running **288** deterministic assertions |
-| **23** | named error constants; **zero** magic numbers in the codebase |
+| **43** | public members — 24 methods and 19 properties |
+| **63** | regression cases running **431** deterministic assertions, all green |
+| **23** | named error constants; no bare error numbers anywhere |
 | **76 %** | of the class is documentation, at procedure level |
 | **2** | files to import. No reference, no add-in, no DLL |
 
@@ -171,7 +171,7 @@ A reference-counted scope manager aggregates every instance's request, so overla
 
 Every procedure documents its purpose, inputs, behaviour, and error policy.
 
-Strict mode raises. Non-strict mode falls back predictably. Nothing fails silently.
+Strict mode raises. Non-strict mode falls back predictably and records the reason in `LastReadStatus`, so a returned zero is always distinguishable from a real measurement of zero.
 
 </td>
 <td width="33%" valign="top">
@@ -349,7 +349,7 @@ cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Cursor
 | Member | Returns | Purpose |
 |---|---|---|
 | `MeasureProcedure(Name, Iterations, Warmup, Method)` | `Double()` | Runs a named `Public Sub` N times via `Application.Run`; returns every per-run elapsed value |
-| `MeasureOverhead_Samples(Iterations, Warmup, Method)` | `Double()` | Per-cycle overhead of the backend itself; its **minimum is your resolution floor** |
+| `MeasureOverhead_Samples(Iterations, Warmup, Method)` | `Double()` | Per-cycle overhead of the backend itself; its **minimum is your observed empty-cycle floor** |
 
 ## The statistics
 
@@ -388,7 +388,8 @@ Compare **P95 against the median** to see the tail. If P95 is close to the media
 <br>
 
 - `Application.Run` reaches only **Public procedures in standard modules**. It cannot call class methods, `Private` procedures, or anything in a module declared `Option Private Module`.
-- `Application.Run` itself costs tens of microseconds per call, and that cost is included in every sample. The harness suits work measured in milliseconds or longer. For faster work, subtract a baseline obtained from `MeasureOverhead_Samples`.
+- `Application.Run` adds a dispatch cost to every sample. Measure it on your own machine rather than assuming a figure — it varies by Excel version, bitness and load. The harness suits work measured in milliseconds or longer.
+- `MeasureOverhead_Samples` measures the backend timing cycle only; it does **not** dispatch through `Application.Run`, so it is not a matched baseline for `MeasureProcedure`. For a matched baseline, run `MeasureProcedure` against an empty `Public Sub`. A dedicated helper is tracked in [#7](https://github.com/danielep71/vba-performance_manager/issues/7).
 - Measurement runs on an isolated worker instance, so your own session, checkpoints, and run label are never disturbed.
 
 </details>
@@ -483,6 +484,7 @@ cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Calculation
 | `ActiveMethodID` · `HasActiveSession` | Current session binding |
 | `MethodName(Index)` | Human-readable backend label |
 | `StrictMode` | Get/Let the error policy |
+| `LastReadStatus` | Outcome of the most recent native timing read |
 
 </details>
 
@@ -511,6 +513,7 @@ cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Calculation
 | `ResetEnvironment` | Releases timer resolution and ends this instance's TW session |
 | `TW_Turn_OFF([Except])` · `TW_Turn_ON` | Shared suppression control |
 | `TW_IsActive` · `TW_ActiveSessionCount` | Suppression state |
+| `TW_CalculationExempted` | Whether Calculation control could not be honoured |
 
 </details>
 
@@ -529,8 +532,10 @@ cPM.TW_Turn_OFF Except:=TW_Enum.EnableEvents Or TW_Enum.Calculation
 | Negative elapsed after rollover correction | Raises | Clamps to 0 |
 | QPC read failure | Raises | Returns 0 |
 | Tick alignment exceeds the spin guard | Raises | Returns a current timestamp |
+| Native read fails during a session start | Raises | Falls back to backend 2 before committing |
+| Native read fails during an elapsed read | Raises | Returns 0 and records the reason in `LastReadStatus` |
 
-All 23 raised error numbers are declared as named constants. There are no magic numbers in the codebase.
+All 23 raised error numbers are declared as named constants, so no bare `vbObjectError` offset appears anywhere in the code. Timing-method identifiers 1–6 remain numeric literals; naming those is tracked in [#13](https://github.com/danielep71/vba-performance_manager/issues/13).
 
 ---
 
@@ -540,7 +545,15 @@ All 23 raised error numbers are declared as named constants. There are no magic 
 Run_cPerformanceManager_RegressionSuite
 ```
 
-**52 cases · 288 assertions**, written to a dedicated worksheet log and summarised in the Immediate Window.
+**63 cases · 431 assertions**, written to a dedicated worksheet log and summarised in the Immediate Window.
+
+Last certified run: **0 failures**, 2026-08-16, on Excel for Microsoft 365 MSO
+Version 2606 Build 16.0.20131.20152, 64-bit.
+
+> [!NOTE]
+> On 64-bit Office, backend 2 compiles to `GetTickCount64`, so `RolloverSeconds`
+> is certified on its `Win64` branch only. The 32-bit wrap-correction branch is
+> compiled out and is not exercised by a 64-bit run.
 
 Coverage includes:
 
@@ -551,7 +564,10 @@ Coverage includes:
 - checkpoint storage integrity across 1 000 captures and ~10 `ReDim Preserve` cycles;
 - `Class_Terminate` releasing a shared TW session with all five Application flags restored;
 - 75 instance create/destroy cycles proving no stale TW registration survives;
-- statistics against a hand-computed vector, plus order independence and boundary behaviour.
+- statistics against a hand-computed vector, plus order independence and boundary behaviour;
+- **injected native-read failures** on both backends, covering strict-mode raises, non-strict fallback to backend 2, cache preservation, and checkpoint abandonment;
+- an injected **wrong-format** `timeGetSystemTime` result, proving it is reported distinctly from an outright read failure;
+- Calculation baseline validity, deliberate exemption, overlapping scopes, and proof that no synthetic baseline is ever written.
 
 ---
 
@@ -579,7 +595,7 @@ CHANGELOG.md                             Version history
 | Host | Microsoft Excel on **Windows** |
 | Bitness | 32-bit and 64-bit, via `VBA7` / `Win64` conditional compilation |
 | References | **None.** `Scripting.Dictionary` is late-bound |
-| Dependencies | **None.** No add-in, installer, or COM component |
+| Dependencies | No add-in, installer, DLL or COM component. Both source files are required together; the regression suite additionally needs `M_DEMO_BUILDER` |
 
 ---
 
@@ -639,10 +655,15 @@ All elapsed-time dispatch lives in one private reader. `ElapsedSeconds` delegate
 # ⚠️ Known limitations
 
 - **Windows only** for backends 2–5. Backends 1 and 6 are conceptually portable.
-- **`Application.Run` overhead** is included in every `MeasureProcedure` sample.
+- **Backend 1 cannot distinguish a backward clock adjustment from midnight rollover.** Both appear as a negative raw delta, and both get 24 hours added. Use backend 5 where this matters.
+- **Rollover correction handles one wrap.** A session spanning more than a full 32-bit millisecond wrap on backends 2, 3 or 4 cannot be recovered by a single addition.
+- **`Application.Run` dispatch cost** is included in every `MeasureProcedure` sample, and `MeasureOverhead_Samples` is not a matched baseline for it.
 - **`timeBeginPeriod(1)`** affects system-wide timer resolution while held and is released by `ResetEnvironment`, with `Class_Terminate` as the fallback.
 - **A hard `End` statement** bypasses `Class_Terminate`; recover with `PM_TW_EndAllSessions`.
+- **Calculation control requires a stable open-workbook set** for the life of a suppression scope. Where that does not hold, the flag is exempted and `TW_CalculationExempted` reports it.
+- **`Pause` methods 3 and 4** issue no coarse wait for requests under roughly two seconds, to guarantee they never overshoot.
 - **Nanosecond display precision** is presentational and does not imply measurement resolution at that scale.
+- **Statistics are descriptive, not inferential.** `Stats_IsContaminated` is a heuristic on the coefficient of variation; it flags runs worth repeating, it does not prove a result wrong.
 
 ---
 
