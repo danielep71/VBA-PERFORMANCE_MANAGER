@@ -163,8 +163,11 @@ Attribute VB_Exposed = False
     'Pause strategy selector.
     '
     'These share the numbers 1 to 4 with the timing backends above and mean
-    'something entirely different. Separate enum types make the two
-    'non-interchangeable at compile time rather than only in the documentation.
+    'something entirely different. Separate enum types make that difference
+    'legible at the call site, but VBA enum members and enum-typed parameters
+    'have Long semantics: a cPM_TimerMethod constant passed where a
+    'cPM_PauseMethod is expected compiles and runs. The separation documents
+    'intent; it is not a compile-time type boundary.
     Public Enum cPM_PauseMethod
         cPM_PauseSleep = 1              'Sleep API, lowest overhead, no DoEvents
         cPM_PauseTimerLoop = 2          'Timer delta with DoEvents
