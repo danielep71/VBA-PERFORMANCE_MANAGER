@@ -62,12 +62,17 @@ assurance. No production VBA source or public API behavior has changed yet.**
   architecture, security boundaries, repository structure, and assurance
   limits. It also separates the certified v1.3.0 state from the unreleased
   v1.4.0 development line.
-- **Enum type-safety wording is corrected in the current README.** The timer and
-  pause enums improve readability and IntelliSense, but VBA enum parameters
-  have `Long` semantics and overlapping numeric values are not made
-  non-interchangeable at compile time. The remaining class-comment,
-  regression-example, and wiki verification work is tracked by #26; the frozen
-  v1.3.0 changelog statement remains historical and is not rewritten.
+- **Enum type-safety wording is corrected.** The timer and pause enums improve
+  readability and IntelliSense, but VBA enum members and enum-typed parameters
+  have `Long` semantics, so overlapping numeric values are not made
+  non-interchangeable at compile time. The claim is corrected in the class
+  comment beside `cPM_PauseMethod`, in the README, and in the wiki, and
+  `Example_EnumSemantics` demonstrates the boundary in both directions: a
+  `cPM_TimerMethod` constant passed to `Pause` selects the pause strategy
+  sharing its number, and a `cPM_PauseMethod` constant passed to `StartTimer`
+  binds the backend sharing its number. Enum names and numeric values are
+  unchanged, so existing calls are unaffected. The frozen v1.3.0 record, which
+  contains the original overclaim, remains unmodified. (#26)
 - **The public wiki has been comprehensively reconciled with the certified
   v1.3.0 implementation and contracts.** Twenty-two pages now accurately
   document the public API, execution and restoration semantics, timing
