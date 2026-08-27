@@ -1,14 +1,334 @@
+#==============================================================================
+# VBA-PERFORMANCE_MANAGER .gitignore
+#------------------------------------------------------------------------------
+# PURPOSE
+#   Keep the repository source-first, reviewable, and reproducible.
+#
+#   Ignore local, temporary, generated, sensitive, test-output, and release-
+#   binary files while preserving the exported VBA source, demos, regression
+#   tests, Python tooling, documentation, workflows, screenshots, and repository
+#   configuration that define the project.
+#
+# REPOSITORY POLICY
+#   - Exported VBA source is version-controlled.
+#   - Core runtime source under src/ is authoritative.
+#   - Demo and usage-example source under demo/ is version-controlled.
+#   - Regression source under test/ is version-controlled.
+#   - Python repository/release tooling under tools/ is version-controlled.
+#   - Generated Excel workbooks/add-ins are NOT source files.
+#   - Tested workbook binaries are distributed as GitHub Release assets.
+#   - Local copies of generated provenance, lint, and regression-result files
+#     are not source; published evidence belongs in GitHub Actions / Releases.
+#   - Screenshots and repository documentation remain version-controlled.
+#   - Editor state, logs, caches, build output, local secrets, Office lock files,
+#     and OS metadata do not belong in Git.
+#
+# SAFETY RULE
+#   Do not add broad rules that can hide authoritative repository content:
+#
+#       *.bas  *.cls  *.frm  *.frx  *.xml  *.py  *.md
+#       src/   demo/  test/   tools/ .github/ images/
+#
+#   If a future UserForm is introduced, both .frm and .frx are source and must
+#   be version-controlled together.
+#==============================================================================
+
+
+#------------------------------------------------------------------------------
+# MICROSOFT OFFICE TEMPORARY / LOCK / RECOVERY FILES
+#------------------------------------------------------------------------------
+# Office creates owner/lock files beside an open workbook or document.
+#------------------------------------------------------------------------------
+
+~$*
+
+*.tmp
+*.temp
+*.bak
+*.backup
+*.xlk
+*.asd
+*.wbk
+
+# LibreOffice / OpenOffice lock files that can appear during cross-tool checks.
+.~lock.*#
+
+
+#------------------------------------------------------------------------------
+# GENERATED EXCEL / OFFICE BINARIES
+#------------------------------------------------------------------------------
+# This repository tracks exported VBA source, not generated Excel packages.
+# Generated/tested workbooks belong in GitHub Releases.
+#
+# Rules are global so a workbook accidentally saved at the repository root,
+# under demo/, test/, or another folder still remains untracked.
+#------------------------------------------------------------------------------
+
+*.xls
+*.xlsx
 *.xlsm
 *.xlsb
-~$*
+*.xlt
+*.xltx
+*.xltm
+*.xla
 *.xlam
-*.bak
+*.xll
+*.xlw
 
-# Release provenance output.
+# Adjacent macro-enabled Office/database binaries are not project source.
+*.docm
+*.dotm
+*.pptm
+*.potm
+*.ppsm
+*.accdb
+*.accde
+*.mdb
+*.mde
+
+# If a binary fixture genuinely becomes part of a regression contract, re-
+# include it by EXPLICIT path so that the exception is visible in review.
 #
-# The manifest is a Release asset describing a specific tag, not source. A copy
-# in the repository would go stale the moment anything changes, and the first
-# one committed here recorded a failed verification - exactly the misleading
-# artifact the manifest exists to prevent.
+# Example:
+# !test/fixtures/known-good-example.xlsm
+
+
+#------------------------------------------------------------------------------
+# RELEASE / BUILD STAGING
+#------------------------------------------------------------------------------
+# Temporary local staging directories. Published release assets live on GitHub,
+# not in the source tree.
+#------------------------------------------------------------------------------
+
+release-assets/
+build/
+out/
+output/
+outputs/
+
+
+#------------------------------------------------------------------------------
+# GENERATED PROVENANCE / STATIC-CHECK / REGRESSION EVIDENCE
+#------------------------------------------------------------------------------
+# These files describe a specific commit/run and go stale immediately when the
+# source changes. The authoritative copies are workflow or Release artifacts.
+#
+# tools/release_provenance.py currently produces release-manifest.json.
+# tools/vba_lint.py / static-checks.yml may produce vba-lint-results.json.
+# The Excel execution gate planned for v1.4.0 may emit the regression-result
+# patterns below; keeping them ignored prevents local certification output from
+# being mistaken for repository source.
+#------------------------------------------------------------------------------
+
 release-manifest.json
 vba-lint-results.json
+excel-regression-results.json
+excel-regression-results-*.json
+
+
+#------------------------------------------------------------------------------
+# REGRESSION / LOCAL TEST OUTPUT
+#------------------------------------------------------------------------------
+# The regression implementation under test/ is source. Generated results are
+# not.
+#------------------------------------------------------------------------------
+
+test-output/
+test-results/
+coverage/
+htmlcov/
+.coverage
+
+
+#------------------------------------------------------------------------------
+# LOCAL TEMPORARY WORKING DIRECTORIES
+#------------------------------------------------------------------------------
+
+temp/
+tmp/
+.cache/
+
+
+#------------------------------------------------------------------------------
+# WINDOWS FILE-SYSTEM / SHELL METADATA
+#------------------------------------------------------------------------------
+
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+desktop.ini
+$RECYCLE.BIN/
+System Volume Information/
+*.stackdump
+
+# Windows reserved-name artifact occasionally created by redirect/CLI mistakes.
+nul
+
+
+#------------------------------------------------------------------------------
+# MACOS / NETWORK / UNIX FILE-SYSTEM METADATA
+#------------------------------------------------------------------------------
+# The runtime target is Excel for Windows, but the repository may be inspected
+# from macOS, WSL, containers, NAS shares, or CI runners.
+#------------------------------------------------------------------------------
+
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Trashes
+.Spotlight-V100
+.fseventsd
+
+.directory
+.fuse_hidden*
+.nfs*
+
+
+#------------------------------------------------------------------------------
+# EDITOR / IDE / AI-ASSISTANT LOCAL STATE
+#------------------------------------------------------------------------------
+# The project-wide .editorconfig IS source and remains tracked. Personal editor
+# workspaces and assistant/session state are local only.
+#------------------------------------------------------------------------------
+
+.vscode/
+.idea/
+.vs/
+.history/
+
+*.code-workspace
+*.suo
+*.user
+*.swp
+*.swo
+*~
+
+# Notepad++ backup/session artifacts
+*.nppBackup
+session.xml
+
+# Local assistant/editor state
+.claude/
+.cursor/
+.aider*
+.continue/
+
+
+#------------------------------------------------------------------------------
+# MERGE / PATCH / CONFLICT ARTIFACTS
+#------------------------------------------------------------------------------
+# Large exported VBA modules make conflict debris easy to mistake for source.
+#------------------------------------------------------------------------------
+
+*.orig
+*.rej
+*.patch.tmp
+
+
+#------------------------------------------------------------------------------
+# LOGS / CRASH DUMPS / DIAGNOSTIC DEBRIS
+#------------------------------------------------------------------------------
+
+*.log
+*.dmp
+*.dump
+
+
+#------------------------------------------------------------------------------
+# LOCAL ENVIRONMENT / SECRET / SIGNING MATERIAL
+#------------------------------------------------------------------------------
+# Never commit workstation-specific environment files or private signing keys.
+# A deliberately sanitized .env.example remains trackable.
+#------------------------------------------------------------------------------
+
+.env
+.env.*
+!.env.example
+
+*.pfx
+*.p12
+*.pvk
+*.key
+
+
+#------------------------------------------------------------------------------
+# PYTHON TOOLING CACHE AND LOCAL ENVIRONMENTS
+#------------------------------------------------------------------------------
+# tools/*.py is repository source. Interpreter/build caches and virtual
+# environments are local.
+#------------------------------------------------------------------------------
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+.venv/
+venv/
+
+
+#------------------------------------------------------------------------------
+# OPTIONAL LOCAL JAVASCRIPT DEPENDENCIES
+#------------------------------------------------------------------------------
+# No Node runtime is required today, but repository/documentation tooling may
+# use it locally in future. Package manifests remain trackable.
+#------------------------------------------------------------------------------
+
+node_modules/
+
+
+#------------------------------------------------------------------------------
+# KEEP THESE AUTHORITATIVE REPOSITORY ASSETS TRACKABLE
+#------------------------------------------------------------------------------
+# These comments are deliberate guardrails for future maintenance.
+#
+# Production runtime source:
+#   src/classes/cPerformanceManager.cls
+#   src/modules/M_cPM_TIMEWASTERS.bas
+#
+# Future VBA source remains source:
+#   src/**/*.bas
+#   src/**/*.cls
+#   src/**/*.frm
+#   src/**/*.frx
+#   src/**/*.xml
+#
+# Demo / usage source:
+#   demo/M_DEMO_BUILDER.bas
+#   demo/M_cPM_DEMO.bas
+#   demo/M_cPM_USAGE_EXAMPLES.bas
+#
+# Regression source:
+#   test/M_cPM_Test.bas
+#   future headless/domain test modules under test/
+#
+# Repository / release tooling:
+#   tools/release_provenance.py
+#   tools/vba_lint.py
+#   future committed tooling under tools/
+#
+# Documentation / governance:
+#   README.md
+#   CHANGELOG.md
+#   RELEASING.md
+#   LICENSE
+#
+# Repository configuration / automation:
+#   .gitignore
+#   .gitattributes
+#   .editorconfig
+#   .github/**
+#
+# Visual documentation:
+#   images/**
+#
+# Do not add broad ignore rules for source extensions or source directories.
+# Generated Excel binaries and run-specific evidence should be published as
+# GitHub Release / Actions artifacts instead.
+#==============================================================================
