@@ -46,6 +46,15 @@ assurance. No production VBA source or public API behavior has changed yet.**
   architecture, security boundaries, repository structure, and assurance
   limits. It also separates the certified v1.3.0 state from the unreleased
   v1.4.0 development line.
+- **The public wiki has been comprehensively reconciled with the certified
+  v1.3.0 implementation and contracts.** Twenty-two pages now accurately
+  document the public API, execution and restoration semantics, timing
+  backends, checkpoints, statistics, strict-mode behavior, measurement
+  failures, shared TimeWasters ownership, diagnostics, benchmarking,
+  installation, testing, limitations, and version history. Stale,
+  contradictory, and unsupported claims were removed or qualified, while the
+  certified v1.3.0 runtime state is clearly separated from the unreleased
+  v1.4.0 repository work.
 - **The maintainer release process is now bound to the exact tag target.**
   `RELEASING.md` distinguishes pre-merge validation from final certification;
   requires the hosted 12-check static result and real Excel compile/regression
