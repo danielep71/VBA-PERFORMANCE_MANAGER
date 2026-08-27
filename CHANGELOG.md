@@ -9,7 +9,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+Work completed so far on the `release/v1.4.0` development line.
+
+**Current scope: repository governance, documentation, installation, and release
+assurance. No production VBA source or public API behavior has changed yet.**
+
+### Added
+
+- **Deterministic repository text and artifact policy.** A root
+  `.gitattributes` now keeps exported VBA source on CRLF for predictable VBE
+  round-trips, keeps documentation and cross-platform tooling on LF, prevents
+  line-merging of Office packages and other binary artifacts, identifies VBA
+  explicitly for GitHub Linguist, and excludes repository plumbing from source
+  archives.
+- **Editor-level formatting policy.** A root `.editorconfig` mirrors the Git
+  rules before normalization occurs: four-space VBA and Python indentation,
+  two-space YAML/JSON indentation, host-appropriate line endings, final
+  newlines, and format-specific whitespace handling without forcing an unsafe
+  VBA export encoding.
+- **Dedicated installation and upgrade guide.** `INSTALLATION.md` documents the
+  two-file runtime package, module-first import order, compile and smoke tests,
+  optional regression host, embedded-source upgrades, strict/non-strict
+  diagnostics, environment recovery, release-workbook verification, removal,
+  and the distinction between 32/64-bit source support and execution evidence.
+- **Project-specific Code of Conduct.** `CODE_OF_CONDUCT.md` adds respectful and
+  evidence-led collaboration standards, benchmark-integrity expectations,
+  review criteria for timing/statistics/Application-state changes, disclosure
+  and licensing rules, and private enforcement channels.
+
+### Changed
+
+- **The root README is now a verified project contract rather than a feature
+  catalogue.** It documents the source-first deployment model, exact two-file
+  runtime package, current public API, enums and named errors, timing and
+  measurement semantics, shared Excel-state ownership, recovery paths,
+  architecture, security boundaries, repository structure, and assurance
+  limits. It also separates the certified v1.3.0 state from the unreleased
+  v1.4.0 development line.
+- **The maintainer release process is now bound to the exact tag target.**
+  `RELEASING.md` distinguishes pre-merge validation from final certification;
+  requires the hosted 12-check static result and real Excel compile/regression
+  evidence for the final SHA; makes bitness evidence explicit and requires real
+  32-bit Office execution evidence for v1.4.0 if that support remains in scope;
+  validates the actual release workbook; integrates tag/source/asset
+  provenance; treats published assets as immutable evidence; and defines
+  pre- and post-publication recovery paths.
+- **Pull requests now carry reviewable evidence.** The pull request template
+  records exact-SHA static and Excel evidence, compatibility and source-package
+  impact, regression coverage, Office bitness, cleanup, risk, rollback,
+  documentation, and release hygiene. It no longer claims that the live branch
+  rules require pull requests or the static check when they currently do not.
+- **Bug reports now distinguish the evidence surfaces that matter.** The issue
+  template requests exact source identity, Excel build and bitness, error and
+  timer state, requested versus active backend, caller `LastReadStatus`,
+  measurement-worker failure outputs, shared TimeWasters state, cleanup, and
+  regression evidence, while routing suspected vulnerabilities to the private
+  security process.
+- **Feature requests are now problem-first and contract-aware.** The issue
+  template adds user outcomes, testable acceptance criteria, affected runtime
+  boundaries, deployment and SemVer impact, design invariants, verification,
+  alternatives, and explicit non-goals.
+- **Repository ignore rules now enforce the source-first model.** `.gitignore`
+  excludes generated Office binaries, lock/recovery files, local regression and
+  provenance output, build/cache/log debris, editor state, local environments,
+  secrets, and signing keys while explicitly protecting authoritative VBA,
+  demos, tests, tooling, workflows, documentation, and images from broad ignore
+  patterns.
+- **Tracked VBA test source was normalized under the new attributes policy.**
+  `test/M_cPM_Test.bas` now has deterministic VBE-compatible line endings; the
+  normalization contains no semantic test change.
+
+### Removed
+
+- **Obsolete `tag-1.2.0.txt`.** Historical release metadata remains available
+  from the repository history, release page, tag, changelog, and release
+  provenance rather than a duplicated root-level notes file.
+
+### Security
+
+- **A repository-specific security policy now defines the supported and trusted
+  operating boundary.** `SECURITY.md` establishes private vulnerability
+  reporting, the Excel/VBA and Windows trust model, trusted executable input for
+  `Application.Run`, native API and Office-bitness boundaries, timer-resolution
+  and shared Application-state ownership, timing-result integrity limits,
+  source-first release trust, macro-enabled asset verification, secret handling,
+  disclosure, and future self-hosted Excel-runner requirements.
 
 ---
 
