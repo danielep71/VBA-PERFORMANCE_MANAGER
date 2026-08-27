@@ -14,6 +14,22 @@ Work completed so far on the `release/v1.4.0` development line.
 **Current scope: repository governance, documentation, installation, and release
 assurance. No production VBA source or public API behavior has changed yet.**
 
+> [!IMPORTANT]
+> **PLANNED BEHAVIORAL CORRECTION — requested-backend measurement integrity.**
+>
+> In v1.3.0, a non-strict repeated measurement can retain observations produced
+> after the requested backend falls back to method 2. The legacy
+> `OverheadMeasurement_Seconds` loop can also accumulate a failed endpoint read
+> as zero and continue to divide by the requested iteration count. v1.4.0 will
+> reject fallback observations from requested-backend vectors and will derive
+> legacy overhead means only from valid retained samples. Callers may therefore
+> receive a shorter vector or `ERR_CPM_MEASURE_NO_VALID_SAMPLES` where v1.3.0
+> returned mixed-backend or zero-contaminated results. This is an intentional
+> correctness change tracked by #23 and #24, not a claim that the current VBA
+> source already implements it. `OverheadMeasurement_Text` will render the
+> expected no-valid-sample condition as an explicit `undefined (...)`
+> diagnostic while continuing to propagate unexpected errors.
+
 ### Added
 
 - **Deterministic repository text and artifact policy.** A root
@@ -46,6 +62,12 @@ assurance. No production VBA source or public API behavior has changed yet.**
   architecture, security boundaries, repository structure, and assurance
   limits. It also separates the certified v1.3.0 state from the unreleased
   v1.4.0 development line.
+- **Enum type-safety wording is corrected in the current README.** The timer and
+  pause enums improve readability and IntelliSense, but VBA enum parameters
+  have `Long` semantics and overlapping numeric values are not made
+  non-interchangeable at compile time. The remaining class-comment,
+  regression-example, and wiki verification work is tracked by #26; the frozen
+  v1.3.0 changelog statement remains historical and is not rewritten.
 - **The public wiki has been comprehensively reconciled with the certified
   v1.3.0 implementation and contracts.** Twenty-two pages now accurately
   document the public API, execution and restoration semantics, timing
