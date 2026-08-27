@@ -22,6 +22,7 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
 '     - how to compare two implementations without fooling yourself
 '     - how to subtract a dispatch-matched baseline
 '     - how to tell a failed read from a genuinely fast operation
+'     - what the named enums do and do not protect against
 '
 '   This module therefore keeps only the examples that still add real teaching
 '   value beyond the demo sheets and tests
@@ -59,7 +60,7 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
 '   - Run worksheet-writing examples from a safe workbook / worksheet
 '
 ' UPDATED
-'   2026-08-16
+'   2026-08-27
 '
 ' AUTHOR
 '   Daniele Penza
@@ -237,6 +238,7 @@ Public Sub Run_ValidationUsageExamples()
 '   Runs:
 '     - Example_StrictMode
 '     - Example_NonStrictMode
+'     - Example_EnumSemantics
 '
 ' ERROR POLICY
 '   Raises errors normally unless a called example handles errors internally
@@ -244,9 +246,10 @@ Public Sub Run_ValidationUsageExamples()
 ' DEPENDENCIES
 '   - Example_StrictMode
 '   - Example_NonStrictMode
+'   - Example_EnumSemantics
 '
 ' UPDATED
-'   2026-08-16
+'   2026-08-27
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -264,6 +267,9 @@ Public Sub Run_ValidationUsageExamples()
     'Run the non-strict-mode example
         PrintExampleBanner "Example_NonStrictMode"
         Example_NonStrictMode
+    'Run the enum-semantics example
+        PrintExampleBanner "Example_EnumSemantics"
+        Example_EnumSemantics
 
 End Sub
 
@@ -1063,6 +1069,142 @@ CleanFail:
         SavedErrSource = Err.Source
         SavedErrDescription = Err.Description
     'Route through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Public Sub Example_EnumSemantics()
+'
+'==============================================================================
+'                          EXAMPLE: ENUM SEMANTICS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Demonstrates what the named enums do and do not protect against
+'
+' WHY THIS EXISTS
+'   cPM_TimerMethod and cPM_PauseMethod share the numbers 1 to 4 and mean
+'   entirely different things. It is tempting to conclude that giving them
+'   separate types stops one being passed where the other belongs
+'
+'   It does not. VBA enum members and enum-typed parameters have Long
+'   semantics, so a constant from either enum is accepted wherever the other is
+'   expected. The call compiles, runs, and quietly does something the reader did
+'   not intend
+'
+'   This example makes that visible, because a boundary the caller cannot see is
+'   a boundary the caller will eventually cross
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Shows the intended, readable call for each enum
+'   - Passes a timer constant to Pause and reports which strategy actually ran
+'   - Passes a pause constant to StartTimer and reports which backend was bound
+'   - States what the caller can rely on instead
+'
+' ERROR POLICY
+'   Reports and continues through centralized cleanup
+'
+' DEPENDENCIES
+'   - cPerformanceManager
+'
+' NOTES
+'   Nothing here is a defect in the class, and nothing here should be copied
+'   into working code. The enums are still worth using: they make call sites
+'   legible and drive IntelliSense. What they cannot do is enforce a role at
+'   compile time
+'
+'   The class does validate at run time. An out-of-range value is normalized or
+'   rejected. What it cannot detect is a value that is in range for the
+'   parameter but came from the wrong enum, because by then the two are
+'   indistinguishable
+'
+' UPDATED
+'   2026-08-27
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM         As cPerformanceManager    'Performance manager instance
+    Dim BoundMethod As cPM_TimerMethod        'Backend actually bound by StartTimer
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Enable structured cleanup on failure
+        On Error GoTo CleanFail
+    'Create a fresh performance manager instance
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' THE INTENDED CALLS
+'------------------------------------------------------------------------------
+    'Each enum used in its own role. This is how the API is meant to read
+        cPM.StartTimer cPM_MethodQPC
+        cPM.Pause 0.01, cPM_PauseSleep
+        Debug.Print "Intended usage     : backend " & CLng(cPM.ActiveMethodID) & _
+                    " (" & cPM.MethodName(cPM.ActiveMethodID) & "), Sleep pause"
+        cPM.ResetEnvironment
+
+'------------------------------------------------------------------------------
+' A TIMER CONSTANT PASSED TO PAUSE
+'------------------------------------------------------------------------------
+    'cPM_MethodTickCount is 2. So is cPM_PauseTimerLoop. Pause therefore runs
+    'the Timer-loop strategy, not anything to do with GetTickCount, and no
+    'error is raised because the value was always in range for the parameter
+        cPM.StartTimer cPM_MethodQPC
+        cPM.Pause 0.01, cPM_MethodTickCount
+        Debug.Print "Wrong-role pause   : compiled and ran. cPM_MethodTickCount is 2,"
+        Debug.Print "                     so Pause used strategy 2 (Timer loop)."
+        cPM.ResetEnvironment
+
+'------------------------------------------------------------------------------
+' A PAUSE CONSTANT PASSED TO STARTTIMER
+'------------------------------------------------------------------------------
+    'The same confusion in the other direction. cPM_PauseAppWait is 3, so the
+    'session binds backend 3 (timeGetTime) rather than the default QPC the
+    'reader of this line would probably assume
+        cPM.StartTimer cPM_PauseAppWait
+        BoundMethod = cPM.ActiveMethodID
+        Debug.Print "Wrong-role start   : bound backend " & CLng(BoundMethod) & _
+                    " (" & cPM.MethodName(BoundMethod) & "),"
+        Debug.Print "                     because cPM_PauseAppWait is 3."
+        cPM.ResetEnvironment
+
+'------------------------------------------------------------------------------
+' THE POINT
+'------------------------------------------------------------------------------
+    'Say plainly what the contract is, so nobody infers a stronger one
+        Debug.Print "Note: the enums document intent and drive IntelliSense."
+        Debug.Print "      They are not a compile-time type boundary."
+        Debug.Print "      Pass the enum that matches the parameter, and read"
+        Debug.Print "      ActiveMethodID back when the bound backend matters."
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Report and continue through centralized cleanup
+        Debug.Print "Error " & Err.Number & " - " & Err.Description
         Resume CleanExit
 
 End Sub
