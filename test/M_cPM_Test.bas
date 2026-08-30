@@ -7588,7 +7588,7 @@ Private Sub Test_FaultInject_QpcStartFailure_Strict()
     Dim cPM             As cPerformanceManager    'Class under test
     Dim T1Before        As Double                 'Start timestamp of the good session
     Dim MethodBefore    As Integer                'Backend bound by the good session
-    Dim Raised          As Boolean                'TRUE when the expected error was raised
+    Dim RaisedNumber    As Long                   'Error number raised by the rejected start
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
@@ -7619,21 +7619,21 @@ Private Sub Test_FaultInject_QpcStartFailure_Strict()
     'Arm a single forced failure, then attempt a new session
         cPM.Test_ForceNextQPCReadFailure
 
-        Raised = False
+        RaisedNumber = 0
         On Error Resume Next
         cPM.StartTimer 5
-        If Err.Number <> 0 Then
-            Raised = True
-            Err.Clear
-        End If
+        RaisedNumber = Err.Number
+        Err.Clear
         On Error GoTo CleanFail
 
 '------------------------------------------------------------------------------
 ' ASSERT STRICT MODE RAISED
 '------------------------------------------------------------------------------
-    'Assert the failed start capture was rejected
-        Test_Assert_True Raised, _
-                         "A failed QPC start read raises in strict mode"
+    'Assert the start was rejected, and rejected for the stated reason. "Some
+    'error was raised" would pass for the wrong error, which is exactly what a
+    'regression on this path would look like
+        Test_Assert_EqualLong CLng(ERR_CPM_QPC_READ_FAILED), RaisedNumber, _
+                              "A failed QPC start read raises ERR_CPM_QPC_READ_FAILED in strict mode"
 
 '------------------------------------------------------------------------------
 ' ASSERT THE PRIOR SESSION SURVIVED INTACT
@@ -7681,18 +7681,17 @@ Private Sub Test_FaultInject_QpcStartFailure_Strict()
     'Arm one forced failure. The seam is one-shot, so it is consumed by the
     'first tick read inside the alignment helper
         cPM.Test_ForceNextQPCReadFailure
-        Raised = False
+        RaisedNumber = 0
         On Error Resume Next
         cPM.StartTimer 5, True
-        If Err.Number <> 0 Then
-            Raised = True
-            Err.Clear
-        End If
+        RaisedNumber = Err.Number
+        Err.Clear
         On Error GoTo CleanFail
 
-    'Strict mode rejects the aligned capture exactly as it rejects the unaligned one
-        Test_Assert_True Raised, _
-                         "A failed aligned QPC start read raises in strict mode"
+    'The aligned capture runs through a different function, so the error
+    'identity is asserted rather than assumed to match the unaligned path
+        Test_Assert_EqualLong CLng(ERR_CPM_QPC_READ_FAILED), RaisedNumber, _
+                              "A failed aligned QPC start read raises ERR_CPM_QPC_READ_FAILED in strict mode"
 
     'The transactional guarantee must hold on this path too
         Test_Assert_EqualBoolean True, cPM.HasActiveSession, _
