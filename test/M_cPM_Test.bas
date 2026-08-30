@@ -10426,8 +10426,8 @@ Private Sub Test_MeasureOverhead_EvidenceContract()
         Err.Clear
         On Error GoTo CleanFail
 
-        Test_Assert_True RaisedNumber <> 0, _
-                         "A strict overhead start failure propagates"
+        Test_Assert_EqualLong CLng(ERR_CPM_QPC_READ_FAILED), RaisedNumber, _
+                              "A strict overhead start failure raises ERR_CPM_QPC_READ_FAILED"
         Test_Assert_EqualLong -1, FailedReads, _
                               "Overhead FailedReadsOut reads the not-published sentinel"
         Test_Assert_EqualLong -1, Rejected, _
