@@ -413,9 +413,24 @@ Consequences:
 | `LastFailureStatusOut` | Most recent failed-read status from `MeasureProcedure` |
 | No valid measured endpoint | Raises `ERR_CPM_MEASURE_NO_VALID_SAMPLES` |
 
-`MeasureBaseline` currently returns the delegated vector but does not expose
-the two failure metadata outputs. `MeasureOverhead_Samples` likewise does not
-yet expose equivalent metadata. Those API gaps are tracked for v1.4.0.
+In v1.3.0, `MeasureBaseline` returns the delegated vector but exposes neither
+failure metadata output, and `MeasureOverhead_Samples` exposes none either.
+
+> [!NOTE]
+> **Fixed on the v1.4.0 development line for `MeasureBaseline`**
+> ([#27](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/27)), which forwards `FailedReadsOut`,
+> `LastFailureStatusOut` and a new `RejectedSamplesOut` from its delegated run.
+> A measured cycle whose requested backend fell back is now rejected rather than
+> retained and counted separately ([#23](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/23)), so the count rule above
+> becomes:
+>
+> ```text
+> Iterations = Stats_Count(vector) + measured endpoint failures + RejectedSamplesOut
+> ```
+>
+> Both counts are `-1` until the run reaches a publication point, so a negative
+> count means no evidence was published and `Err` carries the diagnosis.
+> `MeasureOverhead_Samples` remains outstanding ([#28](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/28)).
 
 ### v1.3.0 non-strict backend-homogeneity boundary
 
@@ -428,8 +443,12 @@ yet expose equivalent metadata. Those API gaps are tracked for v1.4.0.
 > Therefore, **v1.3.0 does not prove that every retained non-strict sample
 > vector is backend-homogeneous**. Keep `StrictMode=True` for benchmark evidence
 > that must not tolerate fallback, or validate the resolved backend in your own
-> controlled path. The direct fix is tracked in
-> [#23](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/23).
+> controlled path.
+>
+> **Fixed on the v1.4.0 development line** ([#23](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/23)). The start
+> transaction is captured immediately after `StartTimer`, before any endpoint
+> read can reset it, and a cycle that fell back is rejected rather than
+> retained.
 
 ### `Application.Run` contract
 
@@ -710,6 +729,12 @@ mode.
 `MeasureProcedure` worker is released before its vector is returned, so its
 endpoint-failure evidence is returned through `FailedReadsOut` and
 `LastFailureStatusOut` instead.
+
+Because `LastReadStatus` is per-operation and reset by each read, a start
+fallback is gone as soon as `ElapsedSeconds` runs. `ActiveMethodID` is the
+durable indicator: compare it against the backend you requested. On the v1.4.0
+development line the harness does exactly that, and reports rejections through
+`RejectedSamplesOut` ([#23](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/23)).
 
 ---
 

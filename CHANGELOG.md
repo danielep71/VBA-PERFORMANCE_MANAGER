@@ -12,9 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Work completed so far on the `release/v1.4.0` development line.
 
 **Current scope: repository governance, documentation, installation, release
-assurance, and the first measurement-integrity corrections. The public API
-surface is unchanged; `Fixed` entries below describe corrected behavior of
-existing members.**
+assurance, and the first measurement-integrity corrections. The public API is
+extended additively — new trailing optional parameters on existing members, and
+new `Friend` test seams — so every existing call shape continues to compile and
+behave. Behavior of existing members changes where noted; see the correction
+notice below.**
 
 > [!IMPORTANT]
 > **BEHAVIORAL CORRECTION — requested-backend measurement integrity.**

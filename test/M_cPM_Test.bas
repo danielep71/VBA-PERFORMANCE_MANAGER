@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 77    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 78    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -562,6 +562,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: baseline forwards evidence"
         Test_MeasureBaseline_ForwardsEvidence
+
+    'Validate baseline degradation and total-loss paths
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: baseline degradation paths"
+        Test_MeasureBaseline_DegradationPaths
 
     'Validate strict-mode rejection of a failed QPC start read
         CurrentStep = CurrentStep + 1
@@ -9993,6 +9998,168 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_MeasureBaseline_ForwardsEvidence"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_MeasureBaseline_DegradationPaths()
+'
+'==============================================================================
+'                 TEST MEASURE BASELINE DEGRADATION PATHS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Asserts the partially failed, all-failed and all-fallback baseline runs
+'
+' WHY THIS EXISTS
+'   A baseline is only useful as something to subtract, and a degraded baseline
+'   is worse than no baseline: it looks like a number. A caller comparing a
+'   clean thirty-sample workload against a baseline quietly reduced to four is
+'   not comparing anything, and before v1.4.0 nothing said so
+'
+'   Test_MeasureBaseline_ForwardsEvidence covers the clean and partially
+'   rejected runs. This case covers the ones where the baseline is degraded by
+'   read failures rather than fallback, and the two total-loss paths, because
+'   those are where a caller most needs the counters to be right
+'
+' BEHAVIOR
+'   - Endpoint failures shorten the baseline and are reported, without being
+'     counted as rejections
+'   - An all-failed baseline raises with its evidence already published
+'   - An all-fallback baseline raises with the fallback status preserved and a
+'     message naming the backend rather than a read failure
+'
+' ERROR POLICY
+'   Unexpected errors are recorded and the case continues through cleanup
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Baseline()      As Double                 'Baseline samples
+    Dim FailedReads     As Long                   'Reported native failure count
+    Dim LastStatus      As cPM_ReadStatus         'Reported failure or rejection status
+    Dim Rejected        As Long                   'Reported rejection count
+    Dim RaisedNumber    As Long                   'Trapped error number
+    Dim RaisedText      As String                 'Trapped error description
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: baseline degradation paths"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Non-strict, so failures and fallbacks return rather than raise per cycle
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = False
+
+'------------------------------------------------------------------------------
+' ASSERT A PARTIALLY FAILED BASELINE
+'------------------------------------------------------------------------------
+    'Two endpoint reads fail. These shorten the vector but do not change the
+    'backend, so they are failures and not rejections
+        cPM.Test_ForceWorkerEndpointReadFailures 2
+        Baseline = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 5, 1, cPM_MethodQPC, _
+                                       FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 3, cPM.Stats_Count(Baseline), _
+                              "Failed baseline reads contribute no sample"
+        Test_Assert_EqualLong 2, FailedReads, _
+                              "Baseline endpoint failures are reported"
+        Test_Assert_EqualLong 0, Rejected, _
+                              "An endpoint failure is not a rejection"
+        Test_Assert_EqualLong CLng(cPM_ReadQpcFailed), CLng(LastStatus), _
+                              "The forwarded status names the read failure"
+
+'------------------------------------------------------------------------------
+' ASSERT AN ALL-FAILED BASELINE
+'------------------------------------------------------------------------------
+    'Every endpoint read fails, so no sample survives
+        cPM.Test_ForceWorkerEndpointReadFailures 4
+        FailedReads = 99
+        Rejected = 99
+        On Error Resume Next
+        Baseline = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 4, 1, cPM_MethodQPC, _
+                                       FailedReads, LastStatus, Rejected)
+        RaisedNumber = Err.Number
+        RaisedText = Err.Description
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong CLng(ERR_CPM_MEASURE_NO_VALID_SAMPLES), RaisedNumber, _
+                              "An all-failed baseline raises the no-valid-samples error"
+        Test_Assert_EqualLong 4, FailedReads, _
+                              "All-failed baseline evidence is published before the raise"
+        Test_Assert_EqualLong 0, Rejected, _
+                              "An all-failed baseline reports no rejections"
+        Test_Assert_ContainsString RaisedText, "failed", _
+                                   "The all-failed message reports failed reads"
+
+'------------------------------------------------------------------------------
+' ASSERT AN ALL-FALLBACK BASELINE
+'------------------------------------------------------------------------------
+    'Every start capture fails, so every cycle falls back and is rejected. The
+    'reads themselves would all have succeeded
+        cPM.Test_ForceWorkerStartReadFailures 4
+        FailedReads = 99
+        Rejected = 99
+        On Error Resume Next
+        Baseline = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 4, 1, cPM_MethodQPC, _
+                                       FailedReads, LastStatus, Rejected)
+        RaisedNumber = Err.Number
+        RaisedText = Err.Description
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong CLng(ERR_CPM_MEASURE_NO_VALID_SAMPLES), RaisedNumber, _
+                              "An all-fallback baseline raises the no-valid-samples error"
+        Test_Assert_EqualLong 4, Rejected, _
+                              "All-fallback baseline rejections are published before the raise"
+        Test_Assert_EqualLong 0, FailedReads, _
+                              "An all-fallback baseline reports no failed reads"
+        Test_Assert_EqualLong CLng(cPM_ReadFallbackToMethod2), CLng(LastStatus), _
+                              "The forwarded status preserves the fallback"
+        Test_Assert_ContainsString RaisedText, "fell back", _
+                                   "The all-fallback message names the backend, not a read failure"
+
+'------------------------------------------------------------------------------
+' ASSERT RECOVERY
+'------------------------------------------------------------------------------
+    'Neither raise may leave a forced failure armed for the next caller
+        Baseline = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 4, 1, cPM_MethodQPC, _
+                                       FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 4, cPM.Stats_Count(Baseline), _
+                              "The following baseline run is unaffected"
+        Test_Assert_EqualLong 0, FailedReads, "No failures leak past a raise"
+        Test_Assert_EqualLong 0, Rejected, "No rejections leak past a raise"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_MeasureBaseline_DegradationPaths"
     'Continue through centralized cleanup
         Resume CleanExit
 
