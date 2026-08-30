@@ -11,8 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Work completed so far on the `release/v1.4.0` development line.
 
-**Current scope: repository governance, documentation, installation, and release
-assurance. No production VBA source or public API behavior has changed yet.**
+**Current scope: repository governance, documentation, installation, release
+assurance, and the first measurement-integrity corrections. The public API
+surface is unchanged; `Fixed` entries below describe corrected behavior of
+existing members.**
 
 > [!IMPORTANT]
 > **PLANNED BEHAVIORAL CORRECTION — requested-backend measurement integrity.**
@@ -53,6 +55,28 @@ assurance. No production VBA source or public API behavior has changed yet.**
   review criteria for timing/statistics/Application-state changes, disclosure
   and licensing rules, and private enforcement channels.
 
+### Fixed
+
+- **Workbook-qualified measurement targets now resolve when the host workbook
+  name contains an apostrophe.** `MeasureProcedure` and `MeasureBaseline` quote
+  the host workbook name so that names containing spaces resolve, but embedded
+  apostrophes were not escaped, so a workbook such as `O'Brien.xlsm` produced
+  `'O'Brien.xlsm'!Proc`. The quoted section ended at the embedded apostrophe and
+  the target did not resolve, failing the measurement for a reason unrelated to
+  timing. Apostrophes are now doubled, so the same host produces
+  `'O''Brien.xlsm'!Proc`.
+
+  The procedure-name spacing policy is stated explicitly as part of the same
+  fix. Leading and trailing spaces are removed once, before the target is
+  classified, so explicitly qualified and automatically qualified names follow
+  the same rule; previously a name such as `"  Proc  "` passed the blank check,
+  which trims, and was then dispatched untrimmed. Blank and space-only names
+  continue to raise `ERR_CPM_MEASURE_BLANK_PROC`, and interior spaces are
+  preserved. `Trim$` removes space characters only, so a leading or trailing
+  tab, carriage return or line feed is not normalized and still reaches
+  `Application.Run`. That limit is deliberate: validation and qualification trim
+  with the same function, which is what keeps their policies aligned. (#25)
+
 ### Changed
 
 - **The root README is now a verified project contract rather than a feature
@@ -62,17 +86,12 @@ assurance. No production VBA source or public API behavior has changed yet.**
   architecture, security boundaries, repository structure, and assurance
   limits. It also separates the certified v1.3.0 state from the unreleased
   v1.4.0 development line.
-- **Enum type-safety wording is corrected.** The timer and pause enums improve
-  readability and IntelliSense, but VBA enum members and enum-typed parameters
-  have `Long` semantics, so overlapping numeric values are not made
-  non-interchangeable at compile time. The claim is corrected in the class
-  comment beside `cPM_PauseMethod`, in the README, and in the wiki, and
-  `Example_EnumSemantics` demonstrates the boundary in both directions: a
-  `cPM_TimerMethod` constant passed to `Pause` selects the pause strategy
-  sharing its number, and a `cPM_PauseMethod` constant passed to `StartTimer`
-  binds the backend sharing its number. Enum names and numeric values are
-  unchanged, so existing calls are unaffected. The frozen v1.3.0 record, which
-  contains the original overclaim, remains unmodified. (#26)
+- **Enum type-safety wording is corrected in the current README.** The timer and
+  pause enums improve readability and IntelliSense, but VBA enum parameters
+  have `Long` semantics and overlapping numeric values are not made
+  non-interchangeable at compile time. The remaining class-comment,
+  regression-example, and wiki verification work is tracked by #26; the frozen
+  v1.3.0 changelog statement remains historical and is not rewritten.
 - **The public wiki has been comprehensively reconciled with the certified
   v1.3.0 implementation and contracts.** Twenty-two pages now accurately
   document the public API, execution and restoration semantics, timing

@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 72    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 73    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -522,6 +522,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: qualified resolution"
         Test_Measure_QualifiedResolution
+
+    'Validate the qualification rule across workbook and procedure name shapes
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: qualification matrix"
+        Test_Measure_QualificationMatrix
 
     'Validate that worker read failures reach the caller
         CurrentStep = CurrentStep + 1
@@ -9408,6 +9413,158 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_Measure_QualifiedResolution"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Measure_QualificationMatrix()
+'
+'==============================================================================
+'                     TEST MEASURE QUALIFICATION MATRIX
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Asserts the workbook-qualification rule across the workbook-name and
+'   procedure-name shapes that reach it
+'
+' WHY THIS EXISTS
+'   Before v1.4.0 the rule quoted the workbook name without escaping embedded
+'   apostrophes, so a host named O'Brien.xlsm produced "'O'Brien.xlsm'!Proc".
+'   The quoted section ends at the apostrophe, so the target did not resolve and
+'   the measurement failed for a reason that had nothing to do with timing
+'
+'   The rule reads ThisWorkbook.Name, which this suite cannot rename. Asserting
+'   only against the real host would leave every interesting case unexercised,
+'   so the decision is exposed through Test_QualifyProcedureNameFor and checked
+'   with names the host will never have
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   Asserts ordinary, spaced, apostrophe-containing and combined workbook names,
+'   the outer-space policy and the tab boundary it stops at, interior-space
+'   preservation, and that an explicitly qualified target keeps its own quoting
+'
+' ERROR POLICY
+'   Unexpected errors are recorded and the case continues through cleanup
+'
+' NOTES
+'   String construction only. That a constructed target actually dispatches from
+'   an apostrophe-named workbook needs a second workbook on disk, so it is
+'   verified by hand and recorded in the release evidence for the exact commit
+'
+' UPDATED
+'   2026-08-27
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM                 As cPerformanceManager    'Class under test
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: qualification matrix"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' ASSERT WORKBOOK NAME SHAPES
+'------------------------------------------------------------------------------
+    'An ordinary name still quotes exactly as before
+        Test_Assert_EqualString "'Book1.xlsm'!Proc", _
+                                cPM.Test_QualifyProcedureNameFor("Book1.xlsm", "Proc"), _
+                                "Ordinary workbook name"
+
+    'A name containing spaces still resolves, which the quoting already handled
+        Test_Assert_EqualString "'PERFORMANCE MANAGER.xlsm'!Proc", _
+                                cPM.Test_QualifyProcedureNameFor("PERFORMANCE MANAGER.xlsm", "Proc"), _
+                                "Workbook name containing spaces"
+
+    'The v1.4.0 fix: an embedded apostrophe is doubled, not left to end the quote
+        Test_Assert_EqualString "'O''Brien.xlsm'!Proc", _
+                                cPM.Test_QualifyProcedureNameFor("O'Brien.xlsm", "Proc"), _
+                                "Workbook name containing an apostrophe"
+
+    'Spaces and an apostrophe together
+        Test_Assert_EqualString "'O''Brien Timing Tests.xlsm'!Proc", _
+                                cPM.Test_QualifyProcedureNameFor("O'Brien Timing Tests.xlsm", "Proc"), _
+                                "Workbook name containing spaces and an apostrophe"
+
+    'More than one apostrophe, each escaped independently
+        Test_Assert_EqualString "'O''Brien''s Book.xlsm'!Proc", _
+                                cPM.Test_QualifyProcedureNameFor("O'Brien's Book.xlsm", "Proc"), _
+                                "Workbook name containing two apostrophes"
+
+'------------------------------------------------------------------------------
+' ASSERT SPACE POLICY
+'------------------------------------------------------------------------------
+    'Leading and trailing spaces are removed from the procedure name
+        Test_Assert_EqualString "'Book1.xlsm'!Proc", _
+                                cPM.Test_QualifyProcedureNameFor("Book1.xlsm", "  Proc  "), _
+                                "Outer spaces are normalized"
+
+    'Trim$ removes space characters only, so a tab survives at either end. This
+    'is the documented boundary, and it matches the blank check in
+    'MeasureProcedure, which trims with the same function
+        Test_Assert_EqualString "'Book1.xlsm'!" & vbTab & "Proc" & vbTab, _
+                                cPM.Test_QualifyProcedureNameFor("Book1.xlsm", vbTab & "Proc" & vbTab), _
+                                "Outer tabs are not normalized"
+
+    'Interior spaces are preserved, because the caller meant something by them
+        Test_Assert_EqualString "'Book1.xlsm'!My Proc", _
+                                cPM.Test_QualifyProcedureNameFor("Book1.xlsm", "My Proc"), _
+                                "Interior spaces are preserved"
+
+'------------------------------------------------------------------------------
+' ASSERT EXPLICIT QUALIFICATION WINS
+'------------------------------------------------------------------------------
+    'A target already containing "!" keeps its own quoting untouched
+        Test_Assert_EqualString "'Other Book.xlsm'!Proc", _
+                                cPM.Test_QualifyProcedureNameFor("Book1.xlsm", "'Other Book.xlsm'!Proc"), _
+                                "Explicit qualification is preserved"
+
+    'Including one the caller escaped itself, which must not be escaped twice
+        Test_Assert_EqualString "'O''Brien.xlsm'!Proc", _
+                                cPM.Test_QualifyProcedureNameFor("Book1.xlsm", "'O''Brien.xlsm'!Proc"), _
+                                "Caller-escaped qualification is not re-escaped"
+
+    'Outer spaces are normalized on the explicit branch as well
+        Test_Assert_EqualString "'Other Book.xlsm'!Proc", _
+                                cPM.Test_QualifyProcedureNameFor("Book1.xlsm", "  'Other Book.xlsm'!Proc  "), _
+                                "Explicit target outer spaces are normalized"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Measure_QualificationMatrix"
     'Continue through centralized cleanup
         Resume CleanExit
 

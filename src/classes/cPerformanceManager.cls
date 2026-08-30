@@ -6552,6 +6552,101 @@ Private Function Read_StatusToText( _
 End Function
 
 
+Private Function Measure_BuildQualifiedTarget( _
+    ByVal WorkbookName As String, _
+    ByVal ProcedureName As String) _
+    As String
+'
+'==============================================================================
+'                      MEASURE BUILD QUALIFIED TARGET
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Builds the string Application.Run should be given, from an explicit
+'   workbook name
+'
+' WHY THIS EXISTS
+'   Measure_QualifyProcedureName reads ThisWorkbook.Name, which a test cannot
+'   substitute. The host workbook has whatever name it has, so the apostrophe
+'   case could only ever be exercised by renaming the project or by trusting a
+'   comment
+'
+'   Separating the decision from the source of the workbook name makes the rule
+'   itself testable with any name, while production still supplies the real one
+'
+' INPUTS
+'   WorkbookName
+'     Name of the workbook to bind an unqualified procedure to
+'   ProcedureName
+'     Name as supplied by the caller, qualified or not
+'
+' RETURNS
+'   String
+'     The name Application.Run should be given
+'
+' BEHAVIOR
+'   - Leading and trailing spaces are removed from ProcedureName first, so
+'     both branches below see the same normalized value
+'   - A normalized name already containing "!" is returned as-is, so an explicit
+'     qualification always wins
+'   - Otherwise the name is bound to WorkbookName, single-quoted so that a name
+'     containing spaces still resolves, with embedded apostrophes doubled so
+'     that a name such as O'Brien.xlsm resolves too
+'
+' ERROR POLICY
+'   Does not raise
+'
+' NOTES
+'   The quoting matters. "PERFORMANCE MANAGER.xlsm!Proc" fails to resolve;
+'   "'PERFORMANCE MANAGER.xlsm'!Proc" succeeds. So does the escaping:
+'   "'O'Brien.xlsm'!Proc" terminates the quoted section at the apostrophe and
+'   resolves to nothing useful, while "'O''Brien.xlsm'!Proc" is correct
+'
+'   Only leading and trailing spaces are removed. Trim$ removes space
+'   characters only, so a tab, carriage return or line feed at either end
+'   survives and reaches Application.Run
+'
+'   That boundary is deliberate. MeasureProcedure rejects a blank name with
+'   Len(Trim$(ProcedureName)) = 0, and using the same function in both places is
+'   what stops validation and qualification drifting apart. A name that passes
+'   the blank check is the same name this function normalizes
+'
+'   Interior spaces are preserved. A caller who supplied them meant something
+'   this function should not silently rewrite
+'
+' UPDATED
+'   2026-08-27
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim NormalizedName  As String   'Procedure name with outer spaces removed
+    Dim SafeWorkbook    As String   'Workbook name with apostrophes escaped
+
+'------------------------------------------------------------------------------
+' NORMALIZE
+'------------------------------------------------------------------------------
+    'Normalize once, so both branches below agree on what the caller asked for
+        NormalizedName = Trim$(ProcedureName)
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'An explicit qualification always wins; the caller owns its own quoting
+        If InStr(1, NormalizedName, "!") > 0 Then
+            Measure_BuildQualifiedTarget = NormalizedName
+            Exit Function
+        End If
+
+    'Double any embedded apostrophe so the quoted section is not terminated early
+        SafeWorkbook = Replace(WorkbookName, "'", "''")
+
+    'Bind to the supplied workbook, quoted for names containing spaces
+        Measure_BuildQualifiedTarget = "'" & SafeWorkbook & "'!" & NormalizedName
+
+End Function
+
+
 Private Function Measure_QualifyProcedureName( _
     ByVal ProcedureName As String) _
     As String
@@ -6580,38 +6675,81 @@ Private Function Measure_QualifyProcedureName( _
 '     The name Application.Run should be given
 '
 ' BEHAVIOR
-'   - A name already containing "!" is returned untouched, so an explicit
-'     qualification always wins
-'   - Otherwise the name is qualified with ThisWorkbook, quoted so that a
-'     workbook name containing spaces still resolves
+'   Supplies ThisWorkbook.Name to Measure_BuildQualifiedTarget, which holds the
+'   qualification rule. See that function for the spacing, quoting and escaping
+'   contract
 '
 ' ERROR POLICY
 '   Does not raise
 '
 ' NOTES
-'   The quoting matters. "PERFORMANCE MANAGER.xlsm!Proc" fails to resolve;
-'   "'PERFORMANCE MANAGER.xlsm'!Proc" succeeds
-'
 '   To measure a procedure in a different workbook, pass the qualified form
 '   yourself
 '
 ' UPDATED
-'   2026-08-16
+'   2026-08-27
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' ROUTINE
 '------------------------------------------------------------------------------
-    'An explicit qualification always wins
-        If InStr(1, ProcedureName, "!") > 0 Then
-            Measure_QualifyProcedureName = ProcedureName
-            Exit Function
-        End If
-
-    'Qualify with the workbook hosting this class, quoted for names with spaces
-        Measure_QualifyProcedureName = "'" & ThisWorkbook.Name & "'!" & ProcedureName
+    'Apply the qualification rule to the workbook that hosts this class
+        Measure_QualifyProcedureName = _
+            Measure_BuildQualifiedTarget(ThisWorkbook.Name, ProcedureName)
 
 End Function
+
+Friend Function Test_QualifyProcedureNameFor( _
+    ByVal WorkbookName As String, _
+    ByVal ProcedureName As String) _
+    As String
+'
+'==============================================================================
+'                     TEST QUALIFY PROCEDURE NAME FOR
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Applies the qualification rule to a caller-supplied workbook name
+'
+' WHY THIS EXISTS
+'   The rule depends on the host workbook name, and a test cannot rename the
+'   host. Without this seam the apostrophe and space cases could only be
+'   asserted about a name the suite never actually produces
+'
+'   This exposes the decision, not a way to change it. Production dispatch still
+'   reads ThisWorkbook.Name and is unaffected by anything a test passes here
+'
+' INPUTS
+'   WorkbookName
+'     Workbook name to bind an unqualified procedure to
+'   ProcedureName
+'     Name as supplied by the caller, qualified or not
+'
+' RETURNS
+'   String
+'     The name Application.Run would be given for that workbook
+'
+' BEHAVIOR
+'   Returns Measure_BuildQualifiedTarget unchanged. Holds no state, arms
+'   nothing, and clears nothing
+'
+' ERROR POLICY
+'   Does not raise
+'
+' NOTES
+'   String construction only. That the constructed target actually dispatches
+'   from a workbook whose name contains an apostrophe is verified by hand and
+'   recorded in the release evidence, because it needs a second workbook on disk
+'
+' UPDATED
+'   2026-08-27
+'==============================================================================
+
+    'Expose the rule for inspection with an arbitrary workbook name
+        Test_QualifyProcedureNameFor = _
+            Measure_BuildQualifiedTarget(WorkbookName, ProcedureName)
+
+End Function
+
 
 Friend Sub Test_ForceNextNegativeElapsed()
 '
