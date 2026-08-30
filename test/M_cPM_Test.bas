@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 78    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 79    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -567,6 +567,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: baseline degradation paths"
         Test_MeasureBaseline_DegradationPaths
+
+    'Validate the overhead-vector evidence contract
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: overhead evidence contract"
+        Test_MeasureOverhead_EvidenceContract
 
     'Validate strict-mode rejection of a failed QPC start read
         CurrentStep = CurrentStep + 1
@@ -10256,6 +10261,218 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_MeasureBaseline_DegradationPaths"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_MeasureOverhead_EvidenceContract()
+'
+'==============================================================================
+'                TEST MEASURE OVERHEAD EVIDENCE CONTRACT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Asserts that MeasureOverhead_Samples reports failures and rejections on the
+'   same contract as MeasureProcedure
+'
+' WHY THIS EXISTS
+'   v1.3.0 gave this routine no failure evidence at all. It tracked the last
+'   failure status internally and then discarded it, so the only signal a caller
+'   had was a short vector, with nothing to say whether the loss was a broken
+'   clock or a backend the host could not start
+'
+'   It also read the worker status only after ElapsedSeconds had reset it, so a
+'   start fallback was invisible and the method-2 cycle was retained as though
+'   it measured the requested backend. An overhead figure could describe a
+'   different clock than the one asked for
+'
+' BEHAVIOR
+'   - A clean run reports no failures and no rejections
+'   - Endpoint failures shorten the vector and are counted as failures
+'   - Start fallbacks are counted as rejections, not failures
+'   - Warm-up native failures are counted; warm-up fallbacks are not
+'   - All-rejected raises with evidence published and a cycle-worded message
+'   - Both seams self-clear across normal and raised exits
+'   - The pre-v1.4.0 call shape still works
+'
+' ERROR POLICY
+'   Unexpected errors are recorded and the case continues through cleanup
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Samples()       As Double                 'Per-cycle overhead samples
+    Dim FailedReads     As Long                   'Reported native failure count
+    Dim LastStatus      As cPM_ReadStatus         'Reported failure or rejection status
+    Dim Rejected        As Long                   'Reported rejection count
+    Dim RaisedNumber    As Long                   'Trapped error number
+    Dim RaisedText      As String                 'Trapped error description
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: overhead evidence contract"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Non-strict, so failures and fallbacks return rather than raise per cycle
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = False
+
+'------------------------------------------------------------------------------
+' ASSERT A CLEAN RUN
+'------------------------------------------------------------------------------
+    'Nothing armed, so nothing should be failed or rejected
+        Samples = cPM.MeasureOverhead_Samples(6, 2, cPM_MethodQPC, _
+                                              FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 6, cPM.Stats_Count(Samples), _
+                              "A clean overhead run retains every cycle"
+        Test_Assert_EqualLong 0, FailedReads, "A clean overhead run reports no failed reads"
+        Test_Assert_EqualLong 0, Rejected, "A clean overhead run reports no rejections"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(LastStatus), _
+                              "A clean overhead run reports cPM_ReadOK"
+
+'------------------------------------------------------------------------------
+' ASSERT ENDPOINT FAILURES ARE COUNTED AS FAILURES
+'------------------------------------------------------------------------------
+    'The v1.3.0 seam could reach this path but reported nothing about it
+        cPM.Test_ForceWorkerEndpointReadFailures 2
+        Samples = cPM.MeasureOverhead_Samples(6, 2, cPM_MethodQPC, _
+                                              FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 4, cPM.Stats_Count(Samples), _
+                              "Failed overhead reads contribute no sample"
+        Test_Assert_EqualLong 2, FailedReads, _
+                              "Overhead endpoint failures are counted"
+        Test_Assert_EqualLong 0, Rejected, _
+                              "An endpoint failure is not an overhead rejection"
+
+'------------------------------------------------------------------------------
+' ASSERT START FALLBACKS ARE COUNTED AS REJECTIONS
+'------------------------------------------------------------------------------
+    'This path was entirely unreachable before v1.4.0: the old seam armed after
+    'the session was already open
+        cPM.Test_ForceWorkerStartReadFailures 2
+        Samples = cPM.MeasureOverhead_Samples(6, 2, cPM_MethodQPC, _
+                                              FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 4, cPM.Stats_Count(Samples), _
+                              "Rejected overhead cycles contribute no sample"
+        Test_Assert_EqualLong 2, Rejected, _
+                              "An overhead start fallback is counted as a rejection"
+        Test_Assert_EqualLong 0, FailedReads, _
+                              "An overhead rejection is not counted as a failed read"
+        Test_Assert_EqualLong CLng(cPM_ReadFallbackToMethod2), CLng(LastStatus), _
+                              "The overhead status names the fallback"
+
+'------------------------------------------------------------------------------
+' ASSERT WARM-UP FAILURES COUNT AND WARM-UP FALLBACKS DO NOT
+'------------------------------------------------------------------------------
+    'Neither seam is armed during warm-up, so a forced failure always lands on a
+    'measured cycle. That is what makes the counts above attributable
+        cPM.Test_ForceWorkerEndpointReadFailures 1
+        Samples = cPM.MeasureOverhead_Samples(4, 3, cPM_MethodQPC, _
+                                              FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 3, cPM.Stats_Count(Samples), _
+                              "The forced failure landed on a measured cycle, not a warm-up one"
+        Test_Assert_EqualLong 1, FailedReads, _
+                              "Exactly one failure is reported"
+
+'------------------------------------------------------------------------------
+' ASSERT THE ALL-REJECTED RAISE
+'------------------------------------------------------------------------------
+    'Every measured cycle falls back, so nothing survives
+        cPM.Test_ForceWorkerStartReadFailures 4
+        FailedReads = 99
+        Rejected = 99
+        On Error Resume Next
+        Samples = cPM.MeasureOverhead_Samples(4, 1, cPM_MethodQPC, _
+                                              FailedReads, LastStatus, Rejected)
+        RaisedNumber = Err.Number
+        RaisedText = Err.Description
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong CLng(ERR_CPM_MEASURE_NO_VALID_SAMPLES), RaisedNumber, _
+                              "An all-rejected overhead run raises the no-valid-samples error"
+        Test_Assert_EqualLong 4, Rejected, _
+                              "Overhead rejections are published before the raise"
+        Test_Assert_EqualLong 0, FailedReads, _
+                              "No read failure is reported for an all-rejected overhead run"
+        Test_Assert_EqualLong CLng(cPM_ReadFallbackToMethod2), CLng(LastStatus), _
+                              "The published overhead status names the fallback"
+
+    'The message must speak this API's own vocabulary, not MeasureProcedure's
+        Test_Assert_ContainsString RaisedText, "cycle", _
+                                   "The overhead message says cycle, not iteration"
+        Test_Assert_ContainsString RaisedText, "fell back", _
+                                   "The overhead message names the fallback"
+
+'------------------------------------------------------------------------------
+' ASSERT THE EVIDENCE BOUNDARY AND SEAM RECOVERY
+'------------------------------------------------------------------------------
+    'A blank-free routine still has one raise before classification: strict mode
+        cPM.StrictMode = True
+        cPM.Test_ForceWorkerStartReadFailures 1
+        FailedReads = 99
+        Rejected = 99
+        On Error Resume Next
+        Samples = cPM.MeasureOverhead_Samples(4, 1, cPM_MethodQPC, _
+                                              FailedReads, LastStatus, Rejected)
+        RaisedNumber = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_True RaisedNumber <> 0, _
+                         "A strict overhead start failure propagates"
+        Test_Assert_EqualLong -1, FailedReads, _
+                              "Overhead FailedReadsOut reads the not-published sentinel"
+        Test_Assert_EqualLong -1, Rejected, _
+                              "Overhead RejectedSamplesOut reads the not-published sentinel"
+
+    'Neither raise may leave a forced failure armed for the next caller
+        cPM.StrictMode = False
+        Samples = cPM.MeasureOverhead_Samples(4, 1, cPM_MethodQPC, _
+                                              FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 4, cPM.Stats_Count(Samples), _
+                              "The following overhead run is unaffected"
+        Test_Assert_EqualLong 0, Rejected, "No overhead rejections leak past a raise"
+        Test_Assert_EqualLong 0, FailedReads, "No overhead failures leak past a raise"
+
+'------------------------------------------------------------------------------
+' ASSERT THE OUTPUTS REMAIN OPTIONAL
+'------------------------------------------------------------------------------
+    'The pre-v1.4.0 call shape must still compile and behave
+        Samples = cPM.MeasureOverhead_Samples(5, 1)
+        Test_Assert_EqualLong 5, cPM.Stats_Count(Samples), _
+                              "The three-argument overhead call is unchanged"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_MeasureOverhead_EvidenceContract"
     'Continue through centralized cleanup
         Resume CleanExit
 

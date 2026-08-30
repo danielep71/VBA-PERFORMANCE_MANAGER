@@ -50,6 +50,16 @@ notice below.**
 
 ### Added
 
+- **Harness failure and rejection evidence on `MeasureOverhead_Samples`.** It
+  accepts trailing optional `FailedReadsOut`, `LastFailureStatusOut` and
+  `RejectedSamplesOut`, adopting the contract already established by
+  `MeasureProcedure`: native read failures counted including warm-up, backend
+  rejections counted excluding warm-up, and both counts set to `-1` until the
+  run reaches a publication point. Previously this routine tracked its last
+  failure status internally and then discarded it, so a short vector was the
+  only signal a caller had and nothing distinguished an unreliable clock from a
+  backend the host could not start. All three are trailing and optional, so
+  existing calls are unaffected. (#28)
 - **`RejectedSamplesOut` on the repeated-measurement APIs.** `MeasureProcedure`
   and `MeasureBaseline` accept a trailing optional `ByRef RejectedSamplesOut As
   Long` reporting measured cycles rejected because the requested backend fell
@@ -129,6 +139,27 @@ notice below.**
 
 ### Changed
 
+- **Overhead vectors are now backend-homogeneous.** `MeasureOverhead_Samples`
+  captures the start transaction immediately after `StartTimer` and rejects a
+  cycle whose requested backend fell back, rather than retaining a method-2
+  observation as though it measured the requested backend. An overhead figure
+  can no longer silently describe a different clock than the one asked for. On a
+  host that cannot start the requested backend, a non-strict run now returns a
+  shorter vector or raises `ERR_CPM_MEASURE_NO_VALID_SAMPLES` where v1.3.0
+  returned method-2 numbers. A rejected cycle takes no endpoint read. (#28)
+- **The deterministic worker seams now reach both harnesses.**
+  `Test_ForceWorkerStartReadFailures` and `Test_ForceWorkerEndpointReadFailures`
+  apply to `MeasureOverhead_Samples` as well as `MeasureProcedure`, arming
+  before `StartTimer` and before `ElapsedSeconds` respectively, and neither is
+  armed during warm-up. `Test_ForceWorkerReadFailures` documented itself as
+  affecting both routines in v1.3.0, which was never true — the counter was
+  consumed only by `MeasureProcedure`. That claim is now accurate for the
+  endpoint seam it aliases. Both counters are cleared on every exit from either
+  routine, normal or raised. (#28)
+- **`Measure_NoValidSamplesText` takes the calling API's unit noun.** The
+  aggregate no-valid-samples description says "cycle" for
+  `MeasureOverhead_Samples` and "iteration" for `MeasureProcedure`, so a
+  diagnostic reads in the vocabulary of the routine that produced it. (#28)
 - **Repeated-measurement vectors are now backend-homogeneous.** Every element of
   a vector returned by `MeasureProcedure` or `MeasureBaseline` was measured on
   the backend the caller requested. A measured cycle whose requested backend
