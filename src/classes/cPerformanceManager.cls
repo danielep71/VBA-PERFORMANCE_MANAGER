@@ -515,7 +515,12 @@ Attribute VB_Exposed = False
         Private m_TestFailNextSystemTimeRead As Boolean
         Private m_TestForceNextSystemTimeFormatInvalid As Boolean
         Private m_TestForceNextNegativeElapsed As Boolean
-        Private m_TestWorkerReadFailures As Long
+        'Measured-cycle worker seams. Start and endpoint are counted separately
+        'because they arm at different moments and prove different things: a
+        'start failure produces a fallback the harness must reject, an endpoint
+        'failure produces a read the harness must exclude.
+        Private m_TestWorkerStartFailures As Long
+        Private m_TestWorkerEndpointFailures As Long
 
 '
 '------------------------------------------------------------------------------
@@ -4527,7 +4532,8 @@ Public Function MeasureProcedure( _
     Optional ByVal WarmupIterations As Long = 3, _
     Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC, _
     Optional ByRef FailedReadsOut As Long, _
-    Optional ByRef LastFailureStatusOut As cPM_ReadStatus) _
+    Optional ByRef LastFailureStatusOut As cPM_ReadStatus, _
+    Optional ByRef RejectedSamplesOut As Long) _
     As Double()
 '
 '==============================================================================
@@ -4558,17 +4564,27 @@ Public Function MeasureProcedure( _
 '   iMethod (optional)
 '     Timing backend to use
 '
+'   FailedReadsOut (optional, ByRef)
+'     Native read failures, warm-up included
+'
+'   LastFailureStatusOut (optional, ByRef)
+'     Status of the most recent failure or rejection
+'
+'   RejectedSamplesOut (optional, ByRef)
+'     Measured cycles rejected because the requested backend fell back
+'
 ' RETURNS
 '   Double()
-'     1-based vector of per-run elapsed seconds. In non-strict mode a read that
-'     fails contributes NO element, so the vector may be shorter than Iterations
-'     and the shortfall is the measured-failure count
+'     1-based vector of per-run elapsed seconds, every element measured on the
+'     requested backend. In non-strict mode a cycle that fails to read, or that
+'     falls back to another backend, contributes NO element, so the vector may
+'     be shorter than Iterations
 '
 ' BEHAVIOR
 '   - Validates the procedure name and coerces the loop counts
 '   - Normalizes and validates the requested timer method
 '   - Runs the warm-up iterations and discards their timings
-'   - Runs the measured iterations, recording each elapsed value
+'   - Runs the measured iterations, classifying each before recording it
 '   - Always attempts to clean up the isolated worker instance
 '
 ' ERROR POLICY
@@ -4577,20 +4593,90 @@ Public Function MeasureProcedure( _
 '   - Propagates any error raised by the measured procedure, after cleanup
 '   - Timer validation is delegated to Method_NormalizeStart
 '
-' FAILED READS
-'   In non-strict mode a failed endpoint read returns zero. Recording that zero
-'   would make the failure look like the fastest run in the set and would
-'   materially distort the minimum and, on small samples, the median.
+' MEASURED-CYCLE CLASSIFICATION
+'   Every measured cycle ends in exactly one of three states.
 '
-'   Such samples are therefore EXCLUDED rather than stored. The consequences:
+'   RETAINED
+'     The requested backend started and the endpoint read succeeded. The value
+'     is appended to the vector.
 '
-'     - Stats_Count(Samples) may be less than Iterations
-'     - Iterations minus Stats_Count is the measured-failure count
-'     - FailedReadsOut counts every failed read, warm-up included, so it can
-'       exceed the shortfall in the vector
+'   REJECTED
+'     The requested backend could not start and the session fell back to
+'     method 2. The read would have succeeded, on the wrong clock. Retaining it
+'     would mix backends inside a vector the caller believes is homogeneous, so
+'     the observation is discarded and counted in RejectedSamplesOut.
 '
-'   In strict mode this path is unreachable. The worker mirrors the caller''s
-'   policy and raises, which propagates through Err_Handler.
+'     A rejected cycle does NOT run the workload. See BEHAVIORAL CORRECTION.
+'
+'   FAILED
+'     The requested backend started, but the endpoint read failed. In non-strict
+'     mode that read returns zero, and storing the zero would make the failure
+'     look like the fastest run in the set, materially distorting the minimum
+'     and, on small samples, the median. The sample is excluded and counted in
+'     FailedReadsOut.
+'
+'   The three are counted separately because their remedies differ. A failed
+'   read says the host's clock is unreliable; a rejection says this host cannot
+'   start the backend that was asked for. One counter could not say which.
+'
+' COUNT EQUATION
+'
+'     Iterations = Stats_Count(returned vector)
+'                + measured native failures
+'                + RejectedSamplesOut
+'
+'   FailedReadsOut counts native read failures INCLUDING warm-up, so it can
+'   exceed the measured native-failure term above. Measured native failures are
+'   therefore derived, not published:
+'
+'     measured native failures = Iterations - Stats_Count - RejectedSamplesOut
+'
+'   RejectedSamplesOut excludes warm-up. That asymmetry is deliberate: a warm-up
+'   read that fails is evidence the host cannot be measured reliably, whereas a
+'   warm-up fallback determines no returned observation, because every measured
+'   iteration starts and validates a new session of its own.
+'
+' EVIDENCE BOUNDARY
+'   The optional outputs are publication targets, not running totals. They are
+'   authoritative in exactly two situations:
+'
+'     - a normal return; and
+'     - the aggregate raise below, where they are published before raising
+'
+'   On any other propagated error they have not reached their publication point.
+'   That covers the blank-name raise, the worker raising in strict mode, the
+'   defensive internal-invariant raise, and anything a future change adds.
+'
+'   The boundary is enforced rather than merely documented. Both counts are set
+'   to -1 on entry, before any validation that can raise:
+'
+'     FailedReadsOut < 0     this run published nothing; read Err instead
+'     FailedReadsOut >= 0    the outputs are authoritative
+'
+'   LastFailureStatusOut is meaningful only while the counts are non-negative.
+'
+'   Writing zeros instead would repeat the mistake this class already corrected
+'   for failed reads: it makes an aborted run indistinguishable from a flawless
+'   one, in the one situation where the caller most needs to tell them apart.
+'   Err_Handler deliberately does not touch the outputs, so evidence already
+'   published by the aggregate raise survives being re-raised.
+'
+' BEHAVIORAL CORRECTION IN 1.4.0
+'   v1.3.0 read the worker's status only after ElapsedSeconds, which resets it
+'   on entry. A start fallback was therefore erased before it could be seen, and
+'   the method-2 observation was retained as though it came from the requested
+'   backend. Vectors could silently mix backends.
+'
+'   v1.4.0 captures the start transaction immediately after StartTimer and
+'   rejects the cycle. Two consequences for existing callers:
+'
+'     - a non-strict run on a host that cannot start the requested backend now
+'       returns a shorter vector, or raises ERR_CPM_MEASURE_NO_VALID_SAMPLES,
+'       where v1.3.0 returned mixed-backend numbers; and
+'     - a rejected cycle does not dispatch the workload, so a procedure with
+'       side effects executes fewer times than Iterations requested. v1.3.0 ran
+'       it every time. Executing a workload whose observation cannot be kept
+'       buys nothing and costs both time and those side effects.
 '
 ' DEPENDENCIES
 '   - Method_NormalizeStart
@@ -4627,9 +4713,13 @@ Public Function MeasureProcedure( _
 '     empty Public Sub
 '   - Measurement runs on an isolated worker instance, so the caller's session
 '     and checkpoint state are untouched
+'   - The trap this routine fell into is open to any caller. LastReadStatus
+'     describes the most recent read operation and is reset by each one, so a
+'     start fallback is gone as soon as ElapsedSeconds runs. ActiveMethodID is
+'     the durable indicator: compare it against the backend you asked for
 '
 ' UPDATED
-'   2026-08-15
+'   2026-08-30
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -4641,13 +4731,32 @@ Public Function MeasureProcedure( _
     Dim cPM_Work            As cPerformanceManager   'Isolated worker instance
     Dim DiscardedElapsedS   As Double                'Throwaway warm-up value
     Dim RunTarget           As String                'Workbook-qualified procedure name
-    Dim FailedReads         As Long                  'Reads that did not succeed, warm-up included
+    Dim FailedReads         As Long                  'Native read failures, warm-up included
+    Dim RejectedSamples     As Long                  'Measured cycles rejected for backend fallback
     Dim ValidCount          As Long                  'Measured reads that produced a value
-    Dim LastFailure         As cPM_ReadStatus        'Status of the most recent failed read
+    Dim LastFailure         As cPM_ReadStatus        'Status of the most recent failure or rejection
     Dim ThisSample          As Double                'Elapsed value for the current iteration
+    Dim StartStatus         As cPM_ReadStatus        'Status of the start transaction
+    Dim StartedMethod       As cPM_TimerMethod       'Backend the start transaction actually bound
+    Dim EndpointStatus      As cPM_ReadStatus        'Status of the endpoint read
     Dim ErrNumber           As Long                  'Captured error number
     Dim ErrSource           As String                'Captured error source
     Dim ErrDescription      As String                'Captured error description
+
+'------------------------------------------------------------------------------
+' SENTINEL THE OUTPUTS
+'------------------------------------------------------------------------------
+    'Mark the optional outputs as NOT PUBLISHED before anything below can raise.
+    'A run that ends before its cycles are classified must not leave the caller
+    'reading zeros, which are indistinguishable from a flawless run. A negative
+    'count says this run never reached its publication point, and Err carries
+    'the diagnosis instead.
+    '
+    'This has to precede the validation below, or a blank-name raise would leave
+    'zeros, or whatever the caller's variables happened to hold already
+        FailedReadsOut = -1
+        RejectedSamplesOut = -1
+        LastFailureStatusOut = cPM_ReadOK
 
 '------------------------------------------------------------------------------
 ' VALIDATE
@@ -4669,9 +4778,9 @@ Public Function MeasureProcedure( _
     'Route runtime failures through cleanup
         On Error GoTo Err_Handler
 
-    'This run reports its own outcome
-        FailedReadsOut = 0
-        LastFailureStatusOut = cPM_ReadOK
+    'The outputs stay sentinelled until classification completes. Only the two
+    'publication points below overwrite them: the normal return, and the
+    'aggregate raise which publishes before raising
         LastFailure = cPM_ReadOK
 
     'Normalize and validate the timer method using the current instance policy
@@ -4715,45 +4824,90 @@ Public Function MeasureProcedure( _
 '------------------------------------------------------------------------------
     'Record one elapsed value per measured iteration
         For K = 1 To Iterations
+
+            'Arm a forced start failure before the session opens, so the
+            'fallback it produces is the one this cycle is classified on
+                Measure_ArmWorkerStartFault cPM_Work, ResolvedMethod
+
             cPM_Work.StartTimer ResolvedMethod, False
-            Application.Run RunTarget
 
-            'Consume any armed fault injection so a forced failure lands on a
-            'measured sample rather than a discarded warm-up one
-                If m_TestWorkerReadFailures > 0 Then
-                    m_TestWorkerReadFailures = m_TestWorkerReadFailures - 1
-                    cPM_Work.Test_ForceNextQPCReadFailure
-                End If
+            'Capture the whole start transaction before anything can overwrite
+            'it. ElapsedSeconds resets LastReadStatus on entry, so reading the
+            'start status afterwards reports the endpoint's outcome and loses
+            'the fallback entirely. That erasure is the v1.3.0 defect
+                StartStatus = cPM_Work.LastReadStatus
+                StartedMethod = cPM_Work.ActiveMethodID
 
-            ThisSample = cPM_Work.ElapsedSeconds()
+            If StartStatus = cPM_ReadFallbackToMethod2 Then
 
-            'A failed read returns zero in non-strict mode. Storing that zero
-            'would make the failure look like the fastest run in the set, so the
-            'sample is excluded rather than recorded.
-            '
-            'Strict mode never reaches here: the worker mirrors the caller's
-            'policy and raises, which propagates through Err_Handler
-                If cPM_Work.LastReadStatus <> cPM_ReadOK Then
-                    FailedReads = FailedReads + 1
-                    LastFailure = cPM_Work.LastReadStatus
-                Else
-                    ValidCount = ValidCount + 1
-                    Samples(ValidCount) = ThisSample
-                End If
+                'The read succeeded, on the wrong backend. Retaining it would
+                'mix method-2 observations into a vector the caller believes is
+                'homogeneous, so the cycle is rejected rather than failed. No
+                'workload runs: an observation that cannot be kept is not worth
+                'the time or the side effects of producing it
+                    RejectedSamples = RejectedSamples + 1
+                    LastFailure = StartStatus
+
+            ElseIf StartedMethod <> ResolvedMethod Then
+
+                'Unreachable under the current start transaction, which either
+                'binds the requested backend, falls back and says so, or raises.
+                'If it is ever reached the session is not what it claims to be,
+                'and no cPM_ReadStatus describes that truthfully. Raise rather
+                'than invent a rejection status
+                    Err.Raise ERR_CPM_METHOD_MISMATCH, _
+                              "cPerformanceManager.MeasureProcedure", _
+                              "Internal invariant violated: StartTimer reported success but " & _
+                              "bound method " & CLng(StartedMethod) & _
+                              " instead of expected method " & CLng(ResolvedMethod) & "."
+
+            Else
+
+                Application.Run RunTarget
+
+                'Arm a forced endpoint failure only after the workload returns,
+                'so the injected fault lands on the measured read
+                    Measure_ArmWorkerEndpointFault cPM_Work, ResolvedMethod
+
+                ThisSample = cPM_Work.ElapsedSeconds()
+                EndpointStatus = cPM_Work.LastReadStatus
+
+                'A failed read returns zero in non-strict mode. Storing that
+                'zero would make the failure look like the fastest run in the
+                'set, so the sample is excluded rather than recorded.
+                '
+                'Strict mode never reaches here: the worker mirrors the caller's
+                'policy and raises, which propagates through Err_Handler
+                    If EndpointStatus <> cPM_ReadOK Then
+                        FailedReads = FailedReads + 1
+                        LastFailure = EndpointStatus
+                    Else
+                        ValidCount = ValidCount + 1
+                        Samples(ValidCount) = ThisSample
+                    End If
+
+            End If
         Next K
 
     'An empty vector is not a measurement, and every statistic over it would
-    'raise anyway. Fail here, where the reason is still known
+    'raise anyway. Fail here, where the reason is still known.
+    '
+    'The outputs are published first. Without that the all-rejected path would
+    'destroy the only evidence explaining it, leaving a caller who traps the
+    'error unable to tell a broken clock from a backend this host cannot start
         If ValidCount = 0 Then
+            FailedReadsOut = FailedReads
+            LastFailureStatusOut = LastFailure
+            RejectedSamplesOut = RejectedSamples
+            m_TestWorkerStartFailures = 0
+            m_TestWorkerEndpointFailures = 0
             Err.Raise ERR_CPM_MEASURE_NO_VALID_SAMPLES, _
                       "cPerformanceManager.MeasureProcedure", _
-                      "No measured read produced a value. " & _
-                      Read_StatusToText(LastFailure) & _
-                      " All " & CStr(Iterations) & " iteration(s) failed."
+                      Measure_NoValidSamplesText(Iterations, RejectedSamples, _
+                                                 ResolvedMethod, LastFailure)
         End If
 
-    'Trim to the readings actually obtained, so the shortfall against Iterations
-    'is itself the measured-failure count
+    'Trim to the readings actually obtained
         If ValidCount < Iterations Then
             ReDim Preserve Samples(1 To ValidCount)
         End If
@@ -4763,7 +4917,9 @@ Public Function MeasureProcedure( _
     'describes the caller's own reads, not a run delegated to a worker
         FailedReadsOut = FailedReads
         LastFailureStatusOut = LastFailure
-        m_TestWorkerReadFailures = 0
+        RejectedSamplesOut = RejectedSamples
+        m_TestWorkerStartFailures = 0
+        m_TestWorkerEndpointFailures = 0
 
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
@@ -4799,6 +4955,14 @@ Err_Handler:
         Set cPM_Work = Nothing
         On Error GoTo 0
 
+    'Disarm on the error path as well, or a forced failure armed for this run
+    'leaks into the next one and produces a result nobody asked for. The
+    'optional outputs are deliberately NOT written here: at this point they hold
+    'nothing the caller could act on, and publishing zeros would say that
+    'nothing failed
+        m_TestWorkerStartFailures = 0
+        m_TestWorkerEndpointFailures = 0
+
 '------------------------------------------------------------------------------
 ' RE-RAISE ORIGINAL ERROR
 '------------------------------------------------------------------------------
@@ -4811,7 +4975,10 @@ Public Function MeasureBaseline( _
     ByVal EmptyProcedureName As String, _
     Optional ByVal Iterations As Long = 30, _
     Optional ByVal WarmupIterations As Long = 3, _
-    Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC) _
+    Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC, _
+    Optional ByRef FailedReadsOut As Long, _
+    Optional ByRef LastFailureStatusOut As cPM_ReadStatus, _
+    Optional ByRef RejectedSamplesOut As Long) _
     As Double()
 '
 '==============================================================================
@@ -4836,17 +5003,38 @@ Public Function MeasureBaseline( _
 '   Iterations, WarmupIterations, iMethod
 '     As for MeasureProcedure
 '
+'   FailedReadsOut, LastFailureStatusOut, RejectedSamplesOut (optional, ByRef)
+'     As for MeasureProcedure, forwarded unchanged from the delegated run
+'
 ' RETURNS
 '   Double()
-'     1-based vector of per-run dispatch cost in seconds
+'     1-based vector of per-run dispatch cost in seconds, every element measured
+'     on the requested backend
 '
 ' BEHAVIOR
-'   Delegates to MeasureProcedure, so qualification, isolation and failure
-'   handling are identical by construction rather than by duplication
+'   Delegates to MeasureProcedure, so qualification, isolation, classification
+'   and failure handling are identical by construction rather than by
+'   duplication
 '
 ' ERROR POLICY
 '   Raises ERR_CPM_MEASURE_NO_BASELINE on a blank procedure name, with a message
-'   naming what to create
+'   naming what to create. Everything else propagates from MeasureProcedure,
+'   including ERR_CPM_MEASURE_NO_VALID_SAMPLES when no baseline cycle survived
+'
+' EVIDENCE
+'   Before v1.4.0 this routine exposed no failure evidence at all. A caller
+'   could see that a workload vector had been shortened, but had no way to ask
+'   whether the baseline it was subtracting had been shortened for the same
+'   reason, or by how much. Comparing a clean 30-sample workload against a
+'   baseline quietly reduced to 4 samples is not a comparison, and nothing said
+'   so.
+'
+'   The three optional outputs are forwarded from the delegated run and carry
+'   the same meaning and the same evidence boundary as MeasureProcedure's,
+'   including the entry sentinel of -1 on both counts. This routine applies that
+'   sentinel itself, before its own blank-name validation, so an error raised
+'   here rather than in the delegated run still leaves the caller able to tell
+'   that nothing was published.
 '
 ' TRUSTED INPUT
 '   EmptyProcedureName reaches Application.Run through MeasureProcedure and is
@@ -4878,13 +5066,25 @@ Public Function MeasureBaseline( _
 '
 '   The baseline is machine-specific and worth re-measuring on each host
 '
+'   Measure the baseline on the same backend as the workload. A baseline
+'   rejected for fallback while the workload was not, or the reverse, is not a
+'   matched pair no matter how close the medians look
+'
 ' UPDATED
-'   2026-08-16
+'   2026-08-30
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' VALIDATE
 '------------------------------------------------------------------------------
+    'Sentinel the outputs before the validation below can raise, so a blank-name
+    'error cannot leave the caller reading a clean-run shape. MeasureProcedure
+    'sentinels them again on entry; doing it here as well is what makes the
+    'guarantee hold for errors raised before delegation
+        FailedReadsOut = -1
+        RejectedSamplesOut = -1
+        LastFailureStatusOut = cPM_ReadOK
+
     'Reject a blank name with instructions rather than a bare failure
         If Len(Trim$(EmptyProcedureName)) = 0 Then
             Err.Raise ERR_CPM_MEASURE_NO_BASELINE, _
@@ -4897,9 +5097,14 @@ Public Function MeasureBaseline( _
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
-    'Measure through the identical path so the baseline is genuinely matched
+    'Measure through the identical path so the baseline is genuinely matched,
+    'and forward its evidence. Without this the caller can see that a workload
+    'vector was shortened but not whether the baseline it is being compared
+    'against was shortened for the same reason
         MeasureBaseline = MeasureProcedure(EmptyProcedureName, Iterations, _
-                                           WarmupIterations, iMethod)
+                                           WarmupIterations, iMethod, _
+                                           FailedReadsOut, LastFailureStatusOut, _
+                                           RejectedSamplesOut)
 
 End Function
 
@@ -6552,6 +6757,217 @@ Private Function Read_StatusToText( _
 End Function
 
 
+Private Sub Measure_ArmWorkerStartFault( _
+    ByRef WorkerInstance As cPerformanceManager, _
+    ByVal ExpectedMethod As cPM_TimerMethod)
+'
+'==============================================================================
+'                       MEASURE ARM WORKER START FAULT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms one forced native read failure on the worker's next start capture, if
+'   any remain armed
+'
+' WHY THIS EXISTS
+'   Rejecting a fallback cycle can only be tested if a fallback can be produced
+'   on demand, and a backend does not fail because a test would like it to
+'
+'   The start and endpoint seams are separate because they arm at different
+'   moments and prove different things. A start failure produces a fallback the
+'   harness must reject; an endpoint failure produces a read the harness must
+'   exclude. One counter could not express both
+'
+' INPUTS
+'   WorkerInstance
+'     The isolated worker whose next start capture should fail
+'   ExpectedMethod
+'     The backend the cycle intends to bind, which selects the fault
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   Consumes one armed start failure and forwards it to the matching low-level
+'   seam. Method 5 arms a QPC read failure, method 4 a system-time read failure.
+'   Every other backend is a no-op, because backends 1, 2, 3 and 6 have no start
+'   failure mode and so cannot fall back
+'
+' ERROR POLICY
+'   Does not raise
+'
+' NOTES
+'   The low-level seams are one-shot, so the forced failure is consumed by the
+'   requested backend's capture and the method-2 fallback capture then succeeds.
+'   That is exactly the state this seam exists to produce
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Nothing armed, nothing to do
+        If m_TestWorkerStartFailures <= 0 Then Exit Sub
+
+    'Consume one, whether or not the backend can act on it, so an armed count
+    'against a backend with no start failure mode still drains
+        m_TestWorkerStartFailures = m_TestWorkerStartFailures - 1
+
+    'Select the fault the requested backend can actually suffer
+        Select Case ExpectedMethod
+            Case cPM_MethodQPC
+                WorkerInstance.Test_ForceNextQPCReadFailure
+            Case cPM_MethodSystemTime
+                WorkerInstance.Test_ForceNextSystemTimeReadFailure
+        End Select
+
+End Sub
+
+
+Private Sub Measure_ArmWorkerEndpointFault( _
+    ByRef WorkerInstance As cPerformanceManager, _
+    ByVal ExpectedMethod As cPM_TimerMethod)
+'
+'==============================================================================
+'                      MEASURE ARM WORKER ENDPOINT FAULT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms one forced native read failure on the worker's next endpoint read, if
+'   any remain armed
+'
+' WHY THIS EXISTS
+'   The counterpart to Measure_ArmWorkerStartFault. Kept separate so a test can
+'   target start validation or endpoint handling precisely, rather than arming
+'   something that lands wherever the loop happens to consume it
+'
+' INPUTS
+'   WorkerInstance
+'     The isolated worker whose next endpoint read should fail
+'   ExpectedMethod
+'     The backend bound by this cycle, which selects the fault
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   Consumes one armed endpoint failure and forwards it to the matching
+'   low-level seam. Method 5 arms a QPC read failure, method 4 a system-time
+'   read failure. Every other backend is a no-op
+'
+' ERROR POLICY
+'   Does not raise
+'
+' NOTES
+'   Called after Application.Run returns, so the injected fault cannot land on
+'   the workload or on a warm-up cycle
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Nothing armed, nothing to do
+        If m_TestWorkerEndpointFailures <= 0 Then Exit Sub
+
+    'Consume one, whether or not the backend can act on it
+        m_TestWorkerEndpointFailures = m_TestWorkerEndpointFailures - 1
+
+    'Select the fault the bound backend can actually suffer
+        Select Case ExpectedMethod
+            Case cPM_MethodQPC
+                WorkerInstance.Test_ForceNextQPCReadFailure
+            Case cPM_MethodSystemTime
+                WorkerInstance.Test_ForceNextSystemTimeReadFailure
+        End Select
+
+End Sub
+
+
+Private Function Measure_NoValidSamplesText( _
+    ByVal Iterations As Long, _
+    ByVal RejectedSamples As Long, _
+    ByVal ExpectedMethod As cPM_TimerMethod, _
+    ByVal LastFailure As cPM_ReadStatus) _
+    As String
+'
+'==============================================================================
+'                       MEASURE NO VALID SAMPLES TEXT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Builds the description for ERR_CPM_MEASURE_NO_VALID_SAMPLES, naming the
+'   reason the vector is empty
+'
+' WHY THIS EXISTS
+'   Two very different conditions produce an empty vector, and one message
+'   cannot describe both honestly. If every cycle fell back, the reads did not
+'   fail at all: the host could not start the requested backend. Telling that
+'   caller "no measured read produced a value" sends them to look at a clock
+'   that is working perfectly
+'
+' INPUTS
+'   Iterations        - measured iterations requested
+'   RejectedSamples   - measured cycles rejected for backend fallback
+'   ExpectedMethod    - backend the caller asked for
+'   LastFailure       - most recent failure or rejection status
+'
+' RETURNS
+'   String
+'     A description naming the dominant cause
+'
+' BEHAVIOR
+'   - All cycles rejected: names the fallback and the backend that was requested
+'   - No cycle rejected: reports failed reads, as before
+'   - Mixed: reports both counts, then the most recent status
+'
+' ERROR POLICY
+'   Does not raise
+'
+' NOTES
+'   The error number is unchanged. At the aggregate level it remains accurate:
+'   there is no valid requested-backend sample to return. Only the explanation
+'   is status-aware
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' ROUTINE
+'------------------------------------------------------------------------------
+    'Every cycle fell back: the reads worked, the backend did not
+        If RejectedSamples = Iterations Then
+            Measure_NoValidSamplesText = _
+                "No requested-backend sample was retained. All " & _
+                CStr(Iterations) & " measured iteration(s) fell back from " & _
+                MethodName(ExpectedMethod) & " to " & _
+                MethodName(cPM_MethodTickCount) & _
+                "; mixed-backend observations were rejected."
+            Exit Function
+        End If
+
+    'Nothing was rejected: this is the pre-v1.4.0 condition
+        If RejectedSamples = 0 Then
+            Measure_NoValidSamplesText = _
+                "No measured read produced a value. " & _
+                Read_StatusToText(LastFailure) & _
+                " All " & CStr(Iterations) & " iteration(s) failed."
+            Exit Function
+        End If
+
+    'Both causes contributed, so report both rather than picking one
+        Measure_NoValidSamplesText = _
+            "No measured sample was retained across " & CStr(Iterations) & _
+            " iteration(s): " & CStr(RejectedSamples) & _
+            " rejected after falling back from " & MethodName(ExpectedMethod) & _
+            ", " & CStr(Iterations - RejectedSamples) & " failed to read. " & _
+            Read_StatusToText(LastFailure)
+
+End Function
+
+
 Private Function Measure_BuildQualifiedTarget( _
     ByVal WorkbookName As String, _
     ByVal ProcedureName As String) _
@@ -6836,9 +7252,112 @@ Friend Sub Test_ForceWorkerReadFailures( _
 '   2026-08-16
 '==============================================================================
 
-    'Arm the requested number of forced worker read failures
+    'Arm the requested number of forced worker endpoint read failures
         If FailureCount < 0 Then FailureCount = 0
-        m_TestWorkerReadFailures = FailureCount
+        m_TestWorkerEndpointFailures = FailureCount
+
+End Sub
+
+
+Friend Sub Test_ForceWorkerStartReadFailures( _
+    ByVal FailureCount As Long)
+'
+'==============================================================================
+'                    TEST FORCE WORKER START READ FAILURES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms forced native read failures on the START capture of the next measured
+'   cycles run by MeasureProcedure
+'
+' WHY THIS EXISTS
+'   A cycle whose requested backend fails to start falls back to method 2, and
+'   v1.4.0 rejects the resulting observation rather than mixing it into a vector
+'   the caller believes is homogeneous. That rejection cannot be tested unless a
+'   start failure can be produced deliberately
+'
+'   This is separate from the endpoint seam because the two arm at different
+'   moments and prove different things. Arming a single ambiguous counter, as
+'   v1.3.0 did, could only ever reach the endpoint read
+'
+' INPUTS
+'   FailureCount
+'     Number of measured start captures to fail. Negative values are treated
+'     as zero
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   Each armed count is consumed by one measured cycle, before StartTimer. The
+'   fault matches the requested backend: method 5 fails a QPC read, method 4 a
+'   system-time read. Backends 1, 2, 3 and 6 have no start failure mode, so an
+'   armed count against them drains without effect
+'
+' ERROR POLICY
+'   Does not raise
+'
+' NOTES
+'   Warm-up cycles are not affected, so a forced failure lands on a measured
+'   cycle rather than a discarded one
+'
+'   The counter is cleared on every exit from MeasureProcedure, normal or
+'   raised, so an armed failure cannot leak into a later call
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+    'Arm the requested number of forced worker start read failures
+        If FailureCount < 0 Then FailureCount = 0
+        m_TestWorkerStartFailures = FailureCount
+
+End Sub
+
+
+Friend Sub Test_ForceWorkerEndpointReadFailures( _
+    ByVal FailureCount As Long)
+'
+'==============================================================================
+'                  TEST FORCE WORKER ENDPOINT READ FAILURES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms forced native read failures on the ENDPOINT read of the next measured
+'   cycles run by MeasureProcedure
+'
+' WHY THIS EXISTS
+'   The counterpart to Test_ForceWorkerStartReadFailures. Named explicitly so a
+'   test states which half of the cycle it is exercising rather than relying on
+'   where an ambiguous counter happened to be consumed
+'
+' INPUTS
+'   FailureCount
+'     Number of measured endpoint reads to fail. Negative values are treated
+'     as zero
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   Each armed count is consumed by one measured cycle, after Application.Run
+'   returns and before ElapsedSeconds. The fault matches the bound backend:
+'   method 5 fails a QPC read, method 4 a system-time read
+'
+' ERROR POLICY
+'   Does not raise
+'
+' NOTES
+'   Test_ForceWorkerReadFailures is retained as a compatibility alias for this
+'   seam, since the endpoint read is the only thing it could ever reach
+'
+'   Cleared on every exit from MeasureProcedure, normal or raised
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+    'Arm the requested number of forced worker endpoint read failures
+        If FailureCount < 0 Then FailureCount = 0
+        m_TestWorkerEndpointFailures = FailureCount
 
 End Sub
 

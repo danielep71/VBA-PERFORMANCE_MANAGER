@@ -944,17 +944,18 @@ the source in your own add-in, but that host is built and maintained by you.
   adjustment; both appear as a negative raw delta and receive one-day correction.
 - Rollover correction handles one wrap only.
 - v1.3.0 does not enforce backend-homogeneous vectors after non-strict start
-  fallback ([#23](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/23)).
+  fallback. Fixed on the v1.4.0 development line ([#23](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/23)).
 - `OverheadMeasurement_Seconds` is the legacy mean-only path and can include a
   non-strict failed read as zero while retaining the original denominator
   ([#24](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/24)). Prefer
   `MeasureOverhead_Samples` with strict mode for current benchmark work.
-- Workbook qualification does not yet escape apostrophes in a workbook name
-  such as `O'Brien.xlsm` ([#25](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/25)).
-- `MeasureBaseline` and `MeasureOverhead_Samples` do not yet expose failure
-  evidence equivalent to `MeasureProcedure`
-  ([#27](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/27),
-  [#28](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/28)).
+- v1.3.0 does not escape apostrophes when qualifying a workbook name such as
+  `O'Brien.xlsm`. Fixed on the v1.4.0 development line ([#25](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/25)).
+- v1.3.0 exposes no harness failure evidence from `MeasureBaseline` or
+  `MeasureOverhead_Samples`. `MeasureBaseline` is fixed on the v1.4.0
+  development line ([#27](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/27));
+  `MeasureOverhead_Samples` remains outstanding
+  ([#28](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/28)).
 - `ElapsedTime` formats ordinary durations beyond 24 hours, but its current
   `Long`-based decomposition is not safe for every large finite `Double`
   ([#30](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/30)).
@@ -998,9 +999,11 @@ the source in your own add-in, but that host is built and maintained by you.
 | Excel remains suppressed after an error | Run the owning instance's cleanup path; if no valid shared session remains, call `PM_TW_EndAllSessions`; restart Excel if the captured baseline was lost or ownership is uncertain |
 | A non-strict elapsed call returns `0` | Inspect `LastReadStatus`; do not assume a genuine zero-duration result |
 | QPC fails in strict mode | Preserve the error/status evidence; select another backend only as an explicit policy decision |
-| `Stats_Count` is below requested iterations | Inspect `FailedReadsOut` and `LastFailureStatusOut` from `MeasureProcedure` |
+| `Stats_Count` is below requested iterations | Inspect `FailedReadsOut`, `RejectedSamplesOut` and `LastFailureStatusOut`. A rejection means the requested backend could not start on this host; a failed read means the clock is unreliable |
+| A measurement call raised and the counts read `-1` | That is the not-published sentinel: the run ended before any cycle was classified, so no evidence exists. Read `Err.Number` and `Err.Description` instead |
+| A session reports `cPM_ReadOK` but timings look wrong | `LastReadStatus` describes the most recent read and is reset by each one, so a start fallback is gone once `ElapsedSeconds` runs. Compare `ActiveMethodID` against the backend you requested |
 | `MeasureProcedure` cannot find a target | Confirm it is a `Public Sub` in a standard module and that the workbook qualification is correct |
-| Workbook name contains an apostrophe | Until #25 is fixed, pass an explicitly escaped qualified target such as `'O''Brien.xlsm'!ProcedureName` |
+| Workbook name contains an apostrophe | On v1.3.0, pass an explicitly escaped qualified target such as `'O''Brien.xlsm'!ProcedureName`. Handled automatically from v1.4.0 |
 | Calculation was not suppressed | Check `TW_CalculationExempted` and the stable-open-workbook invariant |
 | Regression module does not compile | Import `M_DEMO_BUILDER.bas` before `M_cPM_Test.bas` |
 | State is uncertain after a hard `End` or VBA reset | Save work, close every Excel window, confirm `EXCEL.EXE` exits, restart Excel, and rerun validation in a controlled workbook |

@@ -17,23 +17,71 @@ surface is unchanged; `Fixed` entries below describe corrected behavior of
 existing members.**
 
 > [!IMPORTANT]
-> **PLANNED BEHAVIORAL CORRECTION — requested-backend measurement integrity.**
+> **BEHAVIORAL CORRECTION — requested-backend measurement integrity.**
 >
-> In v1.3.0, a non-strict repeated measurement can retain observations produced
-> after the requested backend falls back to method 2. The legacy
-> `OverheadMeasurement_Seconds` loop can also accumulate a failed endpoint read
-> as zero and continue to divide by the requested iteration count. v1.4.0 will
-> reject fallback observations from requested-backend vectors and will derive
-> legacy overhead means only from valid retained samples. Callers may therefore
-> receive a shorter vector or `ERR_CPM_MEASURE_NO_VALID_SAMPLES` where v1.3.0
-> returned mixed-backend or zero-contaminated results. This is an intentional
-> correctness change tracked by #23 and #24, not a claim that the current VBA
-> source already implements it. `OverheadMeasurement_Text` will render the
-> expected no-valid-sample condition as an explicit `undefined (...)`
-> diagnostic while continuing to propagate unexpected errors.
+> In v1.3.0, a non-strict repeated measurement could retain observations
+> produced after the requested backend fell back to method 2. The harness read
+> the worker's status only after `ElapsedSeconds`, which resets it on entry, so
+> the fallback was erased before it could be seen and the method-2 observation
+> was kept as though it came from the requested backend. Returned vectors could
+> silently mix backends.
+>
+> v1.4.0 captures the start transaction immediately after `StartTimer` and
+> rejects the cycle. Three consequences for existing callers:
+>
+> - a non-strict run on a host that cannot start the requested backend now
+>   returns a shorter vector, or raises `ERR_CPM_MEASURE_NO_VALID_SAMPLES`,
+>   where v1.3.0 returned mixed-backend results;
+> - a rejected cycle does not dispatch the workload, so a procedure with side
+>   effects executes fewer times than `Iterations` requested; and
+> - `FailedReadsOut` and `RejectedSamplesOut` are set to `-1` on entry and hold
+>   that value unless the run reaches a publication point. A caller who reads
+>   them after a raise now sees a negative count rather than zeros. Code that
+>   assumed a zero count meant a clean run must test for a negative count first.
+>
+> The legacy `OverheadMeasurement_Seconds` loop still accumulates a failed
+> endpoint read as zero and divides by the requested iteration count. That
+> correction is tracked by #24 and has not shipped yet.
+> `OverheadMeasurement_Text` will render the expected no-valid-sample condition
+> as an explicit `undefined (...)` diagnostic while continuing to propagate
+> unexpected errors.
 
 ### Added
 
+- **`RejectedSamplesOut` on the repeated-measurement APIs.** `MeasureProcedure`
+  and `MeasureBaseline` accept a trailing optional `ByRef RejectedSamplesOut As
+  Long` reporting measured cycles rejected because the requested backend fell
+  back. It is counted separately from `FailedReadsOut` because the two have
+  different remedies: a failed read says the host's clock is unreliable, a
+  rejection says this host cannot start the backend that was asked for. The
+  parameter is trailing and optional, so existing calls are unaffected.
+
+  Both counts are set to `-1` on entry, before any validation that can raise, and
+  are overwritten only at a publication point. A negative count therefore means
+  the run published nothing and `Err` carries the diagnosis;
+  `LastFailureStatusOut` is meaningful only while the counts are non-negative.
+  Writing zeros instead would make an aborted run indistinguishable from a
+  flawless one. (#23)
+- **`MeasureBaseline` now exposes harness failure evidence.** It accepts
+  `FailedReadsOut`, `LastFailureStatusOut` and `RejectedSamplesOut`, forwarded
+  unchanged from the delegated `MeasureProcedure` run. Previously a caller could
+  see that a workload vector had been shortened but had no way to ask whether
+  the baseline being subtracted had been shortened for the same reason. All
+  three are trailing and optional.
+
+  The same evidence boundary applies. `MeasureBaseline` applies the `-1` entry
+  sentinel itself, before its own blank-name validation, so an error raised
+  before delegation is as visible as one raised inside it. (#27)
+- **Separate start and endpoint worker fault-injection seams.**
+  `Test_ForceWorkerStartReadFailures` arms a forced native read failure on a
+  measured cycle's start capture; `Test_ForceWorkerEndpointReadFailures` arms
+  one on its endpoint read. Each selects the fault its backend can actually
+  suffer, failing a QPC read for method 5 and a system-time read for method 4.
+  The v1.3.0 seam armed after `Application.Run` and forced a QPC failure
+  unconditionally, so it could never fail a start capture and had no effect on
+  any other backend. `Test_ForceWorkerReadFailures` is retained as a documented
+  compatibility alias for the endpoint seam. Both counters are cleared on every
+  exit from `MeasureProcedure`, normal or raised. (#23)
 - **Deterministic repository text and artifact policy.** A root
   `.gitattributes` now keeps exported VBA source on CRLF for predictable VBE
   round-trips, keeps documentation and cross-platform tooling on LF, prevents
@@ -79,6 +127,34 @@ existing members.**
 
 ### Changed
 
+- **Repeated-measurement vectors are now backend-homogeneous.** Every element of
+  a vector returned by `MeasureProcedure` or `MeasureBaseline` was measured on
+  the backend the caller requested. A measured cycle whose requested backend
+  fails to start now falls back, is detected, and is rejected rather than
+  retained. See the behavioral-correction notice above for the impact on
+  existing callers. (#23)
+- **The no-valid-samples error is status-aware.**
+  `ERR_CPM_MEASURE_NO_VALID_SAMPLES` is unchanged and remains accurate at the
+  aggregate level, but its description now names the dominant cause. When every
+  cycle was rejected it reports the fallback and the backend that was requested,
+  rather than claiming no read produced a value: in that case the reads
+  succeeded and only the clock was wrong. The optional outputs are published
+  before this error is raised, so a caller who traps it can still read the
+  counts and status that explain it. (#23)
+- **The evidence boundary for the optional outputs is stated by control flow.**
+  `FailedReadsOut`, `LastFailureStatusOut` and `RejectedSamplesOut` are
+  authoritative on a normal return and on the aggregate no-valid-samples raise,
+  where they are published first. On any other propagated error they have not
+  reached their publication point; `Err.Number` and `Err.Description` are
+  authoritative instead. This covers the blank-name raise, the worker raising in
+  strict mode and the defensive internal-invariant raise, and is deliberately
+  not phrased in terms of strict mode, since a non-strict run can also propagate
+  an error before any cycle is classified.
+
+  The boundary is enforced rather than advisory: the `-1` entry sentinel makes
+  non-publication observable, so a caller can test for it instead of being asked
+  to remember it. `Err_Handler` does not touch the outputs, so evidence already
+  published by the aggregate raise survives being re-raised. (#23, #27)
 - **The root README is now a verified project contract rather than a feature
   catalogue.** It documents the source-first deployment model, exact two-file
   runtime package, current public API, enums and named errors, timing and

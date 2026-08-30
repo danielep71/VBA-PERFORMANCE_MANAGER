@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 73    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 77    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -542,6 +542,26 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: dispatch-matched baseline"
         Test_Measure_DispatchMatchedBaseline
+
+    'Validate that a fallback cycle is rejected rather than retained
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: start fallback rejected"
+        Test_Measure_RejectsStartFallback
+
+    'Validate the aggregate raise when every cycle is rejected
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: all cycles rejected"
+        Test_Measure_AllRejectedPublishesEvidence
+
+    'Validate the evidence boundary on an early worker raise
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: worker-raise evidence boundary"
+        Test_Measure_WorkerRaiseEvidenceBoundary
+
+    'Validate that MeasureBaseline forwards harness evidence
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: baseline forwards evidence"
+        Test_MeasureBaseline_ForwardsEvidence
 
     'Validate strict-mode rejection of a failed QPC start read
         CurrentStep = CurrentStep + 1
@@ -9413,6 +9433,566 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_Measure_QualifiedResolution"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Measure_RejectsStartFallback()
+'
+'==============================================================================
+'                     TEST MEASURE REJECTS START FALLBACK
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Asserts that a measured cycle whose requested backend fell back is rejected
+'   rather than retained, and counted separately from a failed read
+'
+' WHY THIS EXISTS
+'   In v1.3.0 the harness read the worker's status only after ElapsedSeconds,
+'   which resets it on entry. A start fallback was erased before it could be
+'   seen, so the method-2 observation was kept as though it came from the
+'   requested backend and the returned vector could silently mix backends
+'
+'   Nothing in the v1.3.0 suite could catch that, because the only worker seam
+'   armed after Application.Run and so could never fail a start capture
+'
+' BEHAVIOR
+'   - A clean run reports no failures and no rejections
+'   - A forced QPC start failure is rejected, not counted as a failed read
+'   - A forced method-4 start failure is rejected the same way
+'   - A rejected cycle does not erase the evidence of later valid cycles
+'   - Endpoint failures and rejections are counted independently
+'   - A warm-up fallback is not counted as a measured rejection
+'
+' ERROR POLICY
+'   Unexpected errors are recorded and the case continues through cleanup
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Samples()       As Double                 'Per-run samples
+    Dim FailedReads     As Long                   'Reported native failure count
+    Dim LastStatus      As cPM_ReadStatus         'Reported failure or rejection status
+    Dim Rejected        As Long                   'Reported rejection count
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: start fallback rejected"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Non-strict, so a start failure falls back instead of raising
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = False
+
+'------------------------------------------------------------------------------
+' ASSERT A CLEAN RUN
+'------------------------------------------------------------------------------
+    'Nothing armed, so nothing should be failed or rejected
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 4, 1, cPM_MethodQPC, _
+                                       FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 4, cPM.Stats_Count(Samples), _
+                              "A clean run retains every measured cycle"
+        Test_Assert_EqualLong 0, FailedReads, "A clean run reports no failed reads"
+        Test_Assert_EqualLong 0, Rejected, "A clean run reports no rejections"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(LastStatus), _
+                              "A clean run reports cPM_ReadOK"
+
+'------------------------------------------------------------------------------
+' ASSERT A FORCED QPC START FALLBACK IS REJECTED
+'------------------------------------------------------------------------------
+    'Two measured cycles fail to start on QPC and fall back to method 2
+        cPM.Test_ForceWorkerStartReadFailures 2
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 5, 1, cPM_MethodQPC, _
+                                       FailedReads, LastStatus, Rejected)
+
+    'The rejected cycles contribute no samples
+        Test_Assert_EqualLong 3, cPM.Stats_Count(Samples), _
+                              "Rejected cycles contribute no sample"
+        Test_Assert_EqualLong 2, Rejected, _
+                              "A start fallback is counted as a rejection"
+
+    'A rejection is not a read failure. The read would have succeeded; it would
+    'simply have measured the wrong clock
+        Test_Assert_EqualLong 0, FailedReads, _
+                              "A rejection is not counted as a failed read"
+        Test_Assert_EqualLong CLng(cPM_ReadFallbackToMethod2), CLng(LastStatus), _
+                              "The reported status names the fallback"
+
+    'The three retained cycles prove the start status survived to be seen. In
+    'v1.3.0 ElapsedSeconds had already reset it and all five were retained
+        Test_Assert_True cPM.Stats_Count(Samples) < 5, _
+                         "The vector is shorter than the requested iterations"
+
+'------------------------------------------------------------------------------
+' ASSERT THE SAME FOR METHOD 4
+'------------------------------------------------------------------------------
+    'The seam selects the fault the requested backend can actually suffer
+        cPM.Test_ForceWorkerStartReadFailures 1
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 4, 1, cPM_MethodSystemTime, _
+                                       FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 1, Rejected, _
+                              "A method-4 start failure is rejected too"
+        Test_Assert_EqualLong 3, cPM.Stats_Count(Samples), _
+                              "Method-4 rejection removes exactly one sample"
+
+'------------------------------------------------------------------------------
+' ASSERT FAILURES AND REJECTIONS ARE COUNTED INDEPENDENTLY
+'------------------------------------------------------------------------------
+    'One cycle rejected at the start, one failed at the endpoint
+        cPM.Test_ForceWorkerStartReadFailures 1
+        cPM.Test_ForceWorkerEndpointReadFailures 1
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 5, 1, cPM_MethodQPC, _
+                                       FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 1, Rejected, "The rejection is counted once"
+        Test_Assert_EqualLong 1, FailedReads, "The endpoint failure is counted once"
+        Test_Assert_EqualLong 3, cPM.Stats_Count(Samples), _
+                              "Both classes of loss remove one sample each"
+
+'------------------------------------------------------------------------------
+' ASSERT THE SEAMS SELF-CLEAR
+'------------------------------------------------------------------------------
+    'An armed count consumed by one run must not survive into the next
+        Samples = cPM.MeasureProcedure("cPM_Test_Workload", 4, 1, cPM_MethodQPC, _
+                                       FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 0, Rejected, "Armed start failures do not leak"
+        Test_Assert_EqualLong 0, FailedReads, "Armed endpoint failures do not leak"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Measure_RejectsStartFallback"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Measure_AllRejectedPublishesEvidence()
+'
+'==============================================================================
+'                TEST MEASURE ALL REJECTED PUBLISHES EVIDENCE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Asserts that when every measured cycle is rejected, the harness publishes
+'   its evidence BEFORE raising, and that the message names the real cause
+'
+' WHY THIS EXISTS
+'   The all-rejected path destroys exactly the evidence needed to explain it if
+'   the outputs are assigned after the raise. A caller who traps the error would
+'   read zero failures and zero rejections, and conclude nothing went wrong
+'
+'   The message matters as much. The reads did not fail: the host could not
+'   start the requested backend. Reporting "no measured read produced a value"
+'   sends that caller to inspect a clock that is working perfectly
+'
+' BEHAVIOR
+'   - Every cycle rejected raises ERR_CPM_MEASURE_NO_VALID_SAMPLES
+'   - The outputs are populated when the error is trapped
+'   - The description names the fallback rather than a read failure
+'
+' ERROR POLICY
+'   Unexpected errors are recorded and the case continues through cleanup
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Discarded()     As Double                 'Vector that must not be returned
+    Dim FailedReads     As Long                   'Reported native failure count
+    Dim LastStatus      As cPM_ReadStatus         'Reported failure or rejection status
+    Dim Rejected        As Long                   'Reported rejection count
+    Dim RaisedNumber    As Long                   'Trapped error number
+    Dim RaisedText      As String                 'Trapped error description
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: all cycles rejected"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Non-strict, so a start failure falls back instead of raising
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = False
+
+'------------------------------------------------------------------------------
+' FORCE EVERY MEASURED CYCLE TO FALL BACK
+'------------------------------------------------------------------------------
+    'Arm one start failure per measured iteration
+        cPM.Test_ForceWorkerStartReadFailures 4
+        On Error Resume Next
+        Discarded = cPM.MeasureProcedure("cPM_Test_Workload", 4, 1, cPM_MethodQPC, _
+                                         FailedReads, LastStatus, Rejected)
+        RaisedNumber = Err.Number
+        RaisedText = Err.Description
+        Err.Clear
+        On Error GoTo CleanFail
+
+'------------------------------------------------------------------------------
+' ASSERT THE RAISE AND THE PUBLISHED EVIDENCE
+'------------------------------------------------------------------------------
+    'An empty vector is not a measurement
+        Test_Assert_EqualLong CLng(ERR_CPM_MEASURE_NO_VALID_SAMPLES), RaisedNumber, _
+                              "An all-rejected run raises the no-valid-samples error"
+
+    'The evidence must survive the raise, or the caller cannot diagnose it
+        Test_Assert_EqualLong 4, Rejected, _
+                              "Rejections are published before the raise"
+        Test_Assert_EqualLong 0, FailedReads, _
+                              "No read failure is reported for an all-rejected run"
+        Test_Assert_EqualLong CLng(cPM_ReadFallbackToMethod2), CLng(LastStatus), _
+                              "The published status names the fallback"
+
+    'The description must name the real cause, not a read failure
+        Test_Assert_ContainsString RaisedText, "fell back", _
+                                   "The message names the fallback"
+        Test_Assert_ContainsString RaisedText, "rejected", _
+                                   "The message says the observations were rejected"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Measure_AllRejectedPublishesEvidence"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_Measure_WorkerRaiseEvidenceBoundary()
+'
+'==============================================================================
+'                TEST MEASURE WORKER RAISE EVIDENCE BOUNDARY
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Asserts that when the worker raises before the harness can classify a cycle,
+'   the optional outputs are left at their defaults and must not be read as
+'   evidence that nothing failed
+'
+' WHY THIS EXISTS
+'   In strict mode the worker raises from inside StartTimer, so execution never
+'   reaches the line that would count anything. The counters genuinely hold
+'   nothing at that moment, and writing zeros into the outputs on the error path
+'   would manufacture evidence rather than report it
+'
+'   The contract is therefore stated by control flow, not by mode: the outputs
+'   are authoritative on a normal return and on the aggregate raise, and nowhere
+'   else. This case pins that so a future change cannot quietly start publishing
+'   from the error handler
+'
+' BEHAVIOR
+'   - A strict-mode forced start failure raises
+'   - The optional outputs remain at their pre-call values
+'   - Err.Number carries the diagnosis instead
+'
+' ERROR POLICY
+'   Unexpected errors are recorded and the case continues through cleanup
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Discarded()     As Double                 'Vector that must not be returned
+    Dim FailedReads     As Long                   'Reported native failure count
+    Dim LastStatus      As cPM_ReadStatus         'Reported failure or rejection status
+    Dim Rejected        As Long                   'Reported rejection count
+    Dim RaisedNumber    As Long                   'Trapped error number
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: worker-raise evidence boundary"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Strict, so a start failure raises instead of falling back
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = True
+
+'------------------------------------------------------------------------------
+' SEED THE OUTPUTS WITH VALUES THE CLASS MUST OVERWRITE
+'------------------------------------------------------------------------------
+    'Seeding with 99 rather than -1 proves the class assigned the sentinel
+    'itself. If it merely left the caller's values alone, this would still read
+    '99 and the assertions below would fail
+        FailedReads = 99
+        Rejected = 99
+        LastStatus = cPM_ReadElapsedInvalid
+
+'------------------------------------------------------------------------------
+' FORCE A STRICT-MODE START FAILURE
+'------------------------------------------------------------------------------
+    'The worker mirrors strict mode, so this raises from inside StartTimer
+        cPM.Test_ForceWorkerStartReadFailures 1
+        On Error Resume Next
+        Discarded = cPM.MeasureProcedure("cPM_Test_Workload", 4, 1, cPM_MethodQPC, _
+                                         FailedReads, LastStatus, Rejected)
+        RaisedNumber = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+'------------------------------------------------------------------------------
+' ASSERT THE BOUNDARY
+'------------------------------------------------------------------------------
+    'Something must have been raised
+        Test_Assert_True RaisedNumber <> 0, _
+                         "A strict-mode start failure propagates to the caller"
+
+    'It must not be the aggregate error: no cycle was ever classified
+        Test_Assert_True RaisedNumber <> CLng(ERR_CPM_MEASURE_NO_VALID_SAMPLES), _
+                         "An early worker raise is not the aggregate no-samples error"
+
+    'Both counts must read the NOT PUBLISHED sentinel. Zeros here would be
+    'indistinguishable from a flawless run, which is the whole point
+        Test_Assert_EqualLong -1, FailedReads, _
+                              "FailedReadsOut reads the not-published sentinel"
+        Test_Assert_EqualLong -1, Rejected, _
+                              "RejectedSamplesOut reads the not-published sentinel"
+        Test_Assert_True FailedReads < 0, _
+                         "A negative count is the caller's not-published signal"
+
+'------------------------------------------------------------------------------
+' ASSERT THE SENTINEL PRECEDES VALIDATION
+'------------------------------------------------------------------------------
+    'A blank name raises during validation, before any measurement work. The
+    'sentinel has to be assigned before that, or this earliest of all failures
+    'would be the one case that still reports a clean-run shape
+        FailedReads = 99
+        Rejected = 99
+        On Error Resume Next
+        Discarded = cPM.MeasureProcedure(vbNullString, 4, 1, cPM_MethodQPC, _
+                                         FailedReads, LastStatus, Rejected)
+        RaisedNumber = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong CLng(ERR_CPM_MEASURE_BLANK_PROC), RaisedNumber, _
+                              "A blank procedure name still raises"
+        Test_Assert_EqualLong -1, FailedReads, _
+                              "The sentinel is assigned before validation"
+        Test_Assert_EqualLong -1, Rejected, _
+                              "Both counts are sentinelled before validation"
+
+'------------------------------------------------------------------------------
+' ASSERT THE SEAM STILL SELF-CLEARS
+'------------------------------------------------------------------------------
+    'A raise must not leave a forced failure armed for the next caller
+        cPM.StrictMode = False
+        FailedReads = 0
+        Rejected = 0
+        Discarded = cPM.MeasureProcedure("cPM_Test_Workload", 4, 1, cPM_MethodQPC, _
+                                         FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 0, Rejected, _
+                              "An armed start failure does not survive a raise"
+        Test_Assert_EqualLong 4, cPM.Stats_Count(Discarded), _
+                              "The following run is unaffected by the raised one"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Measure_WorkerRaiseEvidenceBoundary"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_MeasureBaseline_ForwardsEvidence()
+'
+'==============================================================================
+'                  TEST MEASURE BASELINE FORWARDS EVIDENCE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Asserts that MeasureBaseline exposes the same harness evidence as
+'   MeasureProcedure, forwarded from the delegated run
+'
+' WHY THIS EXISTS
+'   Before v1.4.0 MeasureBaseline exposed no failure evidence at all. A caller
+'   could see that a workload vector had been shortened but had no way to ask
+'   whether the baseline being subtracted had been shortened for the same
+'   reason. Comparing a clean workload against a quietly degraded baseline is
+'   not a comparison, and nothing said so
+'
+' BEHAVIOR
+'   - A clean baseline reports no failures and no rejections
+'   - A rejected baseline cycle is reported through the forwarded outputs
+'   - The outputs remain optional, so existing calls still compile
+'
+' ERROR POLICY
+'   Unexpected errors are recorded and the case continues through cleanup
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Baseline()      As Double                 'Baseline samples
+    Dim FailedReads     As Long                   'Reported native failure count
+    Dim LastStatus      As cPM_ReadStatus         'Reported failure or rejection status
+    Dim Rejected        As Long                   'Reported rejection count
+    Dim RaisedNumber    As Long                   'Trapped error number
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: baseline forwards evidence"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Non-strict, so a start failure falls back instead of raising
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = False
+
+'------------------------------------------------------------------------------
+' ASSERT A CLEAN BASELINE
+'------------------------------------------------------------------------------
+    'Nothing armed, so the baseline should be complete
+        Baseline = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 5, 1, cPM_MethodQPC, _
+                                       FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 5, cPM.Stats_Count(Baseline), _
+                              "A clean baseline retains every cycle"
+        Test_Assert_EqualLong 0, FailedReads, "A clean baseline reports no failed reads"
+        Test_Assert_EqualLong 0, Rejected, "A clean baseline reports no rejections"
+
+'------------------------------------------------------------------------------
+' ASSERT A REJECTED BASELINE CYCLE IS VISIBLE
+'------------------------------------------------------------------------------
+    'The forwarded outputs are the only way a caller can learn this
+        cPM.Test_ForceWorkerStartReadFailures 2
+        Baseline = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 5, 1, cPM_MethodQPC, _
+                                       FailedReads, LastStatus, Rejected)
+        Test_Assert_EqualLong 2, Rejected, _
+                              "Baseline rejections reach the caller"
+        Test_Assert_EqualLong 3, cPM.Stats_Count(Baseline), _
+                              "Rejected baseline cycles contribute no sample"
+        Test_Assert_EqualLong CLng(cPM_ReadFallbackToMethod2), CLng(LastStatus), _
+                              "The forwarded status names the fallback"
+
+'------------------------------------------------------------------------------
+' ASSERT THE SENTINEL PRECEDES BASELINE VALIDATION
+'------------------------------------------------------------------------------
+    'MeasureBaseline raises its own blank-name error before delegating, so it
+    'must apply the sentinel itself. Otherwise this is the one path where the
+    'guarantee would not hold
+        FailedReads = 99
+        Rejected = 99
+        On Error Resume Next
+        Baseline = cPM.MeasureBaseline(vbNullString, 4, 1, cPM_MethodQPC, _
+                                       FailedReads, LastStatus, Rejected)
+        RaisedNumber = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong CLng(ERR_CPM_MEASURE_NO_BASELINE), RaisedNumber, _
+                              "A blank baseline name still raises"
+        Test_Assert_EqualLong -1, FailedReads, _
+                              "MeasureBaseline sentinels before its own validation"
+        Test_Assert_EqualLong -1, Rejected, _
+                              "Both baseline counts are sentinelled before validation"
+
+'------------------------------------------------------------------------------
+' ASSERT THE OUTPUTS REMAIN OPTIONAL
+'------------------------------------------------------------------------------
+    'The pre-v1.4.0 call shape must still compile and behave
+        Baseline = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 4, 1)
+        Test_Assert_EqualLong 4, cPM.Stats_Count(Baseline), _
+                              "The four-argument baseline call is unchanged"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_MeasureBaseline_ForwardsEvidence"
     'Continue through centralized cleanup
         Resume CleanExit
 
