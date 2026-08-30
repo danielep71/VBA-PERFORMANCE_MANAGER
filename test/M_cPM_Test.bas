@@ -64,7 +64,7 @@ Option Explicit     'Force explicit declaration of all variables
 '       * The Stats_* routines operate on any Double() sample vector
 '
 ' VERSION
-'   1.3.0
+'   1.4.0
 '
 ' UPDATED
 '   2026-08-15

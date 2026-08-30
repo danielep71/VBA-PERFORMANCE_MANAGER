@@ -10,8 +10,8 @@
 
 [![Excel VBA](https://img.shields.io/badge/Excel_VBA-source_support_32_%2F_64--bit-217346?style=for-the-badge&logo=microsoft-excel&logoColor=white)](#requirements)
 [![Windows](https://img.shields.io/badge/Platform-Windows_desktop-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#requirements)
-[![Version](https://img.shields.io/badge/Version-1.3.0-6f42c1?style=for-the-badge)](#release-status)
-[![Regression](https://img.shields.io/badge/Regression-511_%2F_511-2ea44f?style=for-the-badge)](#regression-testing)
+[![Version](https://img.shields.io/badge/Version-1.4.0-6f42c1?style=for-the-badge)](#release-status)
+[![Regression](https://img.shields.io/badge/Regression-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
 [![Static checks](https://img.shields.io/badge/Static_checks-12_%2F_12-0969da?style=for-the-badge)](#static-source-analysis)
 [![License](https://img.shields.io/badge/License-MIT-2ea44f?style=for-the-badge)](LICENSE)
 
@@ -145,7 +145,7 @@ benchmark repetition, statistics, and Excel-state cleanup.
 | Diagnostics | Timing environment | QPC frequency, system tick interval, backend overhead, active method and read status |
 | Failure policy | Strict by default | Raise on invalid measurement; optional non-strict fallback/zero with explicit status |
 | Deployment | Source-first | Two required production files; no official `.xlam` distribution |
-| Assurance | Static plus real Excel evidence | 12 hosted source checks; v1.3.0 manually certified with 72 cases / 511 assertions |
+| Assurance | Static plus real Excel evidence | 12 hosted source checks; v1.3.0 certified with 72 cases / 511 assertions; v1.4.0 development line at 80 cases / 643 assertions, final certification pending |
 
 ---
 
@@ -224,6 +224,7 @@ Measure it:
 Dim cPM As cPerformanceManager
 Dim Samples() As Double
 Dim FailedReads As Long
+Dim Rejected As Long
 Dim LastFailure As cPM_ReadStatus
 
 Set cPM = New cPerformanceManager
@@ -234,10 +235,19 @@ Samples = cPM.MeasureProcedure( _
               WarmupIterations:=3, _
               iMethod:=cPM_MethodQPC, _
               FailedReadsOut:=FailedReads, _
-              LastFailureStatusOut:=LastFailure)
+              LastFailureStatusOut:=LastFailure, _
+              RejectedSamplesOut:=Rejected)
 
 Debug.Print cPM.Stats_Text(Samples, "Benchmark_Target")
-Debug.Print "Failed reads: " & FailedReads
+
+'A negative count means the run ended before classifying anything, so no
+'evidence was published and Err carried the diagnosis instead
+If FailedReads < 0 Then
+    Debug.Print "No evidence published for this run."
+Else
+    Debug.Print "Failed reads: " & FailedReads & _
+                " | rejected for backend fallback: " & Rejected
+End If
 
 cPM.ResetEnvironment
 Set cPM = Nothing
@@ -259,15 +269,29 @@ End Sub
 Then compare medians:
 
 ```vb
-Dim Work() As Double
-Dim Base() As Double
+Dim Work() As Double, Base() As Double
+Dim WFailed As Long, WRejected As Long
+Dim BFailed As Long, BRejected As Long
+Dim WStatus As cPM_ReadStatus, BStatus As cPM_ReadStatus
 Dim NetMedian As Double
 
-Work = cPM.MeasureProcedure("Benchmark_Target", 30, 3)
-Base = cPM.MeasureBaseline("Benchmark_Empty", 30, 3)
+Work = cPM.MeasureProcedure("Benchmark_Target", 30, 3, cPM_MethodQPC, _
+                            WFailed, WStatus, WRejected)
+Base = cPM.MeasureBaseline("Benchmark_Empty", 30, 3, cPM_MethodQPC, _
+                           BFailed, BStatus, BRejected)
 
-NetMedian = cPM.Stats_Median(Work) - cPM.Stats_Median(Base)
-Debug.Print "Net median: " & Format$(NetMedian, "0.000000000") & " seconds"
+'Check validity before subtracting. A clean 30-sample workload compared
+'against a baseline quietly reduced to 4 samples is not a comparison
+If WFailed < 0 Or BFailed < 0 Then
+    Debug.Print "A run published no evidence - inspect Err, not these counts."
+ElseIf WRejected > 0 Or BRejected > 0 Then
+    Debug.Print "Backend fallback rejected samples - not a matched pair."
+ElseIf WFailed > 0 Or BFailed > 0 Then
+    Debug.Print "Read failures occurred - check the status before trusting these."
+Else
+    NetMedian = cPM.Stats_Median(Work) - cPM.Stats_Median(Base)
+    Debug.Print "Net median: " & Format$(NetMedian, "0.000000000") & " seconds"
+End If
 ```
 
 Use `MeasureBaseline`, not `MeasureOverhead_Samples`, when removing the cost of
@@ -585,8 +609,12 @@ session in the VBA project, not merely one instance.
 
 The supported consumer facade is `cPerformanceManager`.
 
-The v1.3.0 class exposes **44 unique public members**: 25 Subs/Functions and 19
+The class exposes **44 unique public members**: 25 Subs/Functions and 19
 properties. The `StrictMode` Get/Let pair is one property, not two members.
+
+v1.4.0 adds no new public member. It widens three existing signatures with
+trailing optional parameters, so the count is unchanged and every v1.3.0 call
+shape still compiles.
 
 <details open>
 <summary><strong>⏱️ Core timing</strong></summary>
@@ -804,7 +832,14 @@ Run_cPerformanceManager_RegressionSuite
 The current interactive harness writes detailed case/assertion evidence to a
 dedicated worksheet and summarizes the run in the Immediate Window.
 
-## Latest tagged execution evidence
+## Execution evidence
+
+Three distinct things, kept separate on purpose. The published record describes
+a tag that exists; the development line describes a branch that has not been
+certified; and final v1.4.0 certification does not exist until the release SHA
+is tagged and certified.
+
+### Latest published tagged evidence
 
 | Evidence | v1.3.0 result |
 |---|---|
@@ -816,6 +851,26 @@ dedicated worksheet and summarizes the run in the Immediate Window.
 | Release workbook | `PERFORMANCE.MANAGER.xlsm` |
 | Workbook SHA-256 | `05cb9d79986144d0498d599ccf070447b5fe8720ee23a5c81bf68a99a5aa66a0` |
 | Manifest SHA-256 | `56c3a1996184e65b541a958619e199b7000ee9a9b92e2266ed0c886a7d81310f` |
+
+### Current development-line regression
+
+| Evidence | `release/v1.4.0` |
+|---|---|
+| Regression | **80 cases · 643 assertions · 0 failures** |
+| Excel | Microsoft 365 MSO Version 2607, Build 16.0.20228.20188 |
+| Office bitness | **64-bit** |
+| Static checks | 12 checks · 0 failures |
+
+This is development-line evidence on the branch, not a release certification.
+It is not bound to a tag, and it does not describe a merged `main` commit.
+
+### Final v1.4.0 certification
+
+**Pending.** Per `RELEASING.md`, certification must describe the exact commit
+that will be tagged. That commit does not exist until the release branch is
+merged to `main`, so no v1.4.0 tag target, workbook hash or manifest hash can be
+recorded here yet. Real Office 32-bit execution evidence is tracked in
+[#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29).
 
 The suite covers, among other areas:
 
