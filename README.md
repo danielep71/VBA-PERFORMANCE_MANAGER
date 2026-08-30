@@ -976,10 +976,14 @@ the source in your own add-in, but that host is built and maintained by you.
 - Rollover correction handles one wrap only.
 - v1.3.0 does not enforce backend-homogeneous vectors after non-strict start
   fallback. Fixed on the v1.4.0 development line ([#23](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/23)).
-- `OverheadMeasurement_Seconds` is the legacy mean-only path and can include a
-  non-strict failed read as zero while retaining the original denominator
-  ([#24](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/24)). Prefer
-  `MeasureOverhead_Samples` with strict mode for current benchmark work.
+- In v1.3.0, `OverheadMeasurement_Seconds` is the legacy mean-only path and can
+  include a non-strict failed read as zero while retaining the original
+  denominator, so a degraded host reports a faster figure than a healthy one.
+  Prefer `MeasureOverhead_Samples` with strict mode on the released version.
+  Fixed on the v1.4.0 development line ([#24](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/24)): the mean is
+  derived from retained samples only, the property can now raise
+  `ERR_CPM_MEASURE_NO_VALID_SAMPLES`, and `OverheadMeasurement_Text` renders
+  that condition as `undefined (...)`.
 - v1.3.0 does not escape apostrophes when qualifying a workbook name such as
   `O'Brien.xlsm`. Fixed on the v1.4.0 development line ([#25](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/25)).
 - v1.3.0 exposes no harness failure evidence from `MeasureBaseline` or
