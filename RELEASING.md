@@ -4,11 +4,11 @@
 
 ### Canonical maintainer procedure for publishing VBA-PERFORMANCE_MANAGER
 
-[![Scope](https://img.shields.io/badge/scope-maintainer_release_control-6f42c1?style=flat-square)](#-release-control-model)
-[![Source](https://img.shields.io/badge/source-tag_is_authoritative-217346?style=flat-square)](#-release-control-model)
-[![Static](https://img.shields.io/badge/static-GitHub_Actions-0969da?style=flat-square)](#-final-static-source-gate)
-[![Excel](https://img.shields.io/badge/Excel-execution_evidence-d97706?style=flat-square)](#-final-excel-execution-certification)
-[![Provenance](https://img.shields.io/badge/provenance-SHA--256_%2B_tag_binding-0f766e?style=flat-square)](#-generate-release-provenance)
+[![Scope](https://img.shields.io/badge/Scope-Maintainer_release_control-6f42c1?style=flat-square)](#-release-control-model)
+[![Source](https://img.shields.io/badge/Source-Tag_is_authoritative-217346?style=flat-square)](#-release-control-model)
+[![Static](https://img.shields.io/badge/Static-GitHub_Actions-0969da?style=flat-square)](#-final-static-source-gate)
+[![Excel](https://img.shields.io/badge/Excel-Execution_evidence-d97706?style=flat-square)](#-final-excel-execution-certification)
+[![Provenance](https://img.shields.io/badge/Provenance-SHA--256_%2B_tag_binding-0f766e?style=flat-square)](#-generate-release-provenance)
 
 <br>
 
