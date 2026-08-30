@@ -415,6 +415,7 @@ Consequences:
 
 In v1.3.0, `MeasureBaseline` returns the delegated vector but exposes neither
 failure metadata output, and `MeasureOverhead_Samples` exposes none either.
+Both are corrected on the v1.4.0 development line; see the note below.
 
 > [!NOTE]
 > **Fixed on the v1.4.0 development line for `MeasureBaseline`**
@@ -430,7 +431,12 @@ failure metadata output, and `MeasureOverhead_Samples` exposes none either.
 >
 > Both counts are `-1` until the run reaches a publication point, so a negative
 > count means no evidence was published and `Err` carries the diagnosis.
-> `MeasureOverhead_Samples` remains outstanding ([#28](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/28)).
+>
+> **`MeasureOverhead_Samples` is fixed on the same line** ([#28](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/28)),
+> exposing all three outputs directly and rejecting a cycle whose requested
+> backend fell back, so an overhead figure can no longer describe a different
+> clock than the one asked for. The count equation applies with cycles in place
+> of iterations.
 
 ### v1.3.0 non-strict backend-homogeneity boundary
 
@@ -977,10 +983,9 @@ the source in your own add-in, but that host is built and maintained by you.
 - v1.3.0 does not escape apostrophes when qualifying a workbook name such as
   `O'Brien.xlsm`. Fixed on the v1.4.0 development line ([#25](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/25)).
 - v1.3.0 exposes no harness failure evidence from `MeasureBaseline` or
-  `MeasureOverhead_Samples`. `MeasureBaseline` is fixed on the v1.4.0
-  development line ([#27](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/27));
-  `MeasureOverhead_Samples` remains outstanding
-  ([#28](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/28)).
+  `MeasureOverhead_Samples`. Both are fixed on the v1.4.0 development line
+  ([#27](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/27), [#28](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/28)), which also makes
+  overhead vectors backend-homogeneous.
 - `ElapsedTime` formats ordinary durations beyond 24 hours, but its current
   `Long`-based decomposition is not safe for every large finite `Double`
   ([#30](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/30)).

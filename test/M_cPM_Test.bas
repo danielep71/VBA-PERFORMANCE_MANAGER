@@ -10292,6 +10292,8 @@ Private Sub Test_MeasureOverhead_EvidenceContract()
 '   - Start fallbacks are counted as rejections, not failures
 '   - Warm-up native failures are counted; warm-up fallbacks are not
 '   - All-rejected raises with evidence published and a cycle-worded message
+'   - All-endpoint-failed raises with its own evidence and its own message,
+'     distinguishing "the clock broke" from "the backend would not start"
 '   - Both seams self-clear across normal and raised exits
 '   - The pre-v1.4.0 call shape still works
 '
@@ -10410,6 +10412,38 @@ Private Sub Test_MeasureOverhead_EvidenceContract()
                                    "The overhead message says cycle, not iteration"
         Test_Assert_ContainsString RaisedText, "fell back", _
                                    "The overhead message names the fallback"
+
+'------------------------------------------------------------------------------
+' ASSERT THE ALL-ENDPOINT-FAILED RAISE
+'------------------------------------------------------------------------------
+    'The counterpart to the all-rejected path. Every measured cycle starts on
+    'the requested backend and then fails to read, so nothing survives for a
+    'different reason. The message must say so rather than naming a fallback
+        cPM.Test_ForceWorkerEndpointReadFailures 4
+        FailedReads = 99
+        Rejected = 99
+        On Error Resume Next
+        Samples = cPM.MeasureOverhead_Samples(4, 1, cPM_MethodQPC, _
+                                              FailedReads, LastStatus, Rejected)
+        RaisedNumber = Err.Number
+        RaisedText = Err.Description
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong CLng(ERR_CPM_MEASURE_NO_VALID_SAMPLES), RaisedNumber, _
+                              "An all-failed overhead run raises the no-valid-samples error"
+        Test_Assert_EqualLong 4, FailedReads, _
+                              "Overhead failures are published before the raise"
+        Test_Assert_EqualLong 0, Rejected, _
+                              "No rejection is reported for an all-failed overhead run"
+        Test_Assert_EqualLong CLng(cPM_ReadQpcFailed), CLng(LastStatus), _
+                              "The published overhead status names the read failure"
+
+    'The all-failed branch of the message helper must also use this API's noun
+        Test_Assert_ContainsString RaisedText, "cycle", _
+                                   "The all-failed overhead message says cycle"
+        Test_Assert_ContainsString RaisedText, "produced a value", _
+                                   "The all-failed overhead message reports failed reads"
 
 '------------------------------------------------------------------------------
 ' ASSERT THE EVIDENCE BOUNDARY AND SEAM RECOVERY
