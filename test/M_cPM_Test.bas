@@ -67,7 +67,7 @@ Option Explicit     'Force explicit declaration of all variables
 '   1.4.0
 '
 ' UPDATED
-'   2026-08-15
+'   2026-08-30
 '
 ' AUTHOR
 '   Daniele Penza

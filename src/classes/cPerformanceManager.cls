@@ -115,7 +115,7 @@ Attribute VB_Exposed = False
 '   place and collisions remain visible.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-08-30
 '
 ' AUTHOR
 '   Daniele Penza
@@ -4584,7 +4584,8 @@ Public Function MeasureProcedure( _
 '
 ' ERROR POLICY
 '   - Raises on a blank procedure name
-'   - Raises ERR_CPM_MEASURE_NO_VALID_SAMPLES when no measured read succeeded
+'   - Raises ERR_CPM_MEASURE_NO_VALID_SAMPLES when no measured sample was
+'     retained, whether because every read failed or every cycle was rejected
 '   - Propagates any error raised by the measured procedure, after cleanup
 '   - Timer validation is delegated to Method_NormalizeStart
 '

@@ -254,8 +254,8 @@ Set cPM = Nothing
 ```
 
 `StrictMode` defaults to `True`. Keep that default for release-quality
-benchmarks unless the non-strict behavior and the v1.3.0 limitations described
-below are explicitly acceptable.
+benchmarks unless the non-strict behavior described below is explicitly
+acceptable.
 
 ## 4. Subtract a matched dispatch baseline
 
@@ -416,7 +416,7 @@ spans more than one complete counter period.
 | `MeasureProcedure` | `Double()` | Repeatedly runs a trusted named `Public Sub` through `Application.Run`; returns each retained measured sample |
 | `MeasureBaseline` | `Double()` | Runs an empty procedure through the same dispatch path for matched-baseline subtraction |
 | `MeasureOverhead_Samples` | `Double()` | Samples the near-empty backend timing cycle without `Application.Run` |
-| `OverheadMeasurement_Seconds` | `Double` | Legacy arithmetic-mean overhead helper; see the v1.3.0 boundary below |
+| `OverheadMeasurement_Seconds` | `Double` | Legacy arithmetic-mean overhead helper; reports no distribution and can raise |
 
 Measurement uses an isolated `cPerformanceManager` worker so the caller's
 active session, checkpoint rows, cached elapsed value, and run label are not
@@ -1096,7 +1096,7 @@ working code does.
 | A measurement call raised and the counts read `-1` | That is the not-published sentinel: the run ended before any cycle was classified, so no evidence exists. Read `Err.Number` and `Err.Description` instead |
 | A session reports `cPM_ReadOK` but timings look wrong | `LastReadStatus` describes the most recent read and is reset by each one, so a start fallback is gone once `ElapsedSeconds` runs. Compare `ActiveMethodID` against the backend you requested |
 | `MeasureProcedure` cannot find a target | Confirm it is a `Public Sub` in a standard module and that the workbook qualification is correct |
-| Workbook name contains an apostrophe | On v1.3.0, pass an explicitly escaped qualified target such as `'O''Brien.xlsm'!ProcedureName`. Handled automatically from v1.4.0 |
+| Workbook name contains an apostrophe | Handled automatically. To target a *different* workbook, escape it yourself: `'O''Brien.xlsm'!ProcedureName` |
 | Calculation was not suppressed | Check `TW_CalculationExempted` and the stable-open-workbook invariant |
 | Regression module does not compile | Import `M_DEMO_BUILDER.bas` before `M_cPM_Test.bas` |
 | State is uncertain after a hard `End` or VBA reset | Save work, close every Excel window, confirm `EXCEL.EXE` exits, restart Excel, and rerun validation in a controlled workbook |
@@ -1159,13 +1159,19 @@ Its release scope includes:
 - routing legacy overhead measurement through the validated sample path;
 - escaping apostrophes in workbook-qualified `Application.Run` targets;
 - correcting enum documentation to reflect VBA `Long` semantics;
-- completing baseline/overhead failure evidence;
-- adding a real Excel regression gate with machine-readable, SHA-bound results;
-- obtaining real Office 32-bit execution evidence if 32-bit remains supported.
+- completing baseline/overhead failure evidence.
 
-On this pre-release branch, the production source version stamps remain
-`1.3.0` until the release procedure deliberately advances them. The items above
-are release scope, not claims that v1.4.0 behavior has already shipped.
+The behavior above is implemented on this branch and the production source
+version stamps have been advanced to `1.4.0`. What remains before publication is
+certification, not implementation: an integrated regression on the merged `main`
+commit, real Office 32-bit execution evidence
+([#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)), then
+tag and provenance.
+
+A real Excel regression gate that runs in CI with machine-readable, SHA-bound
+results is **not** part of v1.4.0. It needs a self-hosted Windows runner and is
+tracked separately in
+[#11](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/11).
 
 ---
 
