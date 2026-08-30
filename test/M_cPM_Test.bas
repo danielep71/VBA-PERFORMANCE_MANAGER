@@ -7559,6 +7559,14 @@ Private Sub Test_FaultInject_QpcStartFailure_Strict()
 '   previous timing session completely untouched
 '
 ' WHY THIS EXISTS
+'   Covers both AlignToNextTick settings. The aligned capture runs through
+'   QPC_TryGetNextTick, a different function with its own early exit, so the
+'   unaligned assertions do not speak for it.
+'
+'   Scope boundary: only the initial tick read is forced to fail. The seam is
+'   one-shot, so the loop's second read and the spin-guard timeout are not
+'   reachable from here and remain outside this case.
+'
 '   StartTimer is transactional. A failed start capture must not disturb state
 '   the caller may still be relying on. Without fault injection this contract
 '   could never be exercised, because QueryPerformanceCounter does not fail on
@@ -7571,7 +7579,7 @@ Private Sub Test_FaultInject_QpcStartFailure_Strict()
 '   None
 '
 ' UPDATED
-'   2026-08-15
+'   2026-08-30
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -7657,6 +7665,54 @@ Private Sub Test_FaultInject_QpcStartFailure_Strict()
         Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
                               "LastReadStatus resets to OK on the next successful start"
 
+'------------------------------------------------------------------------------
+' ALIGNED START, SAME CONTRACT
+'------------------------------------------------------------------------------
+    'AlignToNextTick routes the capture through QPC_TryGetNextTick rather than
+    'QPC_TryReadTick. That is a different function with its own early exit, and
+    'until now every forced-failure case used the unaligned default, so the
+    'aligned failure path had never run
+        cPM.StartTimer 5, True, "Protected aligned run"
+        T1Before = cPM.T1
+        MethodBefore = cPM.ActiveMethodID
+        Test_Assert_EqualLong 5, CLng(MethodBefore), _
+                              "Aligned baseline session is bound to method 5"
+
+    'Arm one forced failure. The seam is one-shot, so it is consumed by the
+    'first tick read inside the alignment helper
+        cPM.Test_ForceNextQPCReadFailure
+        Raised = False
+        On Error Resume Next
+        cPM.StartTimer 5, True
+        If Err.Number <> 0 Then
+            Raised = True
+            Err.Clear
+        End If
+        On Error GoTo CleanFail
+
+    'Strict mode rejects the aligned capture exactly as it rejects the unaligned one
+        Test_Assert_True Raised, _
+                         "A failed aligned QPC start read raises in strict mode"
+
+    'The transactional guarantee must hold on this path too
+        Test_Assert_EqualBoolean True, cPM.HasActiveSession, _
+                                 "The previous aligned session is still active"
+        Test_Assert_EqualLong CLng(cPM.ActiveMethodID), CLng(MethodBefore), _
+                              "The previous aligned backend binding is unchanged"
+        Test_Assert_ApproxDouble cPM.T1, T1Before, 0.000000001, _
+                                 "The previous aligned start timestamp is unchanged"
+        Test_Assert_EqualString "Protected aligned run", cPM.RunLabel, _
+                                "The previous aligned run label is unchanged"
+        Test_Assert_EqualLong CLng(cPM_ReadQpcFailed), CLng(cPM.LastReadStatus), _
+                              "Aligned LastReadStatus reports a QPC read failure"
+
+    'And the seam must still self-clear on the aligned path
+        cPM.StartTimer 5, True
+        Test_Assert_EqualLong 5, CLng(cPM.ActiveMethodID), _
+                              "The aligned forced failure was one-shot"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
+                              "Aligned LastReadStatus resets to OK on the next success"
+
 CleanExit:
 '------------------------------------------------------------------------------
 ' CLEANUP
@@ -7701,6 +7757,14 @@ Private Sub Test_FaultInject_QpcStartFailure_NonStrict()
 '   subsequent successful end read then measured from zero and reported a value
 '   resembling machine uptime rather than the operation's runtime
 '
+'   Covers both AlignToNextTick settings. The aligned capture runs through
+'   QPC_TryGetNextTick, a different function with its own early exit, so the
+'   unaligned assertions do not speak for it.
+'
+'   Scope boundary: only the initial tick read is forced to fail. The seam is
+'   one-shot, so the loop's second read and the spin-guard timeout are not
+'   reachable from here and remain outside this case.
+'
 ' INPUTS
 '   None
 '
@@ -7708,7 +7772,7 @@ Private Sub Test_FaultInject_QpcStartFailure_NonStrict()
 '   None
 '
 ' UPDATED
-'   2026-08-15
+'   2026-08-30
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -7772,6 +7836,39 @@ Private Sub Test_FaultInject_QpcStartFailure_NonStrict()
     'Assert the interval is at least roughly the requested pause
         Test_Assert_True (ElapsedS >= 0.01), _
                          "Elapsed time reflects the requested pause"
+
+'------------------------------------------------------------------------------
+' ALIGNED START, SAME CONTRACT
+'------------------------------------------------------------------------------
+    'The aligned capture routes through QPC_TryGetNextTick. Its failure must
+    'produce the same usable method-2 session, not a half-bound one
+        cPM.Test_ForceNextQPCReadFailure
+        cPM.StartTimer 5, True
+
+    'Method 2 must actually be bound, not method 5 with a sentinel start
+        Test_Assert_EqualLong 2, CLng(cPM.ActiveMethodID), _
+                              "Non-strict aligned QPC start failure binds method 2"
+        Test_Assert_EqualBoolean True, cPM.HasActiveSession, _
+                                 "The aligned fallback session is active"
+        Test_Assert_EqualLong CLng(cPM_ReadFallbackToMethod2), CLng(cPM.LastReadStatus), _
+                              "Aligned LastReadStatus reports the fallback to method 2"
+        Test_Assert_True (cPM.T1 > 0#), _
+                         "The committed aligned start timestamp is a real method-2 reading"
+
+    'The fallback session must measure a real interval, not machine uptime
+        cPM.Pause 0.05, 1
+        ElapsedS = cPM.ElapsedSeconds
+        Test_Assert_InRangeDouble 0#, 60#, ElapsedS, _
+                                  "Aligned fallback elapsed time is a real interval"
+        Test_Assert_True (ElapsedS >= 0.01), _
+                         "Aligned fallback elapsed time reflects the requested pause"
+
+    'The seam must self-clear, so the next aligned start binds method 5 again
+        cPM.StartTimer 5, True
+        Test_Assert_EqualLong 5, CLng(cPM.ActiveMethodID), _
+                              "The aligned forced failure did not persist"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
+                              "Aligned LastReadStatus resets to OK after the fallback"
 
 CleanExit:
 '------------------------------------------------------------------------------
