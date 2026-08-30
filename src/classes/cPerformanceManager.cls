@@ -1537,22 +1537,50 @@ Public Function OverheadMeasurement_Seconds( _
 '
 ' BEHAVIOR
 '   - Normalizes and validates the requested timer method.
-'   - Warms up the timing path once before the measured loop.
-'   - Repeats a minimal StartTimer / ElapsedSeconds cycle.
-'   - Always attempts to clean up the isolated worker instance.
+'   - Delegates to MeasureOverhead_Samples with a warm-up count of 1.
+'   - Returns the mean of the retained samples.
 '
 ' ERROR POLICY
-'   Raises validation/runtime errors normally after cleanup has been attempted.
+'   Propagates whatever MeasureOverhead_Samples raises, including
+'   ERR_CPM_MEASURE_NO_VALID_SAMPLES. There is no local error handler: this
+'   routine creates no worker and so owns nothing to clean up.
+'
+' BEHAVIORAL CORRECTION IN 1.4.0
+'   v1.3.0 ran its own loop, accumulating every endpoint read into a running
+'   total and dividing by the requested iteration count. A failed non-strict
+'   read returns zero, so it was added as a zero and still counted in the
+'   denominator, pulling the mean down by the proportion of reads that failed
+'   and making a degraded host look faster. A start fallback was retained on the
+'   same path, so the figure could describe method 2 while claiming to describe
+'   the requested backend.
+'
+'   It now delegates to MeasureOverhead_Samples, which excludes failed reads and
+'   rejects fallback cycles, and averages only what survived. Two consequences
+'   for existing callers:
+'
+'     - the mean is computed over the retained sample count, not the requested
+'       iteration count, so a degraded run reports a higher and more honest
+'       figure than v1.3.0 did; and
+'     - this property previously always returned a Double. It can now raise
+'       ERR_CPM_MEASURE_NO_VALID_SAMPLES when no cycle survives. Use
+'       OverheadMeasurement_Text for a rendering that degrades instead.
+'
+'   The warm-up count is passed explicitly as 1. This routine has always warmed
+'   up exactly once, and inheriting MeasureOverhead_Samples' default of 10 would
+'   silently change both its runtime and its result.
 '
 ' DEPENDENCIES
 '   - Method_NormalizeStart
-'   - StartTimer
-'   - ElapsedSeconds
-'   - ResetEnvironment
+'   - MeasureOverhead_Samples
+'   - Stats_Mean
 '
 ' NOTES
-'   The measurement is performed on an isolated temporary cPerformanceManager
-'   instance so that the caller's checkpoint/report state is not disturbed.
+'   The three evidence outputs of the delegated run are captured into locals and
+'   not surfaced. This is the legacy mean-only API; a caller who needs the
+'   evidence should call MeasureOverhead_Samples directly.
+'
+'   Isolation is unchanged: MeasureOverhead_Samples runs on its own worker, so
+'   the caller's checkpoint and report state is not disturbed.
 '
 '   This routine reports the arithmetic MEAN only. Timing distributions are
 '   right-skewed, so a single scheduler preemption during the loop shifts the
