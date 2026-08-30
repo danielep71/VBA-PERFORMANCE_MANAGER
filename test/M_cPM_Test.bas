@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 79    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 80    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -572,6 +572,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: overhead evidence contract"
         Test_MeasureOverhead_EvidenceContract
+
+    'Validate the legacy overhead mean and its text formatter
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: legacy overhead validity"
+        Test_LegacyOverhead_ValidatedPath
 
     'Validate strict-mode rejection of a failed QPC start read
         CurrentStep = CurrentStep + 1
@@ -10507,6 +10512,193 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_MeasureOverhead_EvidenceContract"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_LegacyOverhead_ValidatedPath()
+'
+'==============================================================================
+'                  TEST LEGACY OVERHEAD VALIDATED PATH
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Asserts that OverheadMeasurement_Seconds averages only retained samples and
+'   that OverheadMeasurement_Text degrades for the expected condition alone
+'
+' WHY THIS EXISTS
+'   v1.3.0 accumulated every endpoint read into a running total and divided by
+'   the requested iteration count. A failed non-strict read returns zero, so it
+'   was added as a zero and still counted in the denominator, pulling the mean
+'   down by exactly the proportion of reads that failed. The result looked like
+'   a faster machine
+'
+'   A start fallback was retained too, so the figure could describe method 2
+'   while claiming to describe the requested backend
+'
+' BEHAVIOR
+'   - A clean run returns a positive mean
+'   - Endpoint failures no longer drag the mean toward zero
+'   - An all-failed run raises rather than returning a meaningless number
+'   - An all-rejected run raises with the fallback named
+'   - The text formatter renders undefined(...) for that expected condition
+'   - The text formatter carries the original description, so all-failed and
+'     all-fallback read differently
+'   - The text formatter propagates any other error unchanged
+'   - A supplied numeric value still formats without measuring
+'
+' ERROR POLICY
+'   Unexpected errors are recorded and the case continues through cleanup
+'
+' UPDATED
+'   2026-08-30
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim CleanMean       As Double                 'Mean from an undisturbed run
+    Dim DegradedMean    As Double                 'Mean from a run with failures
+    Dim Discarded       As Double                 'Value that must not be returned
+    Dim TextOut         As String                 'Rendered overhead line
+    Dim RaisedNumber    As Long                   'Trapped error number
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Measure: legacy overhead validity"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Non-strict, so failures and fallbacks return rather than raise per cycle
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = False
+
+'------------------------------------------------------------------------------
+' ASSERT A CLEAN MEAN
+'------------------------------------------------------------------------------
+    'An undisturbed run must produce a positive, finite overhead figure
+        CleanMean = cPM.OverheadMeasurement_Seconds(cPM_MethodQPC, 20)
+        Test_Assert_True (CleanMean > 0#), _
+                         "A clean overhead mean is positive"
+        Test_Assert_InRangeDouble 0#, 1#, CleanMean, _
+                                  "A clean overhead mean is a plausible per-cycle cost"
+
+'------------------------------------------------------------------------------
+' ASSERT FAILED READS NO LONGER DRAG THE MEAN DOWN
+'------------------------------------------------------------------------------
+    'Half the measured reads fail. In v1.3.0 each contributed a zero while still
+    'counting in the denominator, roughly halving the reported mean. The
+    'validated path averages only what survived, so the figure stays comparable
+        cPM.Test_ForceWorkerEndpointReadFailures 10
+        DegradedMean = cPM.OverheadMeasurement_Seconds(cPM_MethodQPC, 20)
+        Test_Assert_True (DegradedMean > 0#), _
+                         "A degraded overhead mean is still positive"
+        Test_Assert_True (DegradedMean > CleanMean / 4#), _
+                         "Failed reads no longer pull the mean toward zero"
+
+'------------------------------------------------------------------------------
+' ASSERT THE ALL-FAILED RAISE
+'------------------------------------------------------------------------------
+    'Every measured read fails, so there is nothing to average. Returning zero
+    'here would be a number with no measurement behind it
+        cPM.Test_ForceWorkerEndpointReadFailures 5
+        On Error Resume Next
+        Discarded = cPM.OverheadMeasurement_Seconds(cPM_MethodQPC, 5)
+        RaisedNumber = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+        Test_Assert_EqualLong CLng(ERR_CPM_MEASURE_NO_VALID_SAMPLES), RaisedNumber, _
+                              "An all-failed legacy overhead run raises"
+
+'------------------------------------------------------------------------------
+' ASSERT THE ALL-REJECTED RAISE
+'------------------------------------------------------------------------------
+    'Every measured cycle falls back instead, so the reads all succeed on the
+    'wrong clock. v1.3.0 averaged those method-2 numbers and called them QPC
+        cPM.Test_ForceWorkerStartReadFailures 5
+        On Error Resume Next
+        Discarded = cPM.OverheadMeasurement_Seconds(cPM_MethodQPC, 5)
+        RaisedNumber = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+        Test_Assert_EqualLong CLng(ERR_CPM_MEASURE_NO_VALID_SAMPLES), RaisedNumber, _
+                              "An all-rejected legacy overhead run raises"
+
+'------------------------------------------------------------------------------
+' ASSERT THE TEXT FORMATTER DEGRADES
+'------------------------------------------------------------------------------
+    'A formatter should render the expected condition, not push it at its caller
+        cPM.Test_ForceWorkerEndpointReadFailures 5
+        TextOut = cPM.OverheadMeasurement_Text(cPM_MethodQPC, 5)
+        Test_Assert_ContainsString TextOut, "undefined", _
+                                   "All-failed overhead text renders undefined"
+        Test_Assert_ContainsString TextOut, "produced a value", _
+                                   "All-failed overhead text carries the read-failure reason"
+
+    'The same rendering for a different cause must read differently, or the
+    'formatter has discarded the distinction the counters exist to preserve
+        cPM.Test_ForceWorkerStartReadFailures 5
+        TextOut = cPM.OverheadMeasurement_Text(cPM_MethodQPC, 5)
+        Test_Assert_ContainsString TextOut, "undefined", _
+                                   "All-rejected overhead text renders undefined"
+        Test_Assert_ContainsString TextOut, "fell back", _
+                                   "All-rejected overhead text names the fallback instead"
+
+'------------------------------------------------------------------------------
+' ASSERT THE FORMATTER STILL PROPAGATES OTHER ERRORS
+'------------------------------------------------------------------------------
+    'Only the no-valid-samples condition is caught. An invalid argument is not
+    'an undefined measurement, and hiding it would be worse than raising it
+        cPM.StrictMode = True
+        On Error Resume Next
+        TextOut = cPM.OverheadMeasurement_Text(99, 5)
+        RaisedNumber = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+        Test_Assert_True RaisedNumber <> 0, _
+                         "An invalid backend still raises from the text formatter"
+        Test_Assert_True RaisedNumber <> CLng(ERR_CPM_MEASURE_NO_VALID_SAMPLES), _
+                         "An invalid backend is not reported as an undefined measurement"
+        cPM.StrictMode = False
+
+'------------------------------------------------------------------------------
+' ASSERT A SUPPLIED VALUE STILL FORMATS WITHOUT MEASURING
+'------------------------------------------------------------------------------
+    'The pre-existing shortcut must be untouched by any of the above. The
+    'expected string is built with the same Format$ mask the property uses,
+    'because Format$ honours the system decimal separator: hard-coding a period
+    'would fail on any locale that writes 0,000001234
+        TextOut = cPM.OverheadMeasurement_Text(cPM_MethodQPC, 5, 0.000001234)
+        Test_Assert_ContainsString TextOut, Format$(0.000001234, "0.000000000"), _
+                                   "A supplied overhead value is formatted directly"
+        Test_Assert_True (InStr(1, TextOut, "undefined") = 0), _
+                         "A supplied value never renders as undefined"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_LegacyOverhead_ValidatedPath"
     'Continue through centralized cleanup
         Resume CleanExit
 

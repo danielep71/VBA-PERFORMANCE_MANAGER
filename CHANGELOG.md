@@ -41,12 +41,21 @@ notice below.**
 >   them after a raise now sees a negative count rather than zeros. Code that
 >   assumed a zero count meant a clean run must test for a negative count first.
 >
-> The legacy `OverheadMeasurement_Seconds` loop still accumulates a failed
-> endpoint read as zero and divides by the requested iteration count. That
-> correction is tracked by #24 and has not shipped yet.
-> `OverheadMeasurement_Text` will render the expected no-valid-sample condition
-> as an explicit `undefined (...)` diagnostic while continuing to propagate
-> unexpected errors.
+> The legacy `OverheadMeasurement_Seconds` accumulated every endpoint read into
+> a running total and divided by the requested iteration count. A failed
+> non-strict read returns zero, so it was added as a zero and still counted in
+> the denominator, pulling the mean down by the proportion of reads that failed
+> and making a degraded host look faster. A start fallback was retained too, so
+> the figure could describe method 2 while claiming to describe the requested
+> backend.
+>
+> It now delegates to `MeasureOverhead_Samples` and averages only the retained
+> samples. This property previously always returned a `Double`; it can now raise
+> `ERR_CPM_MEASURE_NO_VALID_SAMPLES` when no cycle survives.
+> `OverheadMeasurement_Text` renders that expected condition as
+> `undefined (<original description>)`, carrying the description through so an
+> all-fallback run reads differently from an all-failed one, and propagates
+> every other error unchanged.
 
 ### Added
 
@@ -139,6 +148,25 @@ notice below.**
 
 ### Changed
 
+- **`OverheadMeasurement_Seconds` derives its mean from validated samples.** It
+  delegates to `MeasureOverhead_Samples` and averages the retained vector, so a
+  failed read no longer contributes a zero while still counting in the
+  denominator, and a fallback cycle is no longer averaged in as though it
+  measured the requested backend. The mean is now computed over the retained
+  sample count rather than the requested iteration count, so a degraded run
+  reports a higher and more honest figure than v1.3.0 did. The warm-up count is
+  passed explicitly as 1, preserving this helper's own single warm-up cycle
+  rather than inheriting the vector function's default of 10. Its signature is
+  unchanged: the three evidence outputs are consumed internally, and a caller
+  who needs them should use `MeasureOverhead_Samples`. (#24)
+- **`OverheadMeasurement_Text` degrades instead of raising.** It traps only
+  `ERR_CPM_MEASURE_NO_VALID_SAMPLES` and renders
+  `undefined (<original description>)`, carrying the original text so an
+  all-fallback run and an all-failed run read differently. Every other error is
+  re-raised with its original number, source and description: an invalid
+  argument is not an undefined measurement. This follows `Stats_Text`, which
+  renders an undefined coefficient of variation while
+  `Stats_CoefficientOfVariation` raises. (#24)
 - **Overhead vectors are now backend-homogeneous.** `MeasureOverhead_Samples`
   captures the start transaction immediately after `StartTimer` and rejects a
   cycle whose requested backend fell back, rather than retaining a method-2

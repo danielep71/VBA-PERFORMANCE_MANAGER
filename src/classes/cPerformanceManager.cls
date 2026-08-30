@@ -1566,92 +1566,38 @@ Public Function OverheadMeasurement_Seconds( _
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim K                   As Long                  'Loop counter
-    Dim TotalS              As Double                'Accumulated elapsed seconds
-    Dim ResolvedMethod      As cPM_TimerMethod               'Validated timer method
-    Dim DiscardedElapsedS   As Double                'Throwaway elapsed value used only for warm-up
-    Dim cPM_Work            As cPerformanceManager   'Isolated worker instance
-    Dim ErrNumber           As Long                  'Captured error number
-    Dim ErrSource           As String                'Captured error source
-    Dim ErrDescription      As String                'Captured error description
+    Dim Samples()           As Double                'Validated per-cycle samples
+    Dim ResolvedMethod      As cPM_TimerMethod       'Validated timer method
+    Dim FailedReads         As Long                  'Native read failures, consumed internally
+    Dim LastStatus          As cPM_ReadStatus        'Last failure or rejection, consumed internally
+    Dim RejectedSamples     As Long                  'Backend rejections, consumed internally
 
 '------------------------------------------------------------------------------
-' INITIALIZE
+' ROUTINE
 '------------------------------------------------------------------------------
-    'Route runtime failures through cleanup
-        On Error GoTo Err_Handler
-
-'------------------------------------------------------------------------------
-' VALIDATE
-'------------------------------------------------------------------------------
-    'Enforce a minimum of one iteration
+    'Coerce the loop count into a usable range
         If Iterations < 1 Then Iterations = 1
+
     'Normalize and validate the timer method using the current instance policy
         ResolvedMethod = Method_NormalizeStart(iMethod)
 
-'------------------------------------------------------------------------------
-' INITIALIZE ISOLATED WORKER
-'------------------------------------------------------------------------------
-    'Create an isolated worker instance
-        Set cPM_Work = New cPerformanceManager
-    'Mirror the current strict-mode policy into the isolated worker
-        cPM_Work.StrictMode = m_StrictMode
-
-'------------------------------------------------------------------------------
-' WARM UP
-'------------------------------------------------------------------------------
-    'Warm up the timing path once before measurement
-        cPM_Work.StartTimer ResolvedMethod, False
-        DiscardedElapsedS = cPM_Work.ElapsedSeconds()
-
-'------------------------------------------------------------------------------
-' MEASURE
-'------------------------------------------------------------------------------
-    'Run a repeated near-empty timing loop and accumulate the measured values
-        For K = 1 To Iterations
-            cPM_Work.StartTimer ResolvedMethod, False
-            TotalS = TotalS + cPM_Work.ElapsedSeconds()
-        Next K
+    'Delegate to the validated sample path rather than accumulating raw reads.
+    'The second argument is 1, not the vector function's default of 10: this
+    'helper has always warmed up exactly once, and inheriting a different
+    'warm-up count would silently change its runtime and its result
+    '
+    'The three evidence outputs are captured into locals and not surfaced. This
+    'is the legacy mean-only API; a caller who needs the evidence should call
+    'MeasureOverhead_Samples directly
+        Samples = MeasureOverhead_Samples(Iterations, 1, ResolvedMethod, _
+                                          FailedReads, LastStatus, RejectedSamples)
 
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
-    'Return the average measured overhead
-        OverheadMeasurement_Seconds = TotalS / CDbl(Iterations)
-
-'------------------------------------------------------------------------------
-' CLEAN UP
-'------------------------------------------------------------------------------
-    'Release the isolated worker instance
-        On Error Resume Next
-        If Not cPM_Work Is Nothing Then cPM_Work.ResetEnvironment
-        Set cPM_Work = Nothing
-        On Error GoTo 0
-        Exit Function
-
-Err_Handler:
-'------------------------------------------------------------------------------
-' CAPTURE ORIGINAL ERROR
-'------------------------------------------------------------------------------
-    'Capture the original error before cleanup
-        ErrNumber = Err.Number
-        ErrSource = Err.Source
-        ErrDescription = Err.Description
-
-'------------------------------------------------------------------------------
-' CLEAN UP AFTER FAILURE
-'------------------------------------------------------------------------------
-    'Cleanup must be best-effort so that we can preserve the original error
-        On Error Resume Next
-        If Not cPM_Work Is Nothing Then cPM_Work.ResetEnvironment
-        Set cPM_Work = Nothing
-        On Error GoTo 0
-
-'------------------------------------------------------------------------------
-' RE-RAISE ORIGINAL ERROR
-'------------------------------------------------------------------------------
-    'Re-raise the original error
-        Err.Raise ErrNumber, ErrSource, ErrDescription
+    'Mean of the retained samples only. Every element was measured on the
+    'requested backend, and no failed read contributes a zero
+        OverheadMeasurement_Seconds = Stats_Mean(Samples)
 
 End Function
 
@@ -1673,6 +1619,22 @@ Public Property Get OverheadMeasurement_Text( _
 '
 '   This property exists as the presentation-oriented companion for diagnostics,
 '   logs, and quick inspection
+'
+' BEHAVIORAL CORRECTION IN 1.4.0
+'   OverheadMeasurement_Seconds can now raise when no cycle survived. A
+'   formatter should not push that onto its caller, so this property traps that
+'   one condition and renders it:
+'
+'     Average measurement overhead - QPC - undefined (<original description>)
+'
+'   The original description is carried through deliberately. An all-fallback
+'   run and an all-failed run therefore produce different text, preserving the
+'   distinction the separate counters exist to keep. Every other error is
+'   re-raised with its original number, source and description: an invalid
+'   argument or an unexpected runtime failure is not an undefined measurement.
+'
+'   This follows Stats_Text, which renders an undefined coefficient of variation
+'   rather than raising, while Stats_CoefficientOfVariation raises
 '
 '   When an already measured overhead value is supplied, this routine formats
 '   that value directly without taking a second measurement
@@ -1723,8 +1685,11 @@ Public Property Get OverheadMeasurement_Text( _
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim AvgS            As Double    'Average measurement overhead in seconds
+    Dim AvgS            As Double            'Average measurement overhead in seconds
     Dim ResolvedMethod  As cPM_TimerMethod   'Validated timer method
+    Dim ErrNumber       As Long              'Number of a trapped measurement error
+    Dim ErrSource       As String            'Source of a trapped measurement error
+    Dim ErrDescription  As String            'Description of a trapped measurement error
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
@@ -1740,7 +1705,37 @@ Public Property Get OverheadMeasurement_Text( _
             AvgS = CDbl(OverheadSecondsIn)
     'Otherwise measure average near-empty overhead now
         Else
-            AvgS = OverheadMeasurement_Seconds(ResolvedMethod, Iterations)
+
+            'A measurement that retained nothing is an expected outcome for a
+            'formatter, not an exception it should push onto its caller. Trap
+            'that one condition and render it; let everything else through
+                On Error Resume Next
+                AvgS = OverheadMeasurement_Seconds(ResolvedMethod, Iterations)
+                ErrNumber = Err.Number
+                ErrSource = Err.Source
+                ErrDescription = Err.Description
+                Err.Clear
+                On Error GoTo 0
+
+            If ErrNumber <> 0 Then
+
+                'Anything else is a real failure. Re-raise it with its own
+                'identity rather than hiding it behind an "undefined" string
+                    If ErrNumber <> ERR_CPM_MEASURE_NO_VALID_SAMPLES Then
+                        Err.Raise ErrNumber, ErrSource, ErrDescription
+                    End If
+
+                'Render the expected condition, carrying the original
+                'description so an all-fallback run still reads differently from
+                'an all-failed one. Collapsing both to one fixed string would
+                'discard the distinction the counters exist to preserve
+                    OverheadMeasurement_Text = _
+                        "Average measurement overhead - " & _
+                        MethodName(ResolvedMethod) & " - " & _
+                        "undefined (" & ErrDescription & ")"
+                    Exit Property
+
+            End If
         End If
 
 '------------------------------------------------------------------------------
