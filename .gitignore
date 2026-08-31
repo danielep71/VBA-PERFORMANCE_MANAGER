@@ -121,6 +121,8 @@ outputs/
 # being mistaken for repository source.
 #------------------------------------------------------------------------------
 
+certification-*.json
+precandidate-*.json
 release-manifest.json
 vba-lint-results.json
 excel-regression-results.json
