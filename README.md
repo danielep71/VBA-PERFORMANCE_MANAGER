@@ -860,8 +860,16 @@ It is not bound to a tag, and it does not describe a merged `main` commit.
 **Pending.** Per `RELEASING.md`, certification must describe the exact commit
 that will be tagged. That commit does not exist until the release branch is
 merged to `main`, so no v1.4.0 tag target, workbook hash or manifest hash can be
-recorded here yet. Real Office 32-bit execution evidence is tracked in
-[#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29).
+recorded here yet.
+
+#### Architecture scope
+
+v1.4.0 is executed and certified on Microsoft 365 Excel **64-bit**. The source
+retains its Office 32-bit compatibility branches, but this release has not been
+executed or certified on a real 32-bit Office host, so 32-bit behavior remains
+**unverified rather than unsupported**. That assurance gap is tracked in
+[#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) for v1.4.1 and does not
+block v1.4.0.
 
 The suite covers, among other areas:
 
@@ -876,7 +884,8 @@ The suite covers, among other areas:
 
 > [!IMPORTANT]
 > A regression pass certifies the Excel build and Office bitness that actually
-> ran it. The v1.3.0 evidence above is **not** Office 32-bit execution evidence.
+> ran it. Neither the v1.3.0 nor the v1.4.0 evidence above is Office 32-bit
+> execution evidence.
 
 ---
 
@@ -989,7 +998,7 @@ treated as binary artifacts.
 |---|---|
 | Host | Microsoft Excel desktop for **Windows** |
 | VBA project | Macro-enabled workbook (`.xlsm` / `.xlsb`) or add-in (`.xlam`) |
-| Office bitness | Source contains VBA7 / Win64 branches for 32-bit and 64-bit Office |
+| Office bitness | Source contains VBA7 / Win64 branches for 32-bit and 64-bit Office. Certified on 64-bit; 32-bit unverified ([#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)) |
 | References | None required; `Scripting.Dictionary` is late-bound |
 | Third-party runtime | None |
 | Windows APIs | Uses OS-provided `kernel32` and `winmm` timing APIs |
@@ -1012,8 +1021,10 @@ the source in your own add-in, but that host is built and maintained by you.
 - The source contains 32-/64-bit conditional branches, but v1.3.0 was executed
   and certified only on 64-bit Office.
 - Shared unsigned arithmetic tests reduce the untested 32-bit surface; they do
-  not replace a real 32-bit Excel run. v1.4.0 certification is tracked in
-  [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29).
+  not replace a real 32-bit Excel run. v1.4.0 was executed and certified on
+  64-bit Office only, so 32-bit behavior remains unverified. Support is
+  unchanged; verification is tracked in [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)
+  for v1.4.1.
 
 ### Changed in v1.4.0
 
@@ -1163,10 +1174,13 @@ Its release scope includes:
 
 The behavior above is implemented on this branch and the production source
 version stamps have been advanced to `1.4.0`. What remains before publication is
-certification, not implementation: an integrated regression on the merged `main`
-commit, real Office 32-bit execution evidence
-([#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)), then
-tag and provenance.
+certification, not implementation: an integrated 64-bit regression on the merged
+`main` commit, then tag and provenance.
+
+Real Office 32-bit execution evidence is **not** part of v1.4.0. It requires a
+32-bit Office host, which cannot coexist with 64-bit Office on one Windows
+installation, and is tracked in [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)
+for v1.4.1. 32-bit support is unchanged; only its verification is deferred.
 
 A real Excel regression gate that runs in CI with machine-readable, SHA-bound
 results is **not** part of v1.4.0. It needs a self-hosted Windows runner and is
