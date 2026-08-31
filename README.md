@@ -825,12 +825,34 @@ dedicated worksheet and summarizes the run in the Immediate Window.
 
 ## Execution evidence
 
-Three distinct things, kept separate on purpose. The published record describes
-a tag that exists; the development line describes a branch that has not been
-certified; and final v1.4.0 certification does not exist until the release SHA
-is tagged and certified.
+A regression pass certifies the exact commit, Excel build and Office bitness
+that ran it. Each record below names all three, so a reader can tell what was
+actually executed rather than inferring it from the source.
 
 ### Latest published tagged evidence
+
+| Evidence | v1.4.0 result |
+|---|---|
+| Tag target | [`a5390b4c6ca56ebbd87eca121b5167ee5dc09963`](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/commit/a5390b4c6ca56ebbd87eca121b5167ee5dc09963) |
+| Certified | 2026-08-31 |
+| Excel | Microsoft 365 MSO Version 2607, Build 16.0.20228.20188 |
+| Office bitness | **64-bit** |
+| Regression | **80 cases · 643 assertions · 0 failures** |
+| Static checks | 12 checks · 0 failures |
+| Release workbook | `PERFORMANCE.MANAGER.xlsm` |
+| Workbook SHA-256 | `5eddd6473e43a5c9fb12a97f3d00c07117843368165082c947c953003ed7b4a2` |
+| Manifest SHA-256 | `d13567b416c39dd0b62f2eaf4767f25d21a9daa300d8e7e8b2dc81db3fa8119f` |
+
+Both published assets were downloaded from the release and re-hashed: the
+workbook and manifest match the values above, so the upload preserved bytes and
+a downloader can verify what they received.
+
+> [!NOTE]
+> The local build is named `PERFORMANCE MANAGER.xlsm` with a space. GitHub
+> replaces the space with a dot on upload, so the published asset — and the name
+> recorded here — is `PERFORMANCE.MANAGER.xlsm`.
+
+### Previous published tagged evidence
 
 | Evidence | v1.3.0 result |
 |---|---|
@@ -843,26 +865,7 @@ is tagged and certified.
 | Workbook SHA-256 | `05cb9d79986144d0498d599ccf070447b5fe8720ee23a5c81bf68a99a5aa66a0` |
 | Manifest SHA-256 | `56c3a1996184e65b541a958619e199b7000ee9a9b92e2266ed0c886a7d81310f` |
 
-### Current development-line regression
-
-| Evidence | `release/v1.4.0` |
-|---|---|
-| Regression | **80 cases · 643 assertions · 0 failures** |
-| Excel | Microsoft 365 MSO Version 2607, Build 16.0.20228.20188 |
-| Office bitness | **64-bit** |
-| Static checks | 12 checks · 0 failures |
-
-This is development-line evidence on the branch, not a release certification.
-It is not bound to a tag, and it does not describe a merged `main` commit.
-
-### Final v1.4.0 certification
-
-**Pending.** Per `RELEASING.md`, certification must describe the exact commit
-that will be tagged. That commit does not exist until the release branch is
-merged to `main`, so no v1.4.0 tag target, workbook hash or manifest hash can be
-recorded here yet.
-
-#### Architecture scope
+### Architecture scope
 
 v1.4.0 is executed and certified on Microsoft 365 Excel **64-bit**. The source
 retains its Office 32-bit compatibility branches, but this release has not been
@@ -1172,10 +1175,8 @@ Its release scope includes:
 - correcting enum documentation to reflect VBA `Long` semantics;
 - completing baseline/overhead failure evidence.
 
-The behavior above is implemented on this branch and the production source
-version stamps have been advanced to `1.4.0`. What remains before publication is
-certification, not implementation: an integrated 64-bit regression on the merged
-`main` commit, then tag and provenance.
+All of the above shipped in v1.4.0, tagged at `a5390b4` and certified against
+that exact commit on 64-bit Office.
 
 Real Office 32-bit execution evidence is **not** part of v1.4.0. It requires a
 32-bit Office host, which cannot coexist with 64-bit Office on one Windows
