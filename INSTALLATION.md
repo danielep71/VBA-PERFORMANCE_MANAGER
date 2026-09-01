@@ -45,7 +45,7 @@
 > not a different implementation and it is not the authoritative source tree.
 
 > [!IMPORTANT]
-> For the current v1.3.x runtime and the v1.4.0 development line, the production
+> For the current v1.4.0 runtime, the production
 > package consists of **two required source files**:
 >
 > ```text
@@ -703,7 +703,7 @@ The GitHub Release may contain a macro-enabled convenience workbook.
 Use the **exact asset name shown on the Release page**; do not assume the name
 from another version.
 
-For v1.3.0, the published workbook is:
+The published workbook is:
 
 ```text
 PERFORMANCE.MANAGER.xlsm
@@ -863,7 +863,7 @@ replacing source.
 
 Replace the **complete production source package together**.
 
-For the current v1.3.x / v1.4.0 layout:
+For the current v1.4.0 layout:
 
 ```text
 M_cPM_TIMEWASTERS.bas

@@ -117,7 +117,7 @@ was required; both can hide cleanup defects and shared-state leaks.
 
 | Field | Value |
 | --- | --- |
-| Release tag or full 40-character commit SHA | <!-- e.g. v1.3.0 or 0123... --> |
+| Release tag or full 40-character commit SHA | <!-- e.g. v1.4.0 or 0123... --> |
 | Source origin | <!-- Official release / release branch / fork / copied files --> |
 | Local modifications | <!-- None, or describe/link the diff --> |
 | `VERSION` in the `cPerformanceManager.cls` header | <!-- Exact value --> |
@@ -138,8 +138,8 @@ was required; both can hide cleanup defects and shared-state leaks.
 | Regional settings | <!-- If date, number, or string formatting may matter --> |
 
 <!--
-The source contains VBA7 declarations for both 32-bit and 64-bit Office, but the
-published v1.3.0 execution evidence covers 64-bit Excel only. A 32-bit report is
+The source contains VBA7 declarations for both 32-bit and 64-bit Office, but
+published execution evidence covers 64-bit Excel only. A 32-bit report is
 valuable; please identify it explicitly.
 -->
 

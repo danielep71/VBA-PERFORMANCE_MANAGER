@@ -147,17 +147,20 @@ Security fixes are normally applied to the **latest tagged release**.
 | Source state | Security support |
 |---|---|
 | **Latest tagged release** | ✅ Supported |
-| `release/*` before publication | ⚠️ Release-candidate testing / best effort |
+| A release branch before publication | ⚠️ Release-candidate testing / best effort, when one exists |
 | `main` | ⚠️ Development branch / best effort |
 | Older tagged releases | ❌ Normally unsupported; upgrade first |
 | Modified third-party forks/copies | ❌ Unsupported unless the issue reproduces in official source |
 | Unofficial binary mirrors | ❌ Unsupported |
 
-At the time this policy was introduced, the latest tagged release is:
+The latest tagged release is:
 
 ```text
-v1.3.0
+v1.4.0
 ```
+
+That line is the one the support matrix above refers to. It is updated at each
+release; the matrix itself is deliberately version-neutral.
 
 When reporting, identify the exact affected state with one of:
 
