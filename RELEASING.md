@@ -617,23 +617,29 @@ A 32-bit run does not execute the Win64 branches.
 
 A release may claim execution certification only for environments actually run.
 
-### v1.4.0 32-bit requirement
+### Bitness evidence
 
-For v1.4.0, the open release plan requires real Office 32-bit execution evidence
-if 32-bit Office remains a supported runtime.
-
-Do not close that requirement by saying:
+Do not treat any of these as execution certification for a bitness you did not
+run:
 
 ```text
 compiled by construction
 shared arithmetic is tested
-64-bit passed
+the other bitness passed
 ```
 
-Those are useful source-level facts and are not 32-bit execution certification.
+They are useful source-level facts and nothing more.
 
-If 32-bit cannot be provisioned, the support/milestone decision must be explicit
-before release.
+Where a bitness cannot be provisioned, say so explicitly before release: name
+the environments actually certified, state that the other remains unverified
+rather than unsupported, and record the tracking issue. Deferring evidence is
+legitimate; implying it exists is not.
+
+> [!NOTE]
+> **v1.4.0 decision, 2026-08-31.** 32-bit Office could not be provisioned, since
+> it cannot coexist with 64-bit Office on one Windows installation. v1.4.0
+> shipped certified on 64-bit against its exact tag target, with 32-bit recorded
+> as unverified and tracked in [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29).
 
 ---
 
@@ -691,11 +697,16 @@ Where practical:
 
 Use the release's intended filename.
 
-The v1.3.0 convention is:
+The convention, used by v1.3.0 and v1.4.0, is:
 
 ```text
 PERFORMANCE.MANAGER.xlsm
 ```
+
+> [!NOTE]
+> The local build is named `PERFORMANCE MANAGER.xlsm` with a space. GitHub
+> replaces the space with a dot on upload, so the published asset carries the
+> dotted name. Record the published name.
 
 If a future release changes the asset name, the Release page and documentation
 must use the exact new name consistently.
