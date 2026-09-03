@@ -88,12 +88,18 @@ trim_trailing_whitespace = true
 #------------------------------------------------------------------------------
 # DOCUMENTATION
 #------------------------------------------------------------------------------
-[*.{md,txt}]
+[*.md]
 charset = utf-8
 end_of_line = lf
 insert_final_newline = true
 # Markdown may intentionally use two trailing spaces for a hard line break.
 trim_trailing_whitespace = false
+
+[*.txt]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
 
 [LICENSE]
 charset = utf-8
