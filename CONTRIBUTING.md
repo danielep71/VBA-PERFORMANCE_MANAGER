@@ -296,7 +296,9 @@ Remove non-applicable fields, but do not omit a material limitation.
 
 ## 📖 Documentation and release notes
 
-Update the README, relevant wiki/contract material, examples, `RELEASING.md`, and the `[Unreleased]` section of `CHANGELOG.md` when behavior changes.
+Installation or packaging changes must keep [INSTALLATION.md](INSTALLATION.md) current. Release preparation must follow [RELEASING.md](RELEASING.md).
+
+Update the README, relevant wiki/contract material, examples, and the `[Unreleased]` section of `CHANGELOG.md` when behavior changes.
 
 Documentation must say:
 
