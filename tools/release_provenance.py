@@ -17,13 +17,14 @@ validated before any publishable markdown or JSON is produced. Incomplete
 output is not supported: a manifest is an integrity claim, and a partial claim
 can still be uploaded by accident.
 
-Run it from a clean checkout whose HEAD is exactly the release tag:
+Run it from a clean checkout whose HEAD is exactly the release tag. This is the
+same command RELEASING.md documents, and a fixture keeps the two identical:
 
-    python tools/release_provenance.py --version 1.4.0 --tag v1.4.0 \\
-        --asset "PERFORMANCE MANAGER.xlsm" \\
-        --excel "Microsoft 365 MSO, Version 2607, Build 16.0.20228.20188" \\
-        --bitness 64-bit --cases 80 --assertions 643 --failures 0 \\
-        --out release-manifest.json
+python tools/release_provenance.py --version X.Y.Z --tag vX.Y.Z \\
+    --asset "PERFORMANCE MANAGER.xlsm" \\
+    --excel "Microsoft 365 MSO, Version 2607, Build 16.0.20228.20188" \\
+    --bitness 64-bit --cases 80 --assertions 643 --failures 0 \\
+    --out release-manifest.json
 
 Exit codes:
 
@@ -194,8 +195,11 @@ def rows(paths: list[str]) -> list[str]:
     return out
 
 
-VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
-TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
+# Leading zeros are not SemVer: 01.4.0 and 1.4.0 would name the same release
+# with two different strings, and only one of them can match a tag.
+_NUM = r"(?:0|[1-9]\d*)"
+VERSION_RE = re.compile(rf"^{_NUM}\.{_NUM}\.{_NUM}$")
+TAG_RE = re.compile(rf"^v{_NUM}\.{_NUM}\.{_NUM}$")
 
 EXIT_OK = 0
 EXIT_CONTRACT = 1
@@ -232,6 +236,10 @@ def validate(args: argparse.Namespace) -> list[str]:
     for flag, value in required.items():
         if value is None:
             problems.append(f"{flag} is required in release mode")
+
+    # --- evidence text -------------------------------------------------------
+    if args.excel is not None and not args.excel.strip():
+        problems.append("--excel is blank; the certification environment must be recorded")
 
     # --- numeric domains ----------------------------------------------------
     if args.cases is not None and args.cases <= 0:
@@ -273,7 +281,11 @@ def validate(args: argparse.Namespace) -> list[str]:
     # legitimately sit untracked in the working tree during a publish - so
     # treating them as dirt would reject every real release invocation.
     dirty = git("status", "--porcelain", "--untracked-files=no")
-    if dirty:
+    if dirty is None:
+        # git() returns None on failure and "" on a clean tree. Conflating them
+        # would let an unreadable repository pass as verified.
+        problems.append("git status failed, so the working tree could not be verified")
+    elif dirty:
         paths = [line[3:] for line in dirty.splitlines()][:20]
         problems.append("tracked files are modified; hashing them would not match the commit claimed")
         problems.extend(f"  modified: {path}" for path in paths)

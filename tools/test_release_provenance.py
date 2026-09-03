@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -73,7 +74,6 @@ def make_repo(tmp: Path, tag: str = "v1.4.0") -> Path:
         p = repo / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(f"' fixture content for {rel}\n", encoding="utf-8")
-    (repo / ASSET).write_bytes(b"fixture workbook bytes")
 
     _git(repo, "init", "-q", "-b", "main")
     _git(repo, "config", "user.email", "fixture@example.invalid")
@@ -82,6 +82,11 @@ def make_repo(tmp: Path, tag: str = "v1.4.0") -> Path:
     _git(repo, "commit", "-q", "-m", "fixture baseline")
     if tag:
         _git(repo, "tag", tag)
+
+    # Written after the commit, so it stays untracked. That is how a real
+    # release runs: the workbook is a Release asset and is not in the
+    # repository, so a fixture that commits it would prove the wrong thing.
+    (repo / ASSET).write_bytes(b"fixture workbook bytes")
     return repo
 
 
@@ -183,6 +188,7 @@ def main() -> int:
         m.rejects("missing --cases", repo, valid_args(cases=None))
         m.rejects("missing --assertions", repo, valid_args(assertions=None))
         m.rejects("missing --failures", repo, valid_args(failures=None))
+        m.rejects("blank --excel", repo, valid_args(excel="   "))
 
         # --- asset integrity -------------------------------------------------
         m.rejects("asset file does not exist", repo, valid_args(asset="NOT THERE.xlsm"))
@@ -200,6 +206,8 @@ def main() -> int:
         m.rejects("malformed version", repo, valid_args(version="1.4"))
         m.rejects("malformed tag", repo, valid_args(tag="release-1.4.0"))
         m.rejects("version and tag disagree", repo, valid_args(version="9.9.9", tag="v1.4.0"))
+        m.rejects("version has a leading zero", repo, valid_args(version="01.4.0", tag="v01.4.0"))
+        m.rejects("tag has a leading zero", repo, valid_args(tag="v01.4.0"))
 
         # A tag that does not exist at all, distinguished from one that does.
         untagged = make_repo(tmp / "b", tag="")
@@ -226,23 +234,38 @@ def main() -> int:
         m.rejects("required source is missing", missing_src, valid_args())
 
         # --- tag/source content mismatch --------------------------------------
-        # Unreachable through the CLI by construction: a clean tree at the tag
-        # target necessarily matches the tag's blobs, and both are enforced
-        # before this comparison runs. The comparison remains defence in depth
-        # for cases outside those two guarantees - filters, symlinks, a
-        # case-insensitive filesystem - so it is exercised directly instead.
+        # Reachable through the CLI only when git is told to stop noticing a
+        # modification. assume-unchanged does exactly that, and a stale
+        # assume-unchanged bit is a real way to end up hashing content that is
+        # not what the tag holds while `git status` reports nothing.
         content = make_repo(tmp / "f")
+        _git(content, "update-index", "--assume-unchanged",
+             "src/classes/cPerformanceManager.cls")
         (content / "src/classes/cPerformanceManager.cls").write_text(
             "' drifted from the tag\n", encoding="utf-8")
-        proc = subprocess.run(
-            [sys.executable, "-c",
-             "import sys; sys.path.insert(0, 'tools');"
-             "import release_provenance as rp;"
-             "print(len(rp.verify_against_tag('v1.4.0', rp.REQUIRED)))"],
-            cwd=content, capture_output=True, text=True, encoding="utf-8", errors="replace")
-        detected = proc.stdout.strip()
-        m.case("tag/source content mismatch is detected",
-               detected == "1", f"verify_against_tag reported {detected!r}, expected '1'")
+        m.rejects("source content differs from the tag", content, valid_args())
+
+        # --- documentation drift ---------------------------------------------
+        # The tool's help and RELEASING.md must show the same command. They
+        # drifted apart once already, which is how a documented invocation
+        # stops being one the tool would accept.
+        releasing = ROOT / "RELEASING.md"
+        problems = []
+        if not releasing.exists():
+            problems.append("RELEASING.md not found")
+        else:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("_rp", TOOL)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            found = re.search(r"```bash\n(python tools/release_provenance\.py --version.*?)\n```",
+                              releasing.read_text(encoding="utf-8"), re.S)
+            if not found:
+                problems.append("RELEASING.md has no provenance invocation block")
+            elif found.group(1) not in (mod.__doc__ or ""):
+                problems.append("the RELEASING.md invocation is not verbatim in the tool docstring")
+        m.case("documented invocation matches the tool docstring", not problems,
+               "; ".join(problems))
 
         # --- parser-only syntax errors, which are exit 2 ----------------------
         for name, extra in [

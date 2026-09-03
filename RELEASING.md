@@ -221,11 +221,12 @@ python tools/release_provenance.py --version X.Y.Z --tag vX.Y.Z \
     --out release-manifest.json
 ```
 
-There is one strict path and no preview mode. Every flag above is required, and the tool validates all of them before it constructs any Markdown or serializes any JSON:
+There is one strict path and no preview mode. Every flag above except `--out` is required by the tool; `--out` is optional to the tool but required by this procedure, because the manifest is a published artifact. Everything is validated before any Markdown is constructed or any JSON is serialized:
 
-- the asset must exist and be a regular file;
+- the asset must exist and be a regular file; it is normally untracked, which is allowed;
+- the Excel build must be recorded and non-blank;
 - cases and assertions must be positive, and failures must be supplied explicitly and equal zero;
-- the version and tag must be well formed and must correspond;
+- the version and tag must be well formed SemVer, without leading zeros, and must correspond;
 - the tag must resolve, and `HEAD` must equal its target commit;
 - no tracked file may be modified. Untracked files are ignored, so the workbook and the manifest itself may sit in the working tree.
 
