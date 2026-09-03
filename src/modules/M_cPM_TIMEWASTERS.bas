@@ -131,6 +131,7 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '   1.4.0
 '
 ' UPDATED
+'   2026-09-03 - Made Calculation exemption sticky for the complete scope.
 '   2026-08-30
 '
 ' AUTHOR
@@ -1238,7 +1239,9 @@ Private Sub PM_TW_ApplyEffectiveState( _
                 End If
             'Calculation requires BOTH a live workbook and a real captured
             'baseline. Without both, the flag is exempted rather than guessed.
-                If g_TW_CALCULATION_VALID And .Workbooks.Count > 0 Then
+                If Not g_TW_CalcExempted _
+                   And g_TW_CALCULATION_VALID _
+                   And .Workbooks.Count > 0 Then
                     If (DisableMask And PM_TW_MASK_CALCULATION) <> 0 Then
                         .Calculation = xlCalculationManual
                     Else
@@ -1504,6 +1507,28 @@ Public Function PM_TW_CalculationExempted() As Boolean
         PM_TW_CalculationExempted = g_TW_CalcExempted
 
 End Function
+
+Public Sub PM_TW_InternalTest_SetCalculationExempted( _
+    ByVal IsExempted As Boolean)
+'
+'==============================================================================
+'             PM_TW_INTERNALTEST_SETCALCULATIONEXEMPTED
+'------------------------------------------------------------------------------
+' PURPOSE
+'   One-shot regression seam for the workbook-lifecycle exemption boundary.
+'
+' CONTRACT
+'   Internal test infrastructure only. Production code must never call it.
+'   Option Private Module keeps it outside the user-runnable macro surface.
+'
+' UPDATED
+'   2026-09-03
+'==============================================================================
+
+    'Expose only the otherwise-unreachable host transition needed by the test.
+        g_TW_CalcExempted = IsExempted
+
+End Sub
 
 
 

@@ -102,6 +102,15 @@ Use only the categories needed by a release.
 - Added a root `VERSION` marker at `1.4.0`, aligned with the latest published
   release and the existing source-version contract.
 
+### Fixed
+
+- Calculation exemption is now sticky for the lifetime of a shared TW scope.
+  Later participants and teardown cannot resume reads, writes or restoration
+  after the host has declared Calculation unavailable ([#33](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/33)).
+- All external workflow actions are pinned to immutable full commit SHAs with
+  reviewable version comments, and the static gate rejects moving references
+  ([#46](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/46)).
+
 ---
 
 ## [1.4.0] — 2026-08-31

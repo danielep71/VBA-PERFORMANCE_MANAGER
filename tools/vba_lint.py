@@ -34,6 +34,7 @@ MODULE_FILE = ROOT / "src" / "modules" / "M_cPM_TIMEWASTERS.bas"
 TEST_FILE = ROOT / "test" / "M_cPM_Test.bas"
 README_FILE = ROOT / "README.md"
 CHANGELOG_FILE = ROOT / "CHANGELOG.md"
+WORKFLOW_DIR = ROOT / ".github" / "workflows"
 
 VBA_SOURCES = [CLASS_FILE, MODULE_FILE, TEST_FILE]
 ALL_SOURCES = VBA_SOURCES + [
@@ -527,6 +528,63 @@ def check_api_declarations(rep: Report) -> None:
     rep.check("native APIs have a single call site", problems)
 
 
+def _workflow_uses_problem(line: str) -> str | None:
+    """Return why one workflow ``uses:`` line violates the pin policy."""
+    match = re.match(
+        r"^\s*(?:-\s*)?uses\s*:\s*[\"']?([^\"'#\s]+)[\"']?\s*(?:#\s*(.*))?$",
+        line,
+    )
+    if not match:
+        return None
+
+    reference, comment = match.group(1), (match.group(2) or "").strip()
+    if reference.startswith("./"):
+        return None
+    if reference.startswith("docker://"):
+        if "@sha256:" not in reference:
+            return "remote Docker action is not pinned by digest"
+        return None
+    if "@" not in reference:
+        return "external action has no ref"
+
+    ref = reference.rsplit("@", 1)[1]
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", ref):
+        return "external action ref is not a full 40-hex commit SHA"
+    if not re.fullmatch(r"v\d+(?:\.\d+){0,2}", comment):
+        return "immutable action pin lacks a trailing version comment"
+    return None
+
+
+def check_workflow_action_pins(rep: Report) -> None:
+    """External workflow actions must be reviewable immutable references."""
+    problems: list[str] = []
+    workflow_files = sorted(WORKFLOW_DIR.glob("*.yml"))
+    workflow_files += sorted(WORKFLOW_DIR.glob("*.yaml"))
+
+    for path in workflow_files:
+        for line_number, line in enumerate(read(path).split("\n"), 1):
+            problem = _workflow_uses_problem(line)
+            if problem:
+                problems.append(f"{path.name}:{line_number}: {problem}")
+
+    fixtures = {
+        "full SHA with version": ("uses: owner/action@" + "a" * 40 + " # v1.2.3", None),
+        "local action": ("uses: ./actions/check", None),
+        "moving tag": ("uses: owner/action@v4", "full 40-hex"),
+        "branch": ("uses: owner/action@main", "full 40-hex"),
+        "short SHA": ("uses: owner/action@1234abcd # v1", "full 40-hex"),
+        "missing version": ("uses: owner/action@" + "a" * 40, "version comment"),
+    }
+    for name, (line, expected) in fixtures.items():
+        observed = _workflow_uses_problem(line)
+        if expected is None and observed is not None:
+            problems.append(f"internal fixture '{name}' was rejected: {observed}")
+        if expected is not None and (observed is None or expected not in observed):
+            problems.append(f"internal fixture '{name}' was accepted")
+
+    rep.check("workflow actions use immutable pins", problems)
+
+
 # --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
@@ -582,6 +640,7 @@ def main() -> int:
     check_total_steps(rep)
     check_version_consistency(rep)
     check_api_declarations(rep)
+    check_workflow_action_pins(rep)
     check_changelog_released_sections_frozen(rep)
 
     print("-" * 60)

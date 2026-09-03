@@ -77,7 +77,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 80    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 81    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -638,6 +638,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation no synthetic baseline"
         Test_TW_Calculation_NoSyntheticBaseline
 
+    'Validate that a host-lifecycle exemption remains sticky for the whole scope
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation sticky exemption"
+        Test_TW_Calculation_StickyExemption
+
 Clean_Exit:
 '------------------------------------------------------------------------------
 ' FINALIZE
@@ -707,6 +712,79 @@ Clean_Fail:
         SavedErrDesc = Err.Description
     'Continue through the centralized cleanup path
         Resume Clean_Exit
+
+End Sub
+
+Private Sub Test_TW_Calculation_StickyExemption()
+'
+'==============================================================================
+'                    TEST TW CALCULATION STICKY EXEMPTION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Proves that a Calculation exemption cannot be reactivated by a later shared
+'   state recomputation after the host lifecycle changes.
+'
+' WHY THIS EXISTS
+'   Before the correction, the apply guard ignored g_TW_CalcExempted. Once a
+'   workbook became available, a later participant could write or restore
+'   Calculation even though the scope had already declared it unavailable.
+'
+' UPDATED
+'   2026-09-03
+'==============================================================================
+
+    Dim cPM_A           As cPerformanceManager    'Scope active before exemption
+    Dim cPM_B           As cPerformanceManager    'Later recomputation trigger
+    Dim CalcOriginal    As XlCalculation          'Caller-owned entry state
+
+    Case_Begin "TW Calculation exemption is sticky"
+    On Error GoTo CleanFail
+    PM_TW_EndAllSessions
+    CalcOriginal = Application.Calculation
+
+    'Create a valid shared scope, then model the host transition that makes
+    'Calculation unavailable. The seam changes only the private health flag.
+        Set cPM_A = New cPerformanceManager
+        cPM_A.TW_Turn_OFF Except:=TW_Enum.Calculation
+        PM_TW_InternalTest_SetCalculationExempted True
+
+    'Use a distinctive live value. Joining and leaving B both recompute the
+    'aggregate mask; neither is allowed to touch Calculation after exemption.
+        Application.Calculation = xlSemiautomatic
+        Set cPM_B = New cPerformanceManager
+        cPM_B.TW_Turn_OFF
+
+        Test_Assert_EqualLong CLng(xlSemiautomatic), _
+                              CLng(Application.Calculation), _
+                              "A later begin does not reactivate Calculation"
+        Test_Assert_EqualBoolean True, cPM_B.TW_CalculationExempted, _
+                                 "The exemption remains visible to participants"
+
+        cPM_B.TW_Turn_ON
+        Test_Assert_EqualLong CLng(xlSemiautomatic), _
+                              CLng(Application.Calculation), _
+                              "A later end does not restore Calculation"
+
+        cPM_A.TW_Turn_ON
+        Test_Assert_EqualLong CLng(xlSemiautomatic), _
+                              CLng(Application.Calculation), _
+                              "Final teardown does not use a stale baseline"
+        Test_Assert_EqualBoolean False, PM_TW_CalculationExempted(), _
+                                 "Final teardown clears exemption bookkeeping"
+
+CleanExit:
+        On Error Resume Next
+        If Not cPM_B Is Nothing Then cPM_B.ResetEnvironment
+        If Not cPM_A Is Nothing Then cPM_A.ResetEnvironment
+        PM_TW_EndAllSessions
+        Application.Calculation = CalcOriginal
+        On Error GoTo 0
+        Case_Finalize
+        Exit Sub
+
+CleanFail:
+        RecordUnexpectedError "Test_TW_Calculation_StickyExemption"
+        Resume CleanExit
 
 End Sub
 '
