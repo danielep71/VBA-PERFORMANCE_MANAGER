@@ -1,1242 +1,310 @@
-<div align="center">
+# 🚀 VBA Performance Manager Release Guide
 
-# 🚀 Release Guide
+[![Release model: exact source](https://img.shields.io/badge/release-exact%20source-0969da)](#release-invariants)
+[![Versioning: SemVer](https://img.shields.io/badge/versioning-SemVer-3f4551)](#versioning)
+[![Evidence: required](https://img.shields.io/badge/evidence-required-success)](#evidence-record)
+[![Security policy](https://img.shields.io/badge/security-policy-success)](SECURITY.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-### Canonical maintainer procedure for publishing VBA-PERFORMANCE_MANAGER
-
-[![Scope](https://img.shields.io/badge/Scope-Maintainer_release_control-6f42c1?style=flat-square)](#-release-control-model)
-[![Source](https://img.shields.io/badge/Source-Tag_is_authoritative-217346?style=flat-square)](#-release-control-model)
-[![Static](https://img.shields.io/badge/Static-GitHub_Actions-0969da?style=flat-square)](#-final-static-source-gate)
-[![Excel](https://img.shields.io/badge/Excel-Execution_evidence-d97706?style=flat-square)](#-final-excel-execution-certification)
-[![Provenance](https://img.shields.io/badge/Provenance-SHA--256_%2B_tag_binding-0f766e?style=flat-square)](#-generate-release-provenance)
-
-<br>
-
-**Exact tag target · Clean source · Frozen history · Real Excel evidence · Explicit bitness · Verified artifacts · No silent replacement**
-
-<br>
-
-[Readiness](#-release-readiness)
-&nbsp;·&nbsp;
-[Merge](#-merge-the-release-branch-to-main)
-&nbsp;·&nbsp;
-[Static gate](#-final-static-source-gate)
-&nbsp;·&nbsp;
-[Excel gate](#-final-excel-execution-certification)
-&nbsp;·&nbsp;
-[Artifact](#-build-and-validate-the-release-workbook)
-&nbsp;·&nbsp;
-[Tag](#-tag-the-exact-release-commit)
-&nbsp;·&nbsp;
-[Provenance](#-generate-release-provenance)
-&nbsp;·&nbsp;
-[Publish](#-publish-the-github-release)
-&nbsp;·&nbsp;
-[Verify](#-post-publication-verification)
-
-</div>
-
----
+This maintainer guide turns a reviewed commit into a traceable VBA Performance Manager release. Source identity, validation, packaging, provenance, and publication must describe the same candidate.
 
 > [!IMPORTANT]
-> This document is for **maintainers publishing an official release**.
->
-> It is not an installation guide.
->
-> Users and integrators should follow:
->
-> [INSTALLATION.md](INSTALLATION.md)
+> A release is invalid if the packaged workbook cannot be tied to the exact tagged source or if provenance output contains TODO, missing, or inconsistent evidence.
 
-> [!IMPORTANT]
-> **Tagged exported source is authoritative.**
->
-> The macro-enabled workbook is a convenience Release asset. Its digest proves
-> file identity, not an automated or reproducible source-to-workbook build.
+## 🧭 Release profile
 
-> [!WARNING]
-> The final release certification must describe the **exact commit that will be
-> tagged**.
->
-> Testing a release branch and then creating a different merge commit on `main`
-> is useful pre-merge validation, but it is not SHA-bound certification of the
-> final tag target.
->
-> Final static and Excel evidence therefore come **after the release branch is
-> merged to `main` and the final release SHA is known**.
+| Property | Requirement |
+| --- | --- |
+| Project maturity | Versioned library with reproducible workbook packaging |
+| Version source | [VERSION](VERSION) |
+| Version scheme | Semantic Versioning |
+| Tag format | Lower-case `vX.Y.Z` matching `VERSION` |
+| Changelog | [CHANGELOG.md](CHANGELOG.md) |
+| Installation contract | [INSTALLATION.md](INSTALLATION.md) |
+| Vulnerability handling | [SECURITY.md](SECURITY.md) |
+| License | [MIT](LICENSE) |
 
----
+<a id="release-invariants"></a>
+## 🔒 Release invariants
 
-# 🧭 Release control model
+A release is valid only when all of these statements are true:
 
-A valid release is a chain of separate controls:
+1. The candidate is identified by its full SHA and is reachable from protected `main`.
+2. Release scope is frozen; unrelated work is deferred.
+3. `VERSION`, changelog, source headers, package metadata, and documentation agree.
+4. Static checks pass on the exact candidate.
+5. VBA compiles and project-specific certification passes on that candidate.
+6. Every binary artifact is built from that candidate, then tested as packaged.
+7. Hashes and evidence bind artifacts to the candidate and tool environment.
+8. The annotated lower-case tag points to the certified commit.
+9. The GitHub Release uses that tag and the reviewed notes and assets.
+10. Post-publication checks confirm that a new user can retrieve and validate it.
 
-```text
-milestone / scope complete
-        ↓
-release branch prepared
-        ↓
-pre-merge source checks
-        ↓
-release branch merged to main
-        ↓
-final tag-target SHA recorded
-        ↓
-static source checks green on that exact SHA
-        ↓
-real Excel compile / regression evidence on that exact SHA
-        ↓
-release workbook assembled from that exact source
-        ↓
-actual final workbook smoke-tested
-        ↓
-lowercase vX.Y.Z tag created on that exact SHA
-        ↓
-source/tag provenance verified
-        ↓
-Release assets hashed
-        ↓
-GitHub Release published
-        ↓
-published tag and downloads independently re-verified
-```
+If an invariant is false, stop and repair the candidate. Never compensate by editing an already-tested artifact manually.
 
-Do not collapse those into one claim.
+## 🗂️ Authority map
 
-In particular:
+| Concern | Authoritative record |
+| --- | --- |
+| Current project version | `VERSION` |
+| User-visible changes | `CHANGELOG.md` |
+| Released source identity | Annotated Git tag and full commit SHA |
+| Supported installation | `INSTALLATION.md` |
+| Published binaries | GitHub Release assets |
+| Integrity | SHA-256 hashes recorded with the release |
+| Validation | Evidence record retained for the candidate |
+| Vulnerability disclosure | `SECURITY.md` |
 
-```text
-green static checks
-≠
-Excel execution
+<a id="versioning"></a>
+## 🧮 Versioning
 
-release-branch regression
-≠
-final tagged-commit certification
+Use `MAJOR.MINOR.PATCH` without a leading `v` inside `VERSION`.
 
-Excel source regression
-≠
-release workbook packaging validation
+- **MAJOR**: incompatible public API, behavior, file-format, or migration change.
+- **MINOR**: backward-compatible capability.
+- **PATCH**: backward-compatible correction or package/documentation fix included in the release.
+- Use pre-release identifiers only when their support meaning is documented.
 
-workbook SHA-256
-≠
-reproducible build
+The Git tag adds the lower-case prefix: version `1.2.3` becomes annotated tag `v1.2.3`. Do not use upper-case `V`, moving tags, or a tag that differs from `VERSION`.
 
-source-compatible API
-≠
-unchanged physical import package
-```
+## ✅ Readiness review
 
----
+- The class and time-waster module match the installation manifest.
+- The package build starts from a clean workbook and the exact candidate export set.
+- Every planned item is merged or explicitly deferred.
+- Compatibility and migration consequences are understood.
+- Security-sensitive work has completed private handling where necessary.
+- The working tree and exported VBA sources are reproducible.
+- Maintainers and required reviewers are available.
 
-## Current repository control boundary
+Use `tools/release_provenance.py` as the repository-specific provenance gate and reject incomplete or inconsistent output.
 
-The repository currently has:
+## 1. Freeze and identify the candidate
 
-```text
-.github/workflows/static-checks.yml
-tools/vba_lint.py
-tools/release_provenance.py
-```
-
-The hosted workflow runs static analysis on GitHub-hosted Ubuntu with:
-
-```text
-contents: read
-```
-
-It does **not** execute Excel/VBA.
-
-The live `protect-main` ruleset currently protects the default branch against:
-
-```text
-deletion
-non-fast-forward updates
-```
-
-It does **not** currently enforce:
-
-```text
-a pull request
-VBA source consistency as a required status check
-an up-to-date branch before merge
-```
-
-This release guide is intentionally stricter than the live branch rules.
-
-Release policy requires the maintainer to verify the final candidate even where
-GitHub does not technically block an unsafe merge.
-
----
-
-# ✅ Release readiness
-
-Before changing version stamps or creating a tag:
-
-```text
-[ ] Target milestone is the intended release
-[ ] Every release-blocking issue is closed
-[ ] No open P1 issue affects the release
-[ ] Deferred work is explicitly moved to a later milestone
-[ ] Release branch contains only intended release work
-[ ] Working tree is clean
-[ ] Local refs have been fetched from origin
-[ ] Release support policy is explicit
-[ ] Installation/deployment changes are understood
-[ ] Known limitations are documented honestly
-```
-
-### Release branch
-
-Use a dedicated branch where practical:
-
-```text
-release/vX.Y.Z
-```
-
-For example:
-
-```text
-release/v1.4.0
-```
-
-The release branch is preparation space.
-
-The official release tag should resolve to the final commit on `main` after the
-release branch has been merged.
-
-> [!CAUTION]
-> Do not tag `main` while the release branch is still unmerged.
->
-> That can produce a tag containing the pre-release state even when the release
-> branch itself is correct.
-
----
-
-# 1. Fetch and synchronize
-
-Before release preparation:
-
-```text
-GitHub Desktop → Fetch origin
-```
-
-or:
+1. Update refs and start from current protected `main`.
+2. Create the release-preparation branch required by repository policy.
+3. Record the base and candidate full commit SHAs.
+4. Stop feature work on that branch.
+5. Review the complete diff from the previous release tag.
+6. Confirm that generated and binary changes are intentional.
 
 ```bash
-git fetch --all --tags --prune
-```
-
-Confirm:
-
-```bash
-git status
-git branch --show-current
-git log --oneline -5
-```
-
-The working tree should be clean.
-
-Do not rely on an old local "up to date" indication without fetching origin
-first.
-
----
-
-# 2. Freeze release scope
-
-Review the milestone one final time.
-
-For every open item, choose one of:
-
-```text
-complete it
-move it to a later milestone
-explicitly remove it from release scope
-```
-
-Do not publish with an issue silently half-in / half-out of the milestone.
-
-### Compatibility decisions
-
-Before release, explicitly settle any change affecting:
-
-```text
-public method signatures
-public enum/error values
-minimum Office/VBA support
-required source-file/import package
-Office 32-bit support
-reporting-module availability
-release artifact format
-```
-
-If the physical source package changes, update `INSTALLATION.md` in the same
-release.
-
----
-
-# 3. Sync version stamps
-
-Move release version stamps **once**, after feature work is complete.
-
-Promote the changelog in the immediately following step before final
-certification or tagging. Version identity and the dated release ledger are one
-pre-tag preparation gate; neither may be deferred until after publication.
-
-For the current source layout, synchronize:
-
-| File | Release field |
-|---|---|
-| `src/classes/cPerformanceManager.cls` | `' VERSION: X.Y.Z` |
-| `src/modules/M_cPM_TIMEWASTERS.bas` | `' VERSION` block |
-| `test/M_cPM_Test.bas` | `' VERSION` block |
-| `README.md` | version badge / current-version references |
-
-Run the linter after the update.
-
-The static `version stamps agree` check exists so this is verified mechanically,
-not by visual inspection alone.
-
-### Future module splits
-
-If a later release adds required production modules, those modules must join the
-version/source inventory.
-
-The generated source inventory planned for the repository should become the
-authoritative list rather than maintaining the count manually forever.
-
----
-
-# 4. Prepare `CHANGELOG.md`
-
-The project follows Keep a Changelog / Semantic Versioning.
-
-For the new release:
-
-1. convert the current `[Unreleased]` section into `[X.Y.Z] — YYYY-MM-DD`;
-2. add a fresh empty `[Unreleased]` section above it;
-3. add/update the comparison link references at the foot of the file;
-4. ensure every material user-visible change is represented;
-5. ensure breaking/behavioral changes are clearly called out.
-
-> [!IMPORTANT]
-> **Do not rewrite previously released CHANGELOG sections.**
->
-> The static linter verifies released sections against their tagged history.
->
-> If an old release note contained an overclaim or wording error, correct the
-> current contract in `[Unreleased]`, current documentation, or an explicit
-> erratum. Do not make the historical tag appear to have said something it did
-> not say.
-
----
-
-# 5. Sync current documentation
-
-Review all current-contract documents:
-
-```text
-README.md
-INSTALLATION.md
-SECURITY.md
-CODE_OF_CONDUCT.md
-CHANGELOG.md
-Wiki pages
-issue / pull request templates where relevant
-```
-
-Not every release requires edits to every file.
-
-Update a file only when its contract changed.
-
-At minimum verify:
-
-```text
-[ ] README version/current capabilities are accurate
-[ ] INSTALLATION required source files and import order are accurate
-[ ] README and INSTALLATION do not disagree
-[ ] SECURITY trust/runner/release claims remain accurate
-[ ] Wiki matches current supported behavior
-[ ] Known limitations are not stronger than the implementation
-[ ] Regression counts are not stale where intentionally displayed
-[ ] Static-check count is not stale where intentionally displayed
-[ ] DLL wording distinguishes Windows system APIs from bundled/third-party DLLs
-```
-
-### Repository controls are documentation too
-
-If branch rules, Discussions, workflows, or release settings changed, verify that
-documentation and issue-template links describe the **live** configuration.
-
----
-
-# 6. Run pre-merge static checks
-
-From the release branch, run:
-
-```bash
-python tools/vba_lint.py --json vba-lint-results.json
-```
-
-Required result:
-
-```text
-all checks pass
-```
-
-Push the prepared release branch and confirm:
-
-```text
-Actions
-→ Static checks
-→ run for the release-branch candidate
-```
-
-This is a **pre-merge quality gate**.
-
-It catches problems before the release branch reaches `main`.
-
-It is not yet the final release certification because the final `main` SHA may
-be different after merge.
-
-### Optional pre-merge Excel run
-
-A full Excel regression on the release branch is useful when the release is
-large or risky.
-
-Treat it as pre-merge validation.
-
-The final release evidence must still be tied to the exact tag-target SHA after
-merge.
-
----
-
-# 7. Review and merge the release branch
-
-Recommended workflow:
-
-```text
-release/vX.Y.Z
-        ↓
-review / pull request
-        ↓
-main
-```
-
-A pull request is recommended even though the current repository rules do not
-require one.
-
-Before merge:
-
-```text
-[ ] release diff contains only intended changes
-[ ] static checks are green
-[ ] no unresolved review point remains
-[ ] milestone scope still matches the release
-```
-
-Merge the release branch.
-
----
-
-# 🔀 Merge the release branch to `main`
-
-After merge:
-
-```text
-GitHub Desktop → Current branch → main
-GitHub Desktop → Fetch origin
-GitHub Desktop → Pull origin
-```
-
-or:
-
-```bash
-git fetch origin
-git checkout main
-git pull --ff-only
-```
-
-Confirm:
-
-```bash
-git status
-git log --oneline -5
-```
-
-Require:
-
-```text
-working tree clean
-all release changes present
-HEAD = intended release commit
-```
-
-Do not tag yet.
-
----
-
-# 8. Record the exact release SHA
-
-Capture:
-
-```bash
+git fetch --tags --prune
 git rev-parse HEAD
+git status --short
+git diff --stat <previous-tag>...HEAD
 ```
 
-Save the full 40-character SHA in the release working notes.
+A dirty tree, unknown generated file, or unreviewed binary delta is blocking.
 
-This is now the **tag target**.
+## 2. Synchronize version surfaces
 
-Everything that follows must refer to this commit.
+Update every applicable surface in one reviewable change:
 
-If any source or documentation change is made after this point:
+- `VERSION`
+- `CHANGELOG.md`
+- `cPerformanceManager.cls`
+- `M_cPM_TIMEWASTERS.bas`
+- test and demo version stamps
+- README release examples
 
-```text
-the release SHA changed
+Search for the prior version and retain only intentional historical references. Never rewrite historical changelog sections or immutable evidence.
+
+## 3. Finalize the changelog
+
+Move relevant entries from **Unreleased** into a dated `[MAJOR.MINOR.PATCH] - YYYY-MM-DD` section.
+
+- Describe user-visible behavior, not commit mechanics.
+- Use Added, Changed, Deprecated, Removed, Fixed, and Security where applicable.
+- Link issues or pull requests when they improve traceability.
+- Do not claim an artifact, platform, or guarantee that was not certified.
+- Keep an empty Unreleased section for future work.
+- Add or verify the comparison link for the new version.
+
+## 4. Verify documentation and installation
+
+- Follow [INSTALLATION.md](INSTALLATION.md) from a clean environment.
+- Verify source paths, import order, module names, prerequisites, and upgrades.
+- Confirm README examples use the supported API and current version.
+- Check [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and license links.
+- Remove stale commands and promises beyond the tested support matrix.
+
+## 5. Run static gates
+
+- Run the repository VBA lint gate, including `tools/vba_lint.py`.
+- Validate exported-source integrity, version consistency, and documentation links.
+- Scan for credentials, generated noise, and unresolved release markers.
+
+Capture commands, tool versions, timestamps, and complete results. Rerun affected gates after any change.
+
+## 6. Certify in Excel
+
+- Run **Debug → Compile VBAProject** on the exact candidate.
+- Run `Run_cPerformanceManager_RegressionSuite`.
+- Exercise timing backends, nested scopes, error recovery, and Excel-state restoration.
+- Record supported 32-bit and 64-bit Excel environments.
+
+Certification rules:
+
+- Use a clean workbook or documented clean fixture.
+- Import only candidate files.
+- Record Excel version, Windows version, and Office bitness.
+- Test the advertised environment matrix.
+- Treat warnings, repairs, or unexplained numerical deltas as failures.
+- If code changes after certification, restart static and Excel validation.
+
+## 7. Build release artifacts
+
+Planned outputs:
+
+- `PERFORMANCE.MANAGER.xlsm`
+- Source archive created by GitHub from the tag
+
+For each artifact:
+
+1. Start from a clean build location.
+2. Use only candidate-controlled inputs.
+3. Preserve required form and resource companions.
+4. Compile before saving.
+5. Exclude developer-only tests unless the artifact promises them.
+6. Reopen and run the packaged smoke or regression test.
+7. Record filename, size, and SHA-256.
+8. Never edit the artifact after hashing.
+
+```powershell
+Get-FileHash -Algorithm SHA256 .\dist\<artifact>
 ```
-
-Repeat every affected final gate.
-
----
-
-# 🔎 Final static source gate
-
-The merge to `main` should trigger the hosted static workflow.
-
-Confirm:
-
-```text
-Actions
-→ Static checks
-→ run whose commit = exact tag-target SHA
-```
-
-The run must be green.
-
-Download/inspect the `vba-lint-results` artifact.
-
-Verify:
-
-```text
-"passed": true
-commit field = exact tag-target SHA
-```
-
-> [!IMPORTANT]
-> The live branch rules do not currently require this status check.
->
-> **Release policy does.**
-
-The implementation currently runs **12** static checks, covering source
-consistency including:
-
-```text
-conflict-marker absence
-procedure/block balance
-reserved-word identifier checks
-error-source consistency
-no bare production error offsets
-local-callee consistency
-test wiring
-TotalSteps consistency
-version-stamp agreement
-native API call-site invariants
-released CHANGELOG immutability
-```
-
-A green static run does **not** establish:
-
-```text
-VBE import success
-VBA compile success
-Excel object-model behavior
-Windows API runtime behavior
-Office bitness behavior
-regression pass/fail
-release-workbook packaging
-```
-
-Those require real Excel.
-
----
-
-# 🧪 Final Excel execution certification
-
-The final Excel certification must execute the source from the exact tag-target
-SHA recorded above.
-
-## Current process — until the headless Excel gate is implemented
-
-Use a controlled validation workbook/project.
-
-Import the files from the final `main` checkout:
-
-```text
-src/modules/M_cPM_TIMEWASTERS.bas
-src/classes/cPerformanceManager.cls
-demo/M_DEMO_BUILDER.bas
-test/M_cPM_Test.bas
-```
-
-Then:
-
-```text
-Debug → Compile VBAProject
-```
-
-Run:
-
-```vb
-Run_cPerformanceManager_RegressionSuite
-```
-
-Record:
-
-| Evidence | Required |
-|---|---|
-| Exact tag-target SHA | ✅ |
-| Excel version/build | ✅ |
-| Office bitness | ✅ |
-| Cases | ✅ |
-| Assertions | ✅ |
-| Failures | **must be 0** |
-| Run date/time | ✅ |
-| Cleanup/result completion | ✅ |
-
-Do not certify from:
-
-```text
-an earlier release-branch run
-an old validation workbook
-a different commit
-a partial run
-a run whose final cleanup/result is uncertain
-```
-
-### One bitness run certifies one bitness
-
-A 64-bit run does not execute the 32-bit conditional branches.
-
-A 32-bit run does not execute the Win64 branches.
-
-A release may claim execution certification only for environments actually run.
-
-### v1.4.0 bitness decision — historical record
-
-v1.4.0 shipped on 2026-08-31 with exact-tag Microsoft 365 Excel **64-bit**
-certification: 80 cases, 643 assertions and 0 failures. A real Office 32-bit
-host was not available, so issue #29 moved to v1.4.1 as contributor-dependent,
-non-blocking assurance work.
-
-The release notes and current documentation state that boundary explicitly.
-The source retains its 32-bit conditional branches, but source inspection and
-shared arithmetic tests are not described as 32-bit execution certification.
-This was a release-specific decision; the general one-bitness rule above is the
-prospective policy.
-
----
-
-## Future process — after the headless Excel gate lands
-
-Once the executable gate is implemented, the workflow artifact for the **exact
-tag-target SHA** becomes the primary Excel execution record.
-
-It should include at least:
-
-```text
-commit SHA
-explicit run/completion state
-Excel version/build
-Office bitness
-cases
-assertions
-failures
-cleanup outcome
-timestamp
-```
-
-A persistent self-hosted runner must follow the trust model documented in
-`SECURITY.md`; arbitrary unreviewed fork code must not execute automatically on
-a privileged long-lived Excel host.
-
-Manual Excel runs may remain useful as supplemental validation.
-
-They should not replace or contradict the automated SHA-bound record once that
-gate becomes release policy.
-
----
-
-# 📦 Build and validate the release workbook
-
-The Release workbook is a convenience executable artifact.
-
-It is not generated automatically today.
-
-## Assemble from the exact tag-target source
-
-Use the final `main` source at the recorded release SHA.
-
-Do not start from an old workbook and assume its code matches.
-
-Where practical:
-
-1. use a controlled workbook;
-2. remove stale component copies;
-3. import the final production source from the tag-target checkout;
-4. import demo/test source required by the release workbook;
-5. compile;
-6. run the applicable regression/demo validation;
-7. save the workbook **outside the Git-tracked source tree**.
-
-Use the release's intended filename.
-
-The current published asset convention (v1.3.0 and v1.4.0) is:
-
-```text
-PERFORMANCE.MANAGER.xlsm
-```
-
-If a future release changes the asset name, the Release page and documentation
-must use the exact new name consistently.
-
-The v1.4.0 assembly used `PERFORMANCE MANAGER.xlsm` locally while the uploaded
-asset used `PERFORMANCE.MANAGER.xlsm`. Do not infer or automate a rename from
-that history: pass the actual final upload file to the provenance tool and
-record both local-manifest and published names when they differ.
-
-## Package-level smoke test
-
-After the final save:
-
-1. close the workbook;
-2. reopen the **actual file that will be uploaded**;
-3. satisfy macro/trust policy;
-4. run a basic timing smoke test;
-5. run the relevant demo/startup checks;
-6. confirm the workbook contains the intended version;
-7. confirm no unintended external links, credentials, or local-only data were
-   introduced.
-
-> [!IMPORTANT]
-> If the workbook is modified after validation, it is a new artifact.
->
-> Re-run the relevant package-level validation and recompute its hash.
-
-Source regression and package smoke are separate evidence.
-
----
-
-# 🏷️ Tag the exact release commit
-
-Only after the final static and Excel gates pass, create:
-
-```text
-vX.Y.Z
-```
-
-Use a lowercase `v`, consistent with the existing release series.
-
-Examples:
-
-```text
-v1.3.0
-v1.4.0
-v1.4.1
-v1.5.0
-```
-
-Git tags are case-sensitive.
-
-```text
-v1.4.0
-≠
-V1.4.0
-```
-
-Create the tag on the exact recorded `main` SHA.
-
-Use an annotated tag where the chosen workflow supports it.
-
-Do not claim cryptographic signing unless the tag/attestation is actually
-verified as signed under the implemented release-trust model.
-
-Push the tag:
 
 ```bash
+sha256sum dist/<artifact>
+```
+
+Publish only artifacts promised by the installation guide.
+
+## 8. Review and merge
+
+Where policy requires a pull request, make these items easy to verify:
+
+- intended version, previous tag, and candidate SHA;
+- changelog and version synchronization;
+- static and Excel results;
+- artifact manifest and hashes;
+- compatibility, migration, and security notes;
+- remaining limitations.
+
+Require configured checks and record the resulting `main` SHA. If the merge changes source identity, certify that commit before tagging.
+
+## 9. Create the annotated tag
+
+Tag only the certified commit on `main`.
+
+```bash
+git switch main
+git pull --ff-only
+git rev-parse HEAD
+git tag -a vX.Y.Z -m "VBA Performance Manager X.Y.Z"
+git show --no-patch --decorate vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-Verify immediately:
+Before pushing, confirm the tag equals `VERSION`, targets the certified commit, and has a matching dated changelog section. Never delete and recreate a public tag to hide a mistake.
 
-```bash
-git rev-parse vX.Y.Z
-git log vX.Y.Z --oneline -1
-```
+<a id="evidence-record"></a>
+## 🧾 Evidence record
 
-The resolved SHA must equal the release SHA recorded before the final gates.
+Retain at least:
 
----
+- candidate commit SHA
+- static and lint output
+- Excel version and bitness
+- regression-suite result
+- `tools/release_provenance.py` output
+- artifact SHA-256 hashes
+- version and tag
+- previous release tag
+- release-preparation pull request
+- artifact filenames and sizes
+- validation timestamps
+- known deviations and approving reviewer
 
-# 🔐 Generate release provenance
+A release note summarizes evidence; it does not replace it.
 
-Run provenance **after the tag exists** and while `HEAD` is still the exact
-tagged commit.
+## 10. Publish the GitHub Release
 
-> [!CAUTION]
-> Until issue #51 is implemented, `release_provenance.py` does not fail closed
-> for every incomplete or inconsistent invocation. Before running it, manually
-> verify that the working tree is clean; `HEAD` equals `vX.Y.Z^{commit}`; the
-> asset exists; version and tag agree; Excel/build and bitness are explicit;
-> cases and assertions are positive; and failures was supplied explicitly as
-> zero. Treat any output containing `TODO`, missing-asset markers, tag problems,
-> or incomplete certification fields as non-publishable.
+Create the release from the annotated tag and include:
 
-The tool verifies the local source against the tag and hashes the Release asset.
+1. User-facing summary and highlights.
+2. Upgrade or migration notes.
+3. Supported platform statement.
+4. Known limitations.
+5. Installation link.
+6. Asset table with SHA-256 hashes.
+7. Full changelog comparison link.
+8. Security-reporting link.
 
-Windows Command Prompt example:
+Upload the already-hashed artifacts. Do not rebuild between tagging and upload.
 
-```bat
-python tools\release_provenance.py ^
-  --version X.Y.Z ^
-  --tag vX.Y.Z ^
-  --asset "C:\path\to\PERFORMANCE.MANAGER.xlsm" ^
-  --out release-manifest.json ^
-  --excel "Microsoft 365 MSO, Version ####, Build ##.##.#####.#####" ^
-  --bitness 64-bit ^
-  --cases N ^
-  --assertions N ^
-  --failures 0
-```
+## 11. Verify after publication
 
-A one-line command is equally valid.
+| Check | Result |
+| --- | :---: |
+| Tag resolves to the certified SHA | ☐ |
+| `VERSION` and changelog match the tag | ☐ |
+| Assets download and hashes match | ☐ |
+| Installation links and examples work | ☐ |
+| Packaged artifact opens and passes its smoke test | ☐ |
+| Source archive contains expected release files | ☐ |
+| Default branch is ready for the next Unreleased cycle | ☐ |
 
-### Required checks
+Do not announce broad availability until these checks pass.
 
-The command must complete without source/tag verification problems.
+## 🧯 Recovery
 
-Inspect both console output and `release-manifest.json`.
+### Before tag publication
 
-Require:
+Fix the branch or pull request, update evidence, and rerun affected gates. Rebuilding invalidates the prior hash and packaged-test result.
 
-```text
-[ ] commit = tagged release commit
-[ ] tag_verified = vX.Y.Z
-[ ] no TODO, missing, or incomplete required fields
-[ ] clean working tree; HEAD = vX.Y.Z^{commit}
-[ ] no tag problems
-[ ] source hashes present
-[ ] workbook asset hash present
-[ ] Excel build explicit
-[ ] bitness explicit
-[ ] cases/assertions explicit
-[ ] failures = 0
-```
+### After tag, before GitHub Release
 
-### Current manifest bitness boundary
+Pause publication and document the correction. Prefer a new patch candidate whenever the tag may have propagated.
 
-`release_provenance.py` currently records **one certification bitness per
-manifest invocation**.
+### After public release
 
-If a release has separate 32-bit and 64-bit execution evidence, do not squeeze
-both into one `--bitness` field.
+Do not silently replace assets or move the tag.
 
-Until the provenance schema is extended, retain the second bitness evidence as a
-separate machine-readable execution artifact / certification record and identify
-both runs explicitly in the Release notes.
+- Mark a dangerous release clearly and remove assets only for user safety.
+- Publish a corrected patch with a new tag.
+- Record the problem and remedy in the changelog.
+- Use [SECURITY.md](SECURITY.md) for vulnerabilities.
+- Preserve evidence explaining what users received.
 
-The manifest proves exactly what its schema records — no more.
+## ☑️ Final maintainer checklist
 
----
+| # | Gate | Done |
+| ---: | --- | :---: |
+| 1 | Scope frozen and diff reviewed | ☐ |
+| 2 | Version surfaces synchronized | ☐ |
+| 3 | Changelog finalized | ☐ |
+| 4 | Installation verified cleanly | ☐ |
+| 5 | Static checks pass | ☐ |
+| 6 | Excel certification passes | ☐ |
+| 7 | Artifacts built and packaged-tested | ☐ |
+| 8 | Hashes and evidence recorded | ☐ |
+| 9 | Required pull request merged | ☐ |
+| 10 | Annotated tag targets certified main SHA | ☐ |
+| 11 | GitHub Release published | ☐ |
+| 12 | Post-publication checks pass | ☐ |
 
-## What provenance establishes
+## 📚 Related documents
 
-| Claim | Evidence |
-|---|---|
-| Source files match the tag | `--tag` source/blob comparison |
-| Downloaded workbook is the published file | workbook SHA-256 |
-| Exact repository commit | manifest commit SHA |
-| Excel environment reported by releaser | certification fields |
-| Real suite result | releaser/executable-gate evidence |
-
-It does **not** establish:
-
-```text
-deterministic workbook build
-byte-for-byte source round-trip through the VBE
-cryptographic tag authenticity when the tag is unsigned
-automatic Office execution when the run was manual
-```
-
-Tagged exported source remains authoritative.
+- [README.md](README.md) — project overview
+- [INSTALLATION.md](INSTALLATION.md) — deployment and removal
+- [CONTRIBUTING.md](CONTRIBUTING.md) — change and review workflow
+- [CHANGELOG.md](CHANGELOG.md) — release history
+- [SECURITY.md](SECURITY.md) — supported versions and private reporting
+- [VERSION](VERSION) — authoritative version
+- [LICENSE](LICENSE) — MIT license
 
 ---
 
-# 📝 Draft the GitHub Release
-
-Use:
-
-```text
-GitHub → Releases → Draft a new release
-```
-
-Select the **existing** tag:
-
-```text
-vX.Y.Z
-```
-
-Do not create a second tag from the Release form.
-
-Confirm the commit shown for the tag is the exact release SHA.
-
-### Recommended title
-
-```text
-vX.Y.Z — <one-line release theme>
-```
-
-### Release body
-
-Include:
-
-```text
-short release summary
-material fixes/features
-behavioral/breaking changes
-certification table
-Office bitness actually executed
-known limitations
-installation/upgrade changes
-provenance block / manifest reference
-links to CHANGELOG / INSTALLATION where useful
-```
-
-Avoid claims such as:
-
-```text
-fully tested on 32/64-bit
-reproducibly built
-signed
-immutable
-```
-
-unless the evidence for that exact release establishes them.
-
----
-
-#  Attach release assets
-
-At minimum, where applicable:
-
-```text
-PERFORMANCE.MANAGER.xlsm
-release-manifest.json
-```
-
-Also attach the machine-readable Excel execution artifact once the headless gate
-exists, and any separate 32-bit certification artifact required by the release.
-
-Before publication:
-
-```text
-[ ] asset filenames are correct
-[ ] asset hashes match the provenance evidence
-[ ] no temporary/local file was attached accidentally
-[ ] workbook opened successfully after final save
-[ ] release-manifest.json is from the final tagged commit
-```
-
----
-
-# 📣 Publish the GitHub Release
-
-Publish only after all prior gates are complete.
-
-> [!WARNING]
-> **Do not silently replace a published asset.**
->
-> GitHub Releases are currently technically mutable, but release policy should
-> treat published assets as immutable evidence.
->
-> If a published asset is wrong, prefer an explicit correction / patch release
-> rather than replacing the file under the same version without disclosure.
-
----
-
-# 🔎 Post-publication verification
-
-Do not stop at the green **Published** banner.
-
-## 1. Verify the tag again
-
-```bash
-git fetch --tags --force
-git log vX.Y.Z --oneline -1
-git show vX.Y.Z:src/classes/cPerformanceManager.cls | findstr "VERSION:"
-git show vX.Y.Z:test/M_cPM_Test.bas | findstr TotalSteps
-```
-
-Confirm the tag still resolves to the intended release commit.
-
----
-
-## 2. Verify GitHub Release metadata
-
-Check:
-
-```text
-[ ] Release tag = vX.Y.Z
-[ ] Release is not accidentally marked prerelease
-[ ] Title/version is correct
-[ ] Release notes match the intended release
-[ ] Uploaded assets are present
-[ ] Manifest is present
-```
-
----
-
-## 3. Verify the downloaded workbook
-
-Download the workbook **from the published Release**, not from the staging
-folder.
-
-Compute SHA-256.
-
-PowerShell:
-
-```powershell
-Get-FileHash -Algorithm SHA256 ".\PERFORMANCE.MANAGER.xlsm"
-```
-
-or:
-
-```text
-certutil -hashfile "PERFORMANCE.MANAGER.xlsm" SHA256
-```
-
-Compare with the published provenance/manifest.
-
-A mismatch means the downloaded file is not the certified asset.
-
----
-
-## 4. Smoke-test the downloaded artifact
-
-Open the actual downloaded release workbook in a controlled Excel instance.
-
-Confirm:
-
-```text
-[ ] macro/trust policy satisfied
-[ ] workbook opens normally
-[ ] version shown is correct
-[ ] basic QPC timing works
-[ ] demo/basic workflow works
-[ ] no packaging-only error appears
-```
-
----
-
-## 5. Verify links
-
-Check:
-
-```text
-README release/download links
-CHANGELOG comparison/release link
-INSTALLATION.md links
-Wiki release/download references
-SECURITY.md references where changed
-```
-
-A technically correct release with broken download/documentation links is still
-an incomplete publication.
-
----
-
-# 🧹 Close out the release
-
-After post-publication verification:
-
-```text
-[ ] Record static-check run URL / identifier
-[ ] Record Excel execution evidence / workflow run
-[ ] Record Office bitness(es) actually certified
-[ ] Record release manifest/hash evidence
-[ ] Close the milestone
-[ ] Delete the merged release branch when no longer needed
-[ ] Confirm CHANGELOG release link resolves
-[ ] Confirm README points to the intended current release
-[ ] Confirm INSTALLATION reflects the published source package
-[ ] Confirm no temporary release files are tracked
-```
-
-Do not delete the release branch until the published tag and assets have been
-verified.
-
----
-
-# 🧯 Release recovery
-
-## Problem found before publication
-
-If the release is still a draft:
-
-```text
-fix the source/docs/artifact
-commit the correction
-rerun affected final checks on the new SHA
-recreate/move the unpublished tag if necessary
-regenerate provenance
-```
-
-Do not publish evidence from the superseded candidate.
-
----
-
-## Wrong tag found before publication
-
-Delete/recreate the unpublished tag so it resolves to the intended commit.
-
-Then rerun provenance with `--tag`.
-
----
-
-## Problem found after publication
-
-Do not silently move the tag or replace an asset under the same version.
-
-Choose a transparent recovery appropriate to severity:
-
-```text
-publish a patch release
-mark the affected release clearly
-publish a security advisory if applicable
-withdraw the release only with an explicit public record where necessary
-```
-
-If a published release must be deleted because it was created in error, record
-what happened before removing the evidence.
-
-Release trust is damaged more by silent history rewriting than by an openly
-documented correction.
-
----
-
-# 📋 Release evidence record
-
-For every release, retain a compact record containing:
-
-```text
-version
-tag
-full commit SHA
-release date
-final static-check run
-static-check artifact/result
-Excel version/build
-Office bitness
-regression cases
-regression assertions
-regression failures
-Excel execution run/artifact when automated
-workbook filename
-workbook SHA-256
-release-manifest filename/hash where relevant
-known certification gaps
-```
-
-This can live in:
-
-```text
-GitHub Release notes
-release-manifest.json
-workflow artifacts
-```
-
-The repository source does not need to duplicate every transient artifact.
-
----
-
-# ✅ Final release checklist
-
-```text
-SCOPE
-[ ] Milestone scope finalized
-[ ] No release-blocking issue remains
-[ ] Support / bitness policy explicit
-
-RELEASE BRANCH
-[ ] Working tree clean
-[ ] Branch synced with origin
-[ ] Version stamps synchronized
-[ ] CHANGELOG promoted to a dated current-release section before certification/tagging
-[ ] Released CHANGELOG history untouched
-[ ] README / INSTALLATION / Wiki consistent
-[ ] Pre-merge vba_lint passes
-[ ] Release-branch Static checks green
-
-MAIN / FINAL SHA
-[ ] Release branch merged to main
-[ ] Local main fetched/pulled and clean
-[ ] Full tag-target SHA recorded
-[ ] Final Static checks green on that exact SHA
-[ ] vba-lint-results commit matches tag-target SHA
-
-EXCEL
-[ ] Exact tag-target source imported
-[ ] Debug → Compile VBAProject passes
-[ ] Regression suite completes
-[ ] Failures = 0
-[ ] Cases / assertions recorded
-[ ] Excel version/build recorded
-[ ] Office bitness recorded
-[ ] 32-bit evidence present where required
-[ ] Cleanup/completion state valid
-
-ARTIFACT
-[ ] Final PERFORMANCE.MANAGER.xlsm assembled from tag-target source
-[ ] Actual final-saved workbook reopened
-[ ] Package smoke passes
-[ ] No post-validation binary edits
-
-TAG
-[ ] Lowercase vX.Y.Z tag created on exact tag-target SHA
-[ ] Tag pushed
-[ ] Tag independently re-resolves to recorded SHA
-
-PROVENANCE
-[ ] release_provenance.py run after tag exists
-[ ] Source matches tag
-[ ] No TODO, missing, or incomplete required fields
-[ ] Clean working tree and HEAD/tag-target identity verified manually until #51 lands
-[ ] Workbook SHA-256 recorded
-[ ] release-manifest.json generated from final tag/artifact
-[ ] Additional bitness evidence retained separately where required
-
-PUBLICATION
-[ ] Existing tag selected in GitHub Release
-[ ] Release notes accurate
-[ ] Certification claims limited to actual evidence
-[ ] Workbook attached
-[ ] Manifest attached
-[ ] Additional execution evidence attached where applicable
-
-POST-PUBLISH
-[ ] Published tag independently verified
-[ ] Downloaded workbook hash matches
-[ ] Downloaded workbook smoke-tested
-[ ] README / CHANGELOG / INSTALLATION links checked
-[ ] Milestone closed
-[ ] Release branch removed only after verification
-```
-
----
-
-<div align="center">
-
-## 📌 Release principle
-
-**Merge first, certify the exact tag target, test the artifact you publish, and claim only what the evidence proves.**
-
-</div>
+**Release principle:** certify one exact source revision, build from it once, and publish only evidence-backed artifacts derived from it.
