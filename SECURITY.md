@@ -1,1389 +1,390 @@
 <div align="center">
 
-# 🔒 Security Policy
+# 🔒 VBA-PERFORMANCE_MANAGER Security Policy
 
-### Security, trust boundaries, responsible disclosure, and safe deployment for VBA-PERFORMANCE_MANAGER
+### Security, measurement integrity, runner isolation, and Excel state safety
 
-[![Reporting](https://img.shields.io/badge/reporting-private-d97706?style=for-the-badge)](#-reporting-a-vulnerability)
-[![Support](https://img.shields.io/badge/support-latest_tagged_release-217346?style=for-the-badge)](#-supported-versions)
-[![Platform](https://img.shields.io/badge/platform-Excel_VBA_%2F_Windows-0078D6?style=for-the-badge)](#-security-model)
-[![Scope](https://img.shields.io/badge/scope-runtime_release_and_automation-6f42c1?style=for-the-badge)](#-scope)
-[![Automation](https://img.shields.io/badge/automation-least_privilege-d73a49?style=for-the-badge)](#-repository-automation-and-runner-security)
-
-<br>
-
-**Source-first trust · Explicit timing status · Trusted macro dispatch · Shared-state ownership · Private disclosure · Release provenance**
+[![Reporting](https://img.shields.io/badge/Reporting-Private-d97706?style=for-the-badge)](#reporting-a-vulnerability)
+[![Support](https://img.shields.io/badge/Support-Latest_release-217346?style=for-the-badge)](#supported-versions)
+[![Scope](https://img.shields.io/badge/Scope-Source_%7C_Releases_%7C_Automation-0969da?style=for-the-badge)](#security-scope)
+[![Disclosure](https://img.shields.io/badge/Disclosure-Coordinated-6f42c1?style=for-the-badge)](#coordinated-disclosure)
 
 <br>
 
-[Supported versions](#-supported-versions)
-&nbsp;·&nbsp;
-[Report privately](#-reporting-a-vulnerability)
-&nbsp;·&nbsp;
-[Security scope](#-scope)
-&nbsp;·&nbsp;
-[Runtime boundaries](#-runtime-security-boundaries)
-&nbsp;·&nbsp;
-[Supply chain](#-supply-chain-and-release-integrity)
-&nbsp;·&nbsp;
-[Automation](#-repository-automation-and-runner-security)
-&nbsp;·&nbsp;
-[Verify a release](#-verifying-a-release)
+**Protect users · Minimize exposure · Preserve evidence · Coordinate disclosure**
 
 </div>
 
 ---
 
-**VBA-PERFORMANCE_MANAGER** distributes reviewable Excel/VBA source and, for
-convenience, macro-enabled release binaries.
+**VBA-PERFORMANCE_MANAGER** is an Excel/VBA component for timing, benchmarking, dynamic procedure measurement, Windows timing APIs, timer-resolution lifecycle, and coordinated management of process-wide Excel application state.
 
-The production component runs with the privileges already granted to Microsoft
-Excel and the current Windows user.
-
-There is no:
-
-- background service;
-- privileged installer;
-- automatic updater;
-- production network client;
-- production shell execution;
-- bundled third-party DLL;
-- credential store in the runtime component;
-- elevated Windows service or driver;
-- package manager required by the VBA runtime.
-
-The component does call Windows **system** APIs from `kernel32` and `winmm` for
-timing. It also uses Excel process-wide Application state and can dynamically
-dispatch trusted VBA procedures through `Application.Run`.
-
-The attack surface is therefore relatively small, but it is not zero.
-
-Security-relevant or integrity-sensitive surfaces include:
-
-```text
-VBA macros
-Application.Run
-QueryPerformanceCounter / QueryPerformanceFrequency
-GetTickCount / GetTickCount64
-timeGetTime
-timeGetSystemTime
-timeBeginPeriod / timeEndPeriod
-Application.ScreenUpdating
-Application.EnableEvents
-Application.DisplayAlerts
-Application.Calculation
-Application.Cursor
-DoEvents
-macro-enabled .xlsm release artifacts
-release provenance tooling
-GitHub Actions automation
-future self-hosted Excel regression runners
-```
+This policy explains which versions receive security attention, how to report a
+suspected vulnerability privately, what the project considers security-relevant,
+and which trust boundaries remain the responsibility of users and host
+organizations.
 
 > [!IMPORTANT]
-> VBA-PERFORMANCE_MANAGER is **not a security boundary**.
->
-> It does not enforce authorization, workbook permissions, segregation of duties,
-> data-access controls, macro trust, process isolation, or Windows security.
->
-> Its safety mechanisms — transactional timer starts, explicit read status,
-> strict/non-strict policy, failure-aware measurement, balanced timer-resolution
-> cleanup, and reference-counted Excel state ownership — are designed to prevent
-> accidental corruption, misleading measurements, and cross-instance
-> interference.
->
-> They are not a sandbox against malicious VBA already running with the same
-> Excel/VBA privileges.
+> A security policy does not make macros, workbooks, add-ins, source archives, or
+> release artifacts inherently trustworthy. Establish provenance and apply your
+> organization's security controls before enabling executable content.
 
 ---
+
+<a id="security-model"></a>
 
 ## 🧭 Security model
 
-The project assumes:
+The project assumes that:
 
-```text
-Excel itself is trusted
-the VBA project containing the component is trusted
-the current Windows user is authorized to run that VBA project
-macros are enabled through an approved trust mechanism
-procedure names passed to dynamic measurement APIs come from trusted code
-```
+- Microsoft Excel, the operating system, and the VBA runtime are trusted;
+- the current user is authorized to open and run the workbook or add-in;
+- macros are enabled only through an approved trust mechanism;
+- project source or artifacts were obtained from an official channel; and
+- the host workbook and other code already trusted in the Excel process are not
+  malicious.
 
-The project does **not** assume:
+These are trust boundaries, not guarantees. VBA projects running in the same
+Excel process are not isolated security sandboxes.
 
-```text
-every workbook open in the Excel process is cooperative
-every Excel Application setting is local to one workbook
-a returned numeric zero always means a valid zero-duration measurement
-a requested timing backend is necessarily the backend eventually bound
-all Windows timing branches behave identically across Office bitness
-a release workbook is proven to have been built from source merely because both
-  source and workbook hashes are published
-a self-hosted Excel runner is safe to expose to arbitrary pull-request code
-```
-
-That distinction explains several design choices:
-
-- `StartTimer` commits a timing session only after obtaining a valid start value;
-- non-strict start fallback is reported through status and the resolved method;
-- failed endpoint reads do not enter elapsed arithmetic;
-- `LastReadStatus` distinguishes failure from a genuine zero result;
-- the measurement harness excludes failed reads rather than storing them as
-  ordinary zero-duration observations;
-- statistics reject values outside the timing-sample domain;
-- TW Application-state ownership is shared and reference-counted across manager
-  instances;
-- `Application.Calculation` baseline validity is tracked separately from its
-  value;
-- release provenance distinguishes source identity, execution certification,
-  and workbook identity rather than treating them as the same claim.
+Procedure names passed to dynamic measurement APIs are executable input and must come from trusted code. Timing output is descriptive evidence, not an authentication, authorization, cryptographic, randomness, or trusted-clock primitive.
 
 ---
+
+<a id="supported-versions"></a>
 
 ## 📦 Supported versions
 
-Security fixes are normally applied to the **latest tagged release**.
-
 | Source state | Security support |
 |---|---|
-| **Latest tagged release** | ✅ Supported |
-| `main` | ⚠️ Development branch / best effort |
-| Older tagged releases | ❌ Normally unsupported; upgrade first |
-| Modified third-party forks/copies | ❌ Unsupported unless the issue reproduces in official source |
-| Unofficial binary mirrors | ❌ Unsupported |
+| **Latest tagged functional release** | ✅ Supported |
+| **Release candidate before publication** | ⚠️ Testing and best-effort remediation |
+| **main** | ⚠️ Development code; best effort |
+| **Older tagged releases** | ❌ Normally unsupported; upgrade first |
+| **Modified copies, unofficial forks, or mirrors** | ❌ Unsupported unless the issue reproduces in official supported source |
 
-The current latest tagged release is:
+If the project has not yet published a functional release, development code is
+pre-release and no production version is security-supported.
 
-```text
-v1.4.0
-```
+Security fixes normally land on **main** and are included in a new tagged
+release. Older releases are not normally patched in place unless the maintainer
+states otherwise.
 
-Its retained execution certification covers Microsoft 365 Excel 64-bit. Real
-Office 32-bit execution remains unverified; source-level conditional branches
-must not be presented as execution evidence.
-
-When reporting, identify the exact affected state with one of:
-
-```text
-release tag
-full 40-character commit SHA
-```
-
-Do not report only:
-
-```text
-latest
-current
-main from yesterday
-```
-
-because those descriptions can point to different source after the report is
-submitted.
-
-### Security-fix policy
-
-A confirmed vulnerability may result in:
-
-- a controlled fix branch;
-- regression or fault-injection coverage;
-- a security advisory;
-- a corrected tagged release;
-- updated release artifacts;
-- guidance to remove or stop using an affected artifact;
-- changes to release or runner permissions.
-
-Older releases are not normally patched in place.
+Reports must identify an exact release tag or full commit SHA. Descriptions such
+as “latest” or “yesterday's main” are insufficient because branches change.
 
 ---
+
+<a id="reporting-a-vulnerability"></a>
 
 ## 📣 Reporting a vulnerability
 
-**Do not open a public GitHub issue for a suspected vulnerability.**
+Do **not** disclose a suspected vulnerability in a public issue, discussion,
+pull request, commit message, Wiki page, sample workbook, screenshot, or release
+thread.
 
-Do not publish:
+Use either private channel:
 
-```text
-exploit code
-weaponized macro-enabled workbooks
-credentials or personal access tokens
-private signing keys
-sensitive workstation details
-client workbooks
-proprietary VBA
-proof-of-concept runner escapes
-```
+1. On the repository **Security** page, select **Report a vulnerability** when
+   GitHub private vulnerability reporting is available.
+2. Otherwise email **danielep71@gmail.com** with the subject:
+   **Private security report — VBA-PERFORMANCE_MANAGER**.
 
-in a public issue, pull request, discussion, Wiki page, or release thread.
+Include the smallest amount of information needed to reproduce and assess the
+issue:
 
-### Option 1 — GitHub private vulnerability reporting
+| Evidence | Requested detail |
+|---|---|
+| 🧾 **Identity** | Repository, exact tag or full commit SHA, file, module, procedure, and artifact |
+| 🖥️ **Environment** | Excel version/build, Office bitness, Windows version, locale, and deployment model |
+| 🎯 **Impact** | Confidentiality, integrity, availability, code-execution, or supply-chain consequence |
+| 🔬 **Reproduction** | Minimal steps and proof using synthetic data |
+| 🧨 **Exploitability** | Preconditions, required trust, user interaction, affected scope, and persistence |
+| 🛡️ **Mitigation** | Workaround or containment already tested, if any |
+| 📎 **Evidence** | Sanitized logs, diagnostics, screenshots, hashes, or proof of concept |
+| ⏱️ **Measurement state** | Requested/resolved backend, strictness, read status, failed/excluded samples, timer-resolution state, and process uptime |
+| 🧹 **Excel state** | Initial and effective application state, active manager instances, ownership/exemptions, cleanup, and residual effects |
+| 🖥️ **Runner context** | Hosted or self-hosted runner, trust level of executed code, persistence, credentials, network access, and cleanup outcome |
 
-If private vulnerability reporting is enabled for the repository:
+Do not send real client, employer, counterparty, student, production, or personal
+workbooks. Remove credentials, tokens, personal data, internal paths,
+connections, external links, document metadata, hidden names, cached values,
+queries, and other unrelated content.
 
-```text
-Repository
-→ Security
-→ Report a vulnerability
-```
-
-submit the report there.
-
-### Option 2 — email the maintainer
-
-```text
-danielep71@gmail.com
-```
-
-Suggested subject:
-
-```text
-Private security report — VBA-PERFORMANCE_MANAGER
-```
-
-### Include, where relevant
-
-- affected release tag or full commit SHA;
-- exact file/module/procedure;
-- Excel version/build;
-- Office 32-bit or 64-bit;
-- Windows version;
-- requested timing backend;
-- resolved `ActiveMethodID`;
-- `StrictMode`;
-- `LastReadStatus`;
-- whether TW suppression was active;
-- whether `TW_CalculationExempted` was true;
-- whether a second manager instance was active;
-- whether the report concerns source or an official release workbook;
-- minimal reproduction steps;
-- observed behavior;
-- expected behavior;
-- confidentiality, integrity or availability impact;
-- whether exploitation requires already-trusted malicious VBA;
-- whether a repository workflow or runner is involved;
-- any proposed mitigation;
-- whether public disclosure has already occurred.
-
-### Safe reproduction material
-
-Prefer:
-
-```text
-sanitized workbook
-minimal reproduction module
-plain-text steps
-regression output
-small sample vectors
-screenshots with sensitive values removed
-hashes and exact release metadata
-```
-
-Do not attach a production workbook merely because it reproduces the problem.
+If a secret has been exposed, revoke or rotate it immediately before spending
+time perfecting the report.
 
 ---
 
-## ⏱️ What to expect
+<a id="response-process"></a>
 
-This is a solo-maintained open-source project.
+## ⏱️ Response process
 
-Response times are **best effort**, not a contractual SLA.
+This project is maintained by one person. Response times are best-effort rather than a contractual SLA.
 
-The expected process is:
+The maintainer aims to:
 
-1. acknowledge the report;
-2. identify the affected source, artifact, and environment;
-3. reproduce where practical;
-4. distinguish correctness from security impact;
-5. determine affected versions/artifacts;
-6. develop remediation;
-7. add regression/fault-injection coverage where appropriate;
-8. validate on the relevant Excel/Windows host;
-9. prepare a corrected release or mitigation;
-10. disclose publicly after users have had reasonable time to update.
+| Stage | Target |
+|---|---|
+| **Acknowledgement** | Within 5 business days |
+| **Initial scope and severity assessment** | Within 10 business days after sufficient evidence is available |
+| **Progress update for an active investigation** | At least every 14 days |
+| **Remediation and disclosure** | Proportionate to severity, exploitability, affected users, and validation needs |
 
-Credit can be included in release notes or an advisory if the reporter wants it.
+The process normally includes reproducing the issue, determining affected
+versions and artifacts, containing active risk, developing a fix, adding
+regression or fault-injection evidence, validating in the relevant Excel and
+Windows environment, and preparing a corrected release or advisory.
 
+Targets may change when reproduction requires unavailable Office versions,
+hardware, long-running behavior, third-party coordination, or sanitized evidence
+from the reporter. Material delays will be communicated when practical.
+
+Reporter credit can be included in an advisory or release notes when requested.
 Anonymous credit is also acceptable.
 
-Please allow reasonable remediation time before public disclosure.
+---
+
+<a id="security-triage"></a>
+
+## 🎯 Security issue or ordinary defect?
+
+When uncertain, report privately. The maintainer can reclassify a report safely.
+
+Security reports include credible risks of:
+
+- unintended code execution or crossing a documented trust boundary;
+- unauthorized reading, modification, deletion, or disclosure of data;
+- persistent or exploitable loss of availability;
+- credential, token, signing-key, runner, or automation compromise;
+- malicious, substituted, or misleading official release artifacts;
+- validation or provenance bypasses that can represent an unsafe artifact as
+  trusted; or
+- a correctness defect deliberately exploitable to defeat a security,
+  authorization, integrity, or control boundary.
+
+An incorrect result, compatibility problem, bounded performance regression,
+documentation error, or recoverable UI defect is normally an ordinary bug unless
+it creates a concrete security impact.
+
+### Severity guide
+
+| Severity | Typical impact |
+|---|---|
+| **Critical** | Unintended code execution, exposed release credentials, compromised official artifacts, or broad unauthorized data access |
+| **High** | Significant integrity/confidentiality loss, persistent host compromise, or practical supply-chain exploitation |
+| **Moderate** | Bounded availability or integrity impact requiring meaningful preconditions |
+| **Low** | Hardening weakness or limited impact without demonstrated exploitation |
+
+Severity considers impact, exploitability, required privileges, user
+interaction, affected versions, recoverability, and whether trusted malicious
+VBA is already required.
 
 ---
 
-## 🎯 What qualifies as a security issue
+<a id="security-scope"></a>
 
-When uncertain, report privately.
+## 🛠️ Security scope
 
-The maintainer can safely reclassify a report as an ordinary defect.
+### In scope
 
-### 1. Unexpected code execution / macro-dispatch issues
+- official source and committed executable or macro-enabled artifacts;
+- official GitHub Release assets, archives, checksums, manifests, and provenance
+  claims;
+- repository-owned build, test, validation, packaging, and release tooling;
+- GitHub Actions workflows, permissions, dependencies, and project-managed
+  credentials;
+- documented runtime integrations and trust boundaries; and
+- security or integrity behavior introduced by this project's code.
 
-Examples:
+### Project-specific risk surfaces
 
-- official source or a release workbook executes code outside the documented
-  component behavior;
-- untrusted worksheet/file/network-derived input can reach `Application.Run`
-  without a trusted caller deliberately selecting that behavior;
-- procedure qualification unexpectedly redirects an unqualified target to
-  attacker-controlled code;
-- a release workbook contains undisclosed macros, external links, connections,
-  embedded payloads, or executable behavior;
-- a published release asset materially differs from what the release claims it
-  contains.
-
-### 2. Integrity issues
-
-Examples:
-
-- a native-read failure is transformed into a valid-looking timing result in a
-  way that bypasses the documented status/failure model and can influence a
-  security-sensitive automated decision;
-- a non-owner manager instance can restore or suppress process-wide Excel state
-  outside the documented ownership model;
-- TW cleanup reports successful restoration while leaving security- or
-  integrity-sensitive Application state in an unknown condition;
-- a release manifest claims source/tag/artifact relationships it did not
-  actually verify;
-- a repository workflow modifies release/source metadata outside its documented
-  permission boundary;
-- a crafted input causes the component to operate on a different macro target
-  than the documented contract permits.
-
-### 3. Confidentiality issues
-
-Examples:
-
-- diagnostics or release tooling unexpectedly publishes workbook data,
-  workstation paths, credentials, secrets, or client-specific information;
-- a release workbook contains confidential or machine-specific information;
-- a workflow artifact or log exposes a token, signing secret, environment
-  variable, or private runner detail;
-- future Excel-CI automation uploads an unsanitized workbook containing private
-  data.
-
-### 4. Availability issues
-
-Examples:
-
-- crafted input causes persistent Excel hangs, repeated crashes, or an
-  uncontrolled timing loop without a practical recovery path;
-- timer-resolution ownership becomes unbalanced in a way that persistently
-  degrades the host environment;
-- TW suppression can be driven into a state that persistently disables events,
-  calculation, alerts, or screen updating outside the documented recovery path;
-- a self-hosted Excel runner can be persistently compromised or left with
-  orphaned Excel processes that affect later jobs.
-
-### 5. Supply-chain issues
-
-Examples:
-
-- tampered GitHub Release assets;
-- compromised repository workflow;
-- compromised or unexpectedly changed third-party action;
-- mismatch between release notes/source tag and published workbook;
-- malicious redirect in download instructions;
-- unauthorized replacement of a published release artifact;
-- forged or misleading release provenance;
-- compromise of a self-hosted Windows/Excel runner used to certify releases.
-
-### 6. Credential / automation issues
-
-Examples:
-
-- repository or runner secrets exposed in logs/artifacts;
-- workflow permissions broadened beyond what the job requires;
-- untrusted pull-request code gaining access to a persistent self-hosted runner;
-- release-signing keys becoming available to ordinary build/test jobs;
-- a future PAT or token being made available to arbitrary repository scripts.
-
----
-
-## 🐞 Ordinary bugs
-
-A serious defect is not automatically a security vulnerability.
-
-Use a public issue for ordinary defects such as:
-
-- an elapsed value is slightly inaccurate but bounded and honestly reported;
-- a timing backend has lower resolution than expected;
-- a percentile or formatting routine produces the wrong ordinary numeric result;
-- `Pause` overshoots within a documented bounded behavior;
-- a benchmark is noisy;
-- a regression case is missing;
-- a source comment is stale;
-- a statistic uses an undesirable numerical algorithm but no trust boundary is
-  crossed;
-- a TW setting is restored incorrectly in a normal reproducible scenario but
-  does not create a security-relevant impact;
-- a documentation example is wrong;
-- a release checklist step is confusing.
-
-Some ordinary defects can become security-relevant when they cross a concrete
-confidentiality, integrity, availability, credential, or supply-chain boundary.
-
-If unsure, report privately first.
-
----
-
-## 🛠️ Scope
-
-### In scope — production source
-
-```text
-src/classes/cPerformanceManager.cls
-src/modules/M_cPM_TIMEWASTERS.bas
-```
-
-Future production modules introduced under `src/` are also in scope.
-
-### In scope — regression and demo source
-
-```text
-test/M_cPM_Test.bas
-demo/M_DEMO_BUILDER.bas
-demo/M_cPM_DEMO.bas
-demo/M_cPM_USAGE_EXAMPLES.bas
-```
-
-A defect in demo/test code is security-relevant when it can:
-
-```text
-misrepresent release-quality evidence
-damage unrelated workbook/process state
-leak sensitive data
-execute unexpected code
-compromise a release runner
-```
-
-### In scope — repository tooling
-
-```text
-tools/vba_lint.py
-tools/release_provenance.py
-```
-
-Future committed release/build/regression tooling is also in scope.
-
-### In scope — repository automation
-
-Current workflow:
-
-```text
-.github/workflows/static-checks.yml
-```
-
-Future Windows/Excel execution workflows, self-hosted-runner configuration, and
-release-attestation/signing automation are in scope.
-
-### In scope — official release artifacts
-
-Official GitHub Release assets, including:
-
-```text
-PERFORMANCE.MANAGER.xlsm
-release-manifest.json
-```
-
-where published for the relevant release.
-
-Release notes, hashes, provenance claims, and execution-certification claims are
-also in scope.
-
-### In scope — runtime integrations
-
-- dynamic macro execution through `Application.Run`;
-- Windows timing APIs;
-- timer-resolution lifecycle;
-- QPC/tick-count read status;
-- strict/non-strict failure behavior;
-- process-wide Excel Application-state suppression;
-- Calculation baseline/exemption behavior;
-- multi-instance TW ownership;
-- emergency cleanup/recovery;
-- benchmark sample validity where it affects integrity claims.
+- **Dynamic execution** — untrusted external values reaching Application.Run or redirecting a procedure target.
+- **Measurement integrity** — failed reads represented as valid values, hidden backend fallback, or forged evidence used to defeat a material control.
+- **Application state** — unauthorized suppression or restoration of process-wide Excel settings, broken multi-instance ownership, or incomplete cleanup.
+- **Native timing** — unsafe declarations, counter rollover, timer-resolution imbalance, memory or pointer-width errors, and persistent host impact.
+- **Runner isolation** — untrusted pull-request code reaching persistent Windows/Excel runners, secrets, signing keys, users, networks, or later jobs.
+- **Release provenance** — misleading relationships among source, workbook artifacts, manifests, hashes, execution evidence, and signing identity.
 
 ### Out of scope
 
 - vulnerabilities in Microsoft Excel, Office, Windows, GitHub, Python, or the
   VBA runtime themselves;
-- organization-controlled macro-security configuration;
-- malicious VBA not supplied by this repository;
-- unrelated add-ins in the host process;
-- user modifications that do not reproduce in official source;
-- unofficial mirrors or repackaged workbooks;
-- old unsupported tags where the issue does not affect a supported state;
-- social engineering unrelated to project content;
-- a trusted caller deliberately passing an untrusted procedure name to
-  `Application.Run` contrary to the documented trusted-input contract;
-- using timing output as an authorization, authentication, randomness, or
-  cryptographic primitive;
-- ordinary performance or correctness bugs without concrete security impact.
+- organization-controlled macro security, endpoint controls, access rights, or
+  deployment policy;
+- malicious VBA already trusted and running in the same Excel process;
+- unrelated workbooks, add-ins, dependencies, or infrastructure;
+- modified copies that do not reproduce the issue in official supported source;
+- unofficial mirrors, repackaged binaries, or unsupported historical snapshots;
+- lost or stolen user credentials not exposed by this project;
+- social engineering unrelated to official project content; and
+- ordinary defects without a concrete security impact.
 
-A vulnerability in Excel, Windows or GitHub should be reported to the relevant
-vendor/platform.
+Upstream vulnerabilities should be reported to the responsible vendor or
+platform.
 
 ---
 
-## 🛡️ Runtime security boundaries
+<a id="data-and-secrets"></a>
 
-### 1. Dynamic procedure execution with `Application.Run`
+## 🔐 Data and secret handling
 
-The measurement harness accepts a procedure name and executes it.
+Never commit, upload, log, or attach:
 
-That is executable input.
+- passwords, personal access tokens, API keys, signing keys, certificates, or
+  connection strings;
+- client, employer, counterparty, student, employee, or personal data;
+- proprietary source, models, workbooks, market data, production extracts, or
+  licensed vendor content;
+- internal URLs, machine-specific paths, environment dumps, or unredacted
+  screenshots; or
+- proof-of-concept material beyond what is necessary to establish the issue.
 
-The API is intended for **trusted procedure names supplied by trusted VBA code**.
+Use synthetic data and a minimal reproduction. Excel files can carry sensitive
+material outside visible cells, including document properties, defined names,
+hidden sheets, VBA, cached values, Power Query data, external links, and
+connections.
 
-Do not pass a procedure name directly from:
-
-```text
-worksheet cells
-downloaded files
-untrusted CSV/JSON
-network responses
-external user input
-```
-
-without an application-level allowlist or other trusted resolution policy.
-
-An unqualified procedure name is qualified by the component to the workbook
-containing the component.
-
-An already qualified name may be honored as a deliberate caller choice.
-
-Qualification narrows accidental resolution ambiguity.
-
-It does **not** turn an untrusted macro name into safe data.
-
-> [!IMPORTANT]
-> `MeasureProcedure` and related dispatch helpers are benchmarking utilities, not
-> a sandbox or command-authorization layer.
-
-A report that simply demonstrates that trusted VBA can ask `Application.Run` to
-execute another trusted macro is not a vulnerability.
-
-A report showing that untrusted data reaches an unexpected macro target without
-the host application deliberately allowing that behavior may be.
+Repository secrets must be scoped to the smallest necessary workflow, protected
+from untrusted pull-request code, excluded from logs and artifacts, and rotated
+after suspected exposure.
 
 ---
 
-### 2. Windows timing APIs
+<a id="supply-chain"></a>
 
-The component uses Windows timing APIs including:
+## 📦 Supply-chain and release integrity
 
-```text
-QueryPerformanceCounter
-QueryPerformanceFrequency
-GetTickCount / GetTickCount64
-timeGetTime
-timeGetSystemTime
-timeBeginPeriod
-timeEndPeriod
-```
+Trusted distribution is limited to the official repository and its GitHub
+Releases page.
 
-These APIs run inside the existing Excel process and Windows user session.
+Maintainers should:
 
-They do not elevate privileges.
+- review executable and macro-enabled artifacts before publication;
+- pin third-party workflow actions to immutable commit SHAs;
+- grant workflows the minimum required permissions;
+- keep build, validation, signing, and publication responsibilities separated
+  where practical;
+- publish checksums, manifests, attestations, or signatures when the release
+  process supports them; and
+- document exactly what each piece of release evidence proves.
 
-Security-sensitive changes include:
+A checksum proves file identity. It does not prove that the file is safe, that
+it was built from the stated source, or that it executed successfully in Excel.
 
-- changing `PtrSafe` declarations;
-- changing `Long` / `LongPtr` / `Currency` representations used for native data;
-- changing 32-bit / 64-bit conditional compilation;
-- changing signed-to-unsigned conversion;
-- changing rollover periods;
-- bypassing status-bearing native-read wrappers;
-- adding new system DLLs;
-- adding native APIs that read/write memory, files, processes, registry, network,
-  or credentials.
-
-A native declaration defect is often a correctness or availability issue rather
-than a privilege-escalation vulnerability.
-
-The report should distinguish those categories.
+Source hashes, artifact hashes, source-to-artifact provenance, Excel execution
+evidence, and signing identity are distinct claims and must not be conflated.
 
 ---
 
-### 3. Timer-resolution ownership
+<a id="automation"></a>
 
-Backend 3 can request a 1 ms multimedia timer period through:
+## 🤖 Repository automation and runners
 
-```text
-timeBeginPeriod(1)
-```
+Workflow code and configuration are security-sensitive.
 
-The request must be balanced with:
+- Do not expose secrets to pull requests from forks or other untrusted code.
+- Do not run untrusted contributions on a persistent self-hosted Excel/Windows
+  runner with repository, user, network, or signing credentials.
+- Use ephemeral or isolated runners where practical.
+- Clean workbooks, temporary files, Excel processes, credentials, and workspace
+  state between jobs.
+- Treat logs, screenshots, workbooks, test artifacts, and environment metadata
+  as potentially sensitive.
+- Review changes to workflow permissions, action pins, release jobs, dependency
+  acquisition, and artifact upload/download paths as security changes.
 
-```text
-timeEndPeriod(1)
-```
-
-under the component's ownership model.
-
-Cleanup is handled explicitly through normal lifecycle methods and
-`ResetEnvironment`, with `Class_Terminate` as a best-effort safety net.
-
-A balanced timer-period request is a performance/power-management concern, not a
-security boundary.
-
-An unbounded or persistent leak that materially degrades availability may be
-security-relevant.
+Automation that writes repository content or publishes releases must have
+explicit, least-privilege authorization.
 
 ---
 
-### 4. Excel Application-state suppression
+<a id="safe-use"></a>
 
-The TW subsystem can change process-wide Excel properties:
+## ✅ Safe-use guidance
 
-```text
-Application.ScreenUpdating
-Application.EnableEvents
-Application.DisplayAlerts
-Application.Calculation
-Application.Cursor
-```
+Users should:
 
-These are **Excel-process state**, not workbook-local state.
+- treat procedure names supplied to dynamic measurement APIs as executable input and allowlist untrusted external values;
+- preserve macro security and use controlled workbooks for tests that manipulate real Excel state;
+- inspect strictness, resolved backend, read status, failures, fallbacks, and sample validity before relying on a benchmark;
+- keep an environment-recovery path and restart Excel after irrecoverable reset or uncertain process-wide state;
+- never expose persistent self-hosted runners or secrets to untrusted pull-request code;
+- protect signing and environment credentials outside workbooks, source, fixtures, manifests, and logs; and
+- distinguish precision from security and identity hashes from execution or provenance evidence.
 
-The component therefore uses shared ownership across manager instances:
-
-```text
-capture baseline on first participating session
-aggregate active requests
-restore baseline on the last session
-```
-
-`Application.Calculation` is handled specially because a valid baseline may be
-unavailable depending on workbook state.
-
-The component tracks:
-
-```text
-baseline value
-baseline validity
-Calculation exemption
-strict/non-strict policy
-```
-
-The documented stable-host invariant requires the open-workbook set to remain
-stable while Calculation suppression is active.
-
-> [!IMPORTANT]
-> TW state management is an operational safety mechanism, not an authorization
-> boundary.
->
-> Malicious VBA already running in the Excel process can change these
-> Application properties directly.
-
-When reporting TW issues, identify:
-
-- the initial Application state;
-- which suppression flags were requested;
-- how many manager instances were active;
-- whether workbooks opened/closed during the scope;
-- whether `TW_CalculationExempted` became true;
-- whether cleanup completed normally;
-- whether `PM_TW_EndAllSessions` or `ResetEnvironment` was used.
+No numerical, statistical, pricing, timing, or UI result from this project is by
+itself an authentication, authorization, access-control, cryptographic,
+financial-advice, or safety-critical mechanism.
 
 ---
 
-### 5. Read status and timing-result integrity
+<a id="coordinated-disclosure"></a>
 
-A numeric zero has more than one possible meaning in timing code.
+## 📣 Coordinated disclosure
 
-It can be:
+Avoid public disclosure while exploitability is being assessed, a fix is being
+prepared, affected users have not had reasonable time to update, an exposed
+secret remains valid, or a malicious artifact or runner remains reachable.
 
-```text
-a real zero-duration observation
-an unresolved duration below the backend/harness floor
-a non-strict failure result
-a clamped invalid elapsed result
-```
+The maintainer and reporter should agree a disclosure plan based on severity,
+active exploitation, remediation complexity, availability of a workaround, and
+the time needed to validate a corrected release.
 
-The project exposes status so callers do not have to infer validity from the
-number alone.
+The maintainer may ask for a sanitized reproduction, additional environment
+detail, confirmation against a candidate fix, or a reasonable embargo. The
+reporter does not surrender ownership of their research.
 
-Direct operations expose:
-
-```text
-LastReadStatus
-```
-
-Repeated-measurement APIs expose or are evolving toward explicit failure
-evidence for worker reads.
-
-For any security-, audit-, release-, or control-relevant use of measurements:
-
-```text
-do not discard status/failure evidence
-do not treat fallback data as equivalent without checking the resolved backend
-do not treat failed reads as ordinary zero observations
-```
-
-The component is intended for performance measurement.
-
-It is **not** intended as:
-
-```text
-a cryptographic timer
-a random-number source
-an authentication mechanism
-an authorization mechanism
-an anti-tamper clock
-a trusted time authority
-```
+When remediation is available, the project may publish a GitHub Security
+Advisory, corrected release, release-note entry, mitigation guidance, and credit
+agreed with the reporter.
 
 ---
 
-### 6. Strict and non-strict modes
+<a id="safe-harbor"></a>
 
-Strict mode raises when a documented invalid condition cannot be accepted.
+## 🛡️ Good-faith research and safe harbor
 
-Non-strict mode may:
+Good-faith security research is welcome when it:
 
-```text
-fall back
-return a neutral numeric result
-record a status
-exclude invalid samples
-```
+- stays within this project's source, artifacts, and documented integrations;
+- avoids privacy violations, data destruction, service disruption, persistence,
+  social engineering, and access to data beyond what is necessary;
+- stops after establishing the minimum evidence required;
+- reports the issue privately and promptly; and
+- allows reasonable time for investigation and remediation.
 
-depending on the operation.
+The project will not initiate or recommend legal action solely for research
+conducted in good faith and consistently with this policy. This statement does
+not authorize testing of third-party systems or bind Microsoft, GitHub, an
+employer, a client, or any other third party.
 
-Non-strict behavior is designed for resilient performance instrumentation.
-
-It is not permission to ignore status.
-
-When a measurement drives a release certificate or another high-integrity
-decision, prefer:
-
-```text
-StrictMode = True
-```
-
-or explicitly verify every non-strict status/failure output.
+No paid bug bounty is offered unless the maintainer states otherwise in writing.
 
 ---
 
-### 7. Statistics are descriptive, not security controls
+<a id="related-policies"></a>
 
-The `Stats_*` surface is designed for timing observations.
+## 📚 Related policies
 
-It can help identify:
-
-```text
-variance
-outliers
-unstable benchmark runs
-undefined coefficient-of-variation conditions
-```
-
-It cannot establish that code is safe, authentic, uncompromised, or
-cryptographically trustworthy.
-
-`Stats_IsContaminated` is a benchmark-quality heuristic.
-
-It is not an intrusion detector or security attestation.
-
----
-
-### 8. Fault-injection seams
-
-The project includes internal/Friend fault-injection hooks so deterministic
-regression tests can exercise native-read failures.
-
-These seams are for testing.
-
-They are not authentication-protected capabilities.
-
-Code already executing inside the same trusted VBA project can generally invoke
-project-internal behavior and has the same Excel privileges as the component
-itself.
-
-A malicious macro already present in the trusted project is outside the security
-boundary of these hooks.
-
-Changes should nevertheless keep test seams:
-
-```text
-non-public where practical
-one-shot or explicitly resettable
-deterministic
-unable to leak into later tests silently
-documented as test infrastructure
-```
-
----
-
-## 📦 Macro-enabled release artifacts
-
-The repository is source-first.
-
-The authoritative implementation is the tagged exported source.
-
-A macro-enabled workbook such as:
-
-```text
-PERFORMANCE.MANAGER.xlsm
-```
-
-is executable Office content and must be treated accordingly.
-
-> [!WARNING]
-> A familiar filename is not proof of authenticity.
->
-> Confirm the release tag and published SHA-256 before treating a workbook as an
-> official certified artifact.
-
-The release workbook is a convenience distribution artifact.
-
-Where organizational policy requires maximum transparency, import and compile
-the tagged exported source in a controlled workbook rather than relying solely
-on the prebuilt workbook.
-
----
-
-## 🔗 Supply-chain and release integrity
-
-### Trusted distribution
-
-Obtain source and release assets from the official GitHub repository and Releases
-page.
-
-Do not rely on:
-
-```text
-third-party mirrors
-files forwarded by email without provenance
-renamed macro-enabled workbooks
-unofficial package sites
-blog attachments
-binary copies whose hashes do not match the official release
-```
-
-### Source-first review
-
-For controlled deployments, review the relevant tagged source:
-
-```text
-src/classes/cPerformanceManager.cls
-src/modules/M_cPM_TIMEWASTERS.bas
-```
-
-and, where relevant:
-
-```text
-tools/release_provenance.py
-tools/vba_lint.py
-release documentation
-```
-
-before enabling macro-enabled artifacts.
-
-### What the release manifest proves
-
-The provenance tooling can record:
-
-```text
-tag / commit identity
-source hashes
-release-asset hashes
-Excel build
-Office bitness
-regression counts
-```
-
-The tooling verifies tagged source relationships when used as documented.
-
-A workbook digest establishes **file identity**.
-
-It does not automatically establish that the workbook was reproducibly built
-from those source files.
-
-The VBE can reformat imported modules, and the current release process does not
-automatically assemble the workbook from source.
-
-Therefore distinguish:
-
-```text
-tagged source identity
-Excel execution certification
-workbook file identity
-source-to-workbook build provenance
-```
-
-These are separate claims.
-
-Do not collapse them into one.
-
-### Signing and attestations
-
-At the time this policy was introduced, release trust is primarily
-hash/provenance based rather than a complete signed/reproducible build chain.
-
-Future improvements may include:
-
-```text
-signed annotated tags
-release attestations
-VBA project/workbook signing
-immutable release-asset policy
-stronger source-to-artifact provenance
-```
-
-Until those controls are actually deployed, do not describe a release as signed
-or reproducibly built merely because hashes exist.
-
----
-
-## 🔍 Verifying a release
-
-For controlled use:
-
-1. obtain source/assets from the official repository;
-2. record the release tag and relevant commit SHA;
-3. inspect the release notes and `CHANGELOG.md`;
-4. inspect the tagged source relevant to the deployment;
-5. treat `.xlsm` as executable Office content;
-6. compute the release workbook's SHA-256:
-
-   ```text
-   certutil -hashfile "PERFORMANCE.MANAGER.xlsm" SHA256
-   ```
-
-7. compare it with the SHA-256 published on the official Release page;
-8. inspect `release-manifest.json` when the release provides one;
-9. verify that manifest tag/SHA/build/bitness fields describe the intended
-   release;
-10. scan the workbook under organizational policy where required;
-11. compile the VBA source:
-
-   ```text
-   VBA Editor → Debug → Compile VBAProject
-   ```
-
-12. run:
-
-   ```vb
-   Run_cPerformanceManager_RegressionSuite
-   ```
-
-13. record the actual:
-
-   ```text
-   commit SHA
-   cases
-   assertions
-   failures
-   Excel version/build
-   Office bitness
-   ```
-
-14. require zero regression failures for release-quality evidence;
-15. verify the static-check run for the same tag candidate;
-16. where the deployed artifact is the release workbook, smoke-test that exact
-   workbook rather than assuming source-only tests certify packaging.
-
-A hash mismatch means the file is not the certified artifact.
-
-Treat that as a supply-chain concern, not merely a download inconvenience.
-
----
-
-## 🧰 Safe-use guidance
-
-### 1. Preserve Excel macro security
-
-- keep Excel macro security at the organization-approved level;
-- do not disable Protected View globally;
-- do not weaken Trust Center settings solely to use this component;
-- use Trusted Locations or signed VBA only where organizational policy supports
-  them;
-- unblock downloaded macro-enabled files only after establishing provenance.
-
-### 2. Treat dynamic procedure names as executable input
-
-Prefer literal or code-controlled procedure names.
-
-Do not route untrusted external values directly into:
-
-```text
-MeasureProcedure
-MeasureBaseline
-Application.Run
-```
-
-without an application-level allowlist.
-
-### 3. Prefer strict measurement policy for high-integrity evidence
-
-For release certification or other high-integrity measurements, prefer strict
-mode or explicitly inspect all non-strict failure/fallback outputs.
-
-Do not certify a benchmark from:
-
-```text
-unknown backend
-unknown read status
-unknown failed-read count
-mixed backend samples
-```
-
-### 4. Use QPC for precision, not security
-
-QPC is the recommended high-resolution backend.
-
-It is still a performance timer, not a trusted security clock.
-
-### 5. Keep an environment-recovery path
-
-Know the distinction between:
-
-```text
-normal timing/session cleanup
-TW_Turn_ON / normal scope exit
-ResetEnvironment
-PM_TW_EndAllSessions
-Excel restart
-```
-
-A full Excel restart is the safest process-level reset after an unrecoverable VBA
-project reset or uncertain global state.
-
-### 6. Run regression tests in a controlled workbook
-
-The current test harness manipulates real Excel state and creates a regression
-worksheet.
-
-Do not run release-validation tests in an unsaved production workbook containing
-irreplaceable data.
-
-### 7. Protect signing and environment secrets
-
-Never store private signing keys, passwords, PATs, or client credentials inside
-the workbook, VBA source, test fixtures, or release manifest.
-
----
-
-## 🔑 Repository automation and runner security
-
-The repository currently contains one software-quality workflow:
-
-```text
-.github/workflows/static-checks.yml
-```
-
-It:
-
-- runs on hosted Ubuntu;
-- checks exported source as text;
-- uses repository Python tooling;
-- declares `contents: read`;
-- uploads a machine-readable static-check artifact;
-- does not require repository secrets;
-- does not execute Excel/VBA.
-
-This is intentionally a low-privilege automation surface.
-
-### Current workflow boundary
-
-Static analysis can establish source consistency properties.
-
-It cannot establish:
-
-```text
-VBE import success
-VBA compile success
-Excel object-model behavior
-Windows API runtime behavior
-Office bitness behavior
-regression pass/fail
-release workbook packaging
-```
-
-Do not present a green static workflow as proof that Excel executed the component.
-
----
-
-## 🖥️ Future self-hosted Windows/Excel runner
-
-A real Excel regression gate requires a Windows host with Office installed.
-
-For a **public repository**, a persistent self-hosted runner is a materially
-different security boundary from GitHub-hosted static CI.
-
-Untrusted pull-request code must not be allowed to execute arbitrarily on a
-long-lived workstation containing:
-
-```text
-Office credentials
-personal files
-browser sessions
-signing certificates
-release secrets
-other repositories
-network-mounted drives
-developer credentials
-```
-
-### Required runner principles
-
-A future Excel runner should follow these principles:
-
-```text
-least privilege
-isolated Windows account
-no unnecessary secrets
-no personal data
-no developer browser/session state
-finite job timeout
-deterministic Excel cleanup
-orphan EXCEL.EXE cleanup
-trusted-trigger policy
-rebuildable or disposable runner where practical
-separate release-signing context
-machine-readable output
-exact commit-SHA binding
-```
-
-### Pull requests from forks
-
-Do not automatically execute arbitrary fork pull-request code on a persistent
-self-hosted Windows/Excel runner.
-
-Safer approaches include:
-
-```text
-manual approval before runner execution
-trusted branches only
-workflow_dispatch for reviewed SHAs
-ephemeral disposable Windows runners
-a quarantined runner with no credentials or sensitive network access
-```
-
-The exact policy should be documented before the headless Excel gate becomes a
-required release control.
-
-### Release secrets
-
-A future test runner should not automatically receive:
-
-```text
-release-signing private keys
-high-privilege GitHub PATs
-unrelated repository secrets
-developer credentials
-```
-
-Testing and signing are separate trust stages.
-
-A test job compromise should not automatically become a release-signing
-compromise.
-
----
-
-## 🔐 Secret-handling rules
-
-Never commit:
-
-```text
-personal access tokens
-GitHub tokens
-private signing keys
-PFX / P12 / PVK files
-passwords
-API credentials
-client secrets
-private certificates
-production connection strings
-```
-
-The repository `.gitignore` can help prevent accidental additions.
-
-`.gitignore` is not a security control.
-
-A secret committed once must be considered compromised even if the commit is
-later deleted.
-
-If a credential is exposed:
-
-1. revoke or rotate it immediately;
-2. determine the scope of access;
-3. remove it from current source;
-4. inspect workflow/release activity;
-5. assess whether history cleanup is useful;
-6. assume copies may remain in clones, caches, artifacts, or logs.
-
----
-
-## 🧾 Logging, diagnostics, and evidence
-
-Diagnostics should reveal enough to reproduce a problem without exposing
-unnecessary user or workstation data.
-
-Prefer recording:
-
-```text
-procedure / stage
-error number
-error description
-timing backend
-read status
-counts
-commit SHA
-Excel build
-Office bitness
-sanitized runner metadata
-```
-
-Avoid publishing:
-
-```text
-worksheet data
-credentials
-connection strings
-private environment variables
-signing-key paths
-user profile contents
-arbitrary workbook dumps
-sensitive local paths where unnecessary
-```
-
-Future machine-readable regression artifacts should contain release evidence,
-not workstation secrets.
-
----
-
-## 🧪 Regression harness security considerations
-
-The regression harness manipulates real Excel process state.
-
-It can:
-
-```text
-create/rebuild a regression worksheet
-exercise all timing backends
-change Application-wide TW state
-request/release multimedia timer resolution
-inject deterministic native-read failures
-exercise cleanup and fallback behavior
-run procedures through Application.Run
-```
-
-Run it in a controlled workbook/Excel instance.
-
-A passing assertion count is not sufficient if:
-
-```text
-the runner did not finish
-cleanup failed
-the wrong commit was tested
-the wrong workbook/source was loaded
-the result was manually transcribed incorrectly
-```
-
-A future headless runner should emit its own machine-readable completion/result
-state so release evidence cannot be inferred merely from partial console output.
-
----
-
-## 📣 Disclosure coordination
-
-Please avoid public disclosure while:
-
-- exploitability is still being assessed;
-- a release fix is being prepared;
-- users have not had reasonable time to update;
-- a credential or signing secret remains active;
-- a malicious release artifact remains downloadable;
-- a vulnerable self-hosted runner remains reachable.
-
-The maintainer may ask for:
-
-- additional environment detail;
-- a sanitized reproduction;
-- confirmation against a candidate fix;
-- verification on a second Office bitness;
-- a reasonable embargo period.
-
-The project does not require a reporter to surrender ownership of their research.
-
-The goal is to reduce preventable user harm.
-
----
-
-## 🧭 Security review checklist for maintainers
-
-For a security-sensitive Performance Manager change, review:
-
-```text
-[ ] Trust boundary stated
-[ ] Caller-controlled input identified
-[ ] Application.Run target control assessed
-[ ] Requested vs resolved backend behavior assessed
-[ ] Failed-read/status behavior assessed
-[ ] No sentinel enters timing arithmetic
-[ ] No invalid read becomes an ordinary benchmark sample
-[ ] Strict/non-strict behavior documented
-[ ] Win32 / Win64 declarations reviewed
-[ ] timeBeginPeriod ownership remains balanced
-[ ] Excel Application-state ownership assessed
-[ ] Calculation baseline validity/exemption assessed
-[ ] Multi-instance cleanup assessed
-[ ] Original error evidence is preserved
-[ ] Recovery behavior documented
-[ ] Regression/fault injection added where deterministic
-[ ] Manual host validation recorded where required
-[ ] Source-to-artifact claims remain exact
-[ ] Release-workbook impact assessed
-[ ] Workflow permissions remain least-privilege
-[ ] Self-hosted runner exposure assessed
-[ ] Secrets/signing keys isolated from untrusted code
-[ ] Documentation updated
-```
-
-A security review should distinguish:
-
-```text
-code correctness
-measurement integrity
-operational safety
-security impact
-release trust
-```
-
-They overlap.
-
-They are not identical.
-
----
-
-## 📚 Related policies and documentation
-
-- [Project README](README.md)
-- [Releasing Guide](RELEASING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Changelog](CHANGELOG.md)
-- [MIT License](LICENSE)
-- [Project Wiki](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/wiki)
+- The repository README, contribution guidelines, license, release notes, and
+  project documentation where present
+- GitHub's platform security and acceptable-use policies
 
----
-
-## 👤 Maintainer
-
-Maintained by **Daniele Penza**.
-
-Private security reports:
-
-```text
-danielep71@gmail.com
-```
+Conduct complaints and vulnerability reports are different. Use the Code of
+Conduct for participant behavior and this policy for software risk.
 
 ---
 
 <div align="center">
 
-## 🛡️ Security principle
+### Security principle
 
-**Trust the source you run. Treat macro names as executable input. Keep shared Excel state explicitly owned. Separate measurement evidence from release trust. Keep untrusted code away from privileged runners and signing material.**
+**Trust deliberately · Run minimally · Protect secrets · Preserve evidence · Disclose responsibly**
+
+<br>
+
+Maintained by **Daniele Penza**
 
 </div>
