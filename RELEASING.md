@@ -77,7 +77,7 @@ The Git tag adds the lower-case prefix: version `1.2.3` becomes annotated tag `v
 - The working tree and exported VBA sources are reproducible.
 - Maintainers and required reviewers are available.
 
-Use `tools/release_provenance.py` as the repository-specific provenance gate and reject incomplete or inconsistent output.
+`tools/release_provenance.py` is the repository-specific provenance gate. It runs after tagging, in step 9, and fails before producing anything when its inputs are incomplete or inconsistent.
 
 ## 1. Freeze and identify the candidate
 
@@ -157,7 +157,7 @@ Certification rules:
 
 Planned outputs:
 
-- `PERFORMANCE.MANAGER.xlsm`
+- `PERFORMANCE MANAGER.xlsm`
 - Source archive created by GitHub from the tag
 
 For each artifact:
@@ -208,6 +208,44 @@ git push origin vX.Y.Z
 ```
 
 Before pushing, confirm the tag equals `VERSION`, targets the certified commit, and has a matching dated changelog section. Never delete and recreate a public tag to hide a mistake.
+
+### Generate the provenance manifest
+
+Run this from the certified checkout, after the tag exists and before publishing. `HEAD` must be the tag target, so check the tag out first if the working branch has moved on.
+
+```bash
+python tools/release_provenance.py --version X.Y.Z --tag vX.Y.Z \
+    --asset "PERFORMANCE MANAGER.xlsm" \
+    --excel "Microsoft 365 MSO, Version 2607, Build 16.0.20228.20188" \
+    --bitness 64-bit --cases 80 --assertions 643 --failures 0 \
+    --out release-manifest.json
+```
+
+There is one strict path and no preview mode. Every flag above is required, and the tool validates all of them before it constructs any Markdown or serializes any JSON:
+
+- the asset must exist and be a regular file;
+- cases and assertions must be positive, and failures must be supplied explicitly and equal zero;
+- the version and tag must be well formed and must correspond;
+- the tag must resolve, and `HEAD` must equal its target commit;
+- no tracked file may be modified. Untracked files are ignored, so the workbook and the manifest itself may sit in the working tree.
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | A validated manifest was produced |
+| 1 | The command parsed but violates the release contract |
+| 2 | A command-line syntax error, reported by the argument parser |
+
+A failed run writes diagnostics to stderr, prints no provenance block, and leaves any existing `--out` file untouched. A successful run writes the JSON through a temporary file and replaces the destination atomically. Never hand-edit the result: regenerate it.
+
+The Markdown block goes to stdout and is UTF-8. Redirect it if you want it in a file:
+
+```bash
+python tools/release_provenance.py ... > provenance.md
+```
+
+`tools/vba_lint.py` runs the tool's fixture matrix as the `release provenance strict fixtures` check, so a regression in this contract fails the ordinary static gate.
 
 <a id="evidence-record"></a>
 ## 🧾 Evidence record
