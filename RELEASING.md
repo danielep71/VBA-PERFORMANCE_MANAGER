@@ -15,7 +15,7 @@ This maintainer guide turns a reviewed commit into a traceable VBA Performance M
 
 | Property | Requirement |
 | --- | --- |
-| Project maturity | Versioned library with reproducible workbook packaging |
+| Project maturity | Versioned library with hash-verified, manually packaged workbook releases |
 | Version source | [VERSION](VERSION) |
 | Version scheme | Semantic Versioning |
 | Tag format | Lower-case `vX.Y.Z` matching `VERSION` |
