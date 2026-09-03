@@ -101,7 +101,7 @@ No changes recorded yet.
 
 ---
 
-## [1.4.0] - 2026-08-31
+## [1.4.0] — 2026-08-31
 
 Work completed so far on the `release/v1.4.0` development line.
 
@@ -383,7 +383,7 @@ notice below.**
 
 ---
 
-## [1.3.0] - 2026-08-16
+## [1.3.0] — 2026-08-16
 
 Process discipline turned into enforcement, every value the API takes given a
 name, and a family of defects closed in which an invalid result was
@@ -611,7 +611,7 @@ indistinguishable from a valid one.
 
 ---
 
-## [1.2.0] - 2026-08-16
+## [1.2.0] — 2026-08-16
 
 Correctness hardening across the native timing reads, a distribution-aware
 measurement harness, and the removal of every magic error number from the
@@ -764,7 +764,7 @@ Build 16.0.20131.20152, 64-bit.
 
 ---
 
-## [1.1.0] - 2026-04-18
+## [1.1.0] — 2026-04-18
 
 ### Added
 
@@ -780,7 +780,7 @@ Build 16.0.20131.20152, 64-bit.
 
 ---
 
-## [1.0.0] - 2026-03-28
+## [1.0.0] — 2026-03-28
 
 Initial public release.
 
