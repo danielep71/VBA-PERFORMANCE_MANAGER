@@ -684,7 +684,7 @@ Build 16.0.20131.20152, 64-bit.
 - **All 19 inline `vbObjectError` literals replaced by named constants.** No
   bare offset appears anywhere in the code. Timing-method identifiers 1–6 remain
   numeric literals; tracked in
-  [#13](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/13).
+  [#13](https://github.com/danielep71/vba-performance_manager/issues/13).
 - **`UInt32ToDouble`, `Elapsed_Validate` and `RolloverSeconds` are `Friend`**
   rather than `Private`, so the suite can test their arithmetic directly.
 - **`Class_Initialize` delegates to `Checkpoint_ClearState`.**
@@ -748,7 +748,7 @@ Build 16.0.20131.20152, 64-bit.
   the unsupported `Application.Run` cost figure removed, and the incorrect
   baseline-subtraction guidance replaced. A dispatch-matched baseline helper is
   tracked in
-  [#7](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/7).
+  [#7](https://github.com/danielep71/vba-performance_manager/issues/7).
 - The test module's `M_DEMO_BUILDER` dependency documented.
 
 ### Known limitations
@@ -800,9 +800,9 @@ Initial public release.
 
 ---
 
-[Unreleased]: https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/compare/v1.4.0...HEAD
-[1.4.0]: https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/compare/v1.3.0...v1.4.0
-[1.3.0]: https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.3.0
-[1.2.0]: https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.2.0
-[1.1.0]: https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.1.0
-[1.0.0]: https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.0.0
+[Unreleased]: https://github.com/danielep71/vba-performance_manager/compare/v1.4.0...main
+[1.4.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.3.0
+[1.2.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.2.0
+[1.1.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.1.0
+[1.0.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.0.0
