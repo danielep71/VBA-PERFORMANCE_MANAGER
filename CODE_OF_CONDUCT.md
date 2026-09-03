@@ -1,46 +1,30 @@
 <div align="center">
 
-# 🧭 Code of Conduct
+# 🧭 VBA-PERFORMANCE_MANAGER Code of Conduct
 
-### Respectful, evidence-led technical collaboration for VBA-PERFORMANCE_MANAGER
+### Respectful, evidence-led collaboration for timing and Excel application state
 
 [![Applies to](https://img.shields.io/badge/Applies_to-Everyone-217346?style=for-the-badge)](#scope)
-[![Spaces](https://img.shields.io/badge/Spaces-Issues_PRs_Wiki_Releases-0969da?style=for-the-badge)](#scope)
-[![Standard](https://img.shields.io/badge/Standard-Respectful_%2B_Evidence--Led-6f42c1?style=for-the-badge)](#technical-discussion-standards)
-[![Enforcement](https://img.shields.io/badge/Enforcement-Maintainer-d97706?style=for-the-badge)](#enforcement)
+[![Spaces](https://img.shields.io/badge/Spaces-Code_%7C_Issues_%7C_PRs-0969da?style=for-the-badge)](#scope)
+[![Standard](https://img.shields.io/badge/Standard-Respectful_%2B_Evidence--Led-6f42c1?style=for-the-badge)](#technical-collaboration)
+[![Enforcement](https://img.shields.io/badge/Enforcement-Fair_%2B_Proportionate-d97706?style=for-the-badge)](#enforcement)
 
 <br>
 
-**Technical rigor · Respectful disagreement · Reproducible evidence · Honest benchmarking · Privacy-aware collaboration**
+**Respect people · Challenge ideas with evidence · State uncertainty · Protect data**
 
 </div>
 
 ---
 
-**VBA-PERFORMANCE_MANAGER** is a focused open-source Excel/VBA timing and
-execution-control project.
+**VBA-PERFORMANCE_MANAGER** is an open-source Excel/VBA component for timing, benchmarking, and coordinated management of process-wide Excel application state.
 
-This Code of Conduct exists to keep interaction around the project respectful,
-technical, constructive, and welcoming — especially when a problem depends on
-Windows timing behavior, Excel Application state, Office bitness, process
-uptime, benchmark methodology, or conditions that are difficult to reproduce.
+Technical rigor and respectful interaction are complementary requirements.
+Neither excuses the absence of the other.
 
-People should feel comfortable:
-
-- reporting defects;
-- asking basic or advanced VBA questions;
-- challenging timing or statistical claims;
-- questioning a benchmark methodology;
-- proposing safer or simpler alternatives;
-- identifying behavior that differs by Office version, bitness, backend, or
-  Excel session state;
-- saying that an earlier assumption, benchmark, or implementation decision was
-  wrong;
-- contributing even when they are unfamiliar with the project's conventions.
-
-A technically demanding project benefits from disagreement.
-
-It does not benefit from hostility.
+People should feel comfortable asking questions, reporting defects, challenging
+assumptions, proposing safer or more accurate alternatives, and correcting an
+earlier conclusion when new evidence emerges.
 
 ---
 
@@ -48,29 +32,18 @@ It does not benefit from hostility.
 
 ## 🤝 Our pledge
 
-Everyone who participates — by opening an issue, submitting a pull request,
-commenting, reviewing, editing documentation or the Wiki, discussing a release,
-or representing the project elsewhere — is expected to help create a
-harassment-free experience for all.
+Everyone who participates through code, issues, pull requests, reviews,
+documentation, examples, releases, the Wiki, or project discussion is expected
+to help create a harassment-free experience for all.
 
-That expectation applies regardless of:
+That expectation applies regardless of age, body size, disability, ethnicity,
+gender identity or expression, level or type of experience, nationality,
+personal appearance, race, religion, socioeconomic status, sexual identity or
+orientation, or any other personal characteristic unrelated to the
+contribution.
 
-- experience level;
-- professional or academic background;
-- age;
-- disability;
-- ethnicity;
-- gender identity or expression;
-- nationality;
-- race;
-- religion;
-- sexual orientation;
-- socioeconomic status;
-- or any other personal characteristic unrelated to the technical contribution.
-
-Technical rigor and respectful interaction are complementary requirements.
-
-Neither excuses the absence of the other.
+We commit to acting and interacting in ways that support an open, welcoming,
+diverse, inclusive, and healthy community.
 
 ---
 
@@ -78,50 +51,30 @@ Neither excuses the absence of the other.
 
 ## ✅ Expected behavior
 
-Participants are expected to:
-
-- be respectful and assume good faith unless evidence shows otherwise;
-- focus criticism on code, behavior, documentation, tests, architecture,
-  measurements, or process rather than on the person who produced them;
-- distinguish **observed fact**, **measurement**, **inference**, **hypothesis**,
-  and **platform limitation**;
-- describe Excel/VBA and Windows timing behavior precisely;
-- provide reproduction steps, logs, screenshots, sample vectors, regression
-  evidence, or minimal examples where practical;
-- state the timing backend, Office bitness, and relevant measurement conditions
-  when making performance claims;
-- acknowledge uncertainty rather than presenting an assumption as verified;
-- correct mistakes openly when new evidence changes the conclusion;
-- give and receive constructive review comments professionally;
-- respect privacy, confidentiality, client restrictions, and security boundaries;
-- help newcomers understand the repository's workflow and vocabulary;
-- allow maintainers reasonable time to investigate host-specific or
-  timing-sensitive behavior;
-- respect that a contribution may be adopted, adapted, deferred, split into a
-  follow-up issue, or declined to preserve correctness, compatibility,
-  maintainability, or release discipline.
+| Principle | Expected practice |
+|---|---|
+| 🤝 **Respect** | Assume good faith and address the work rather than the person. |
+| 🎯 **Precision** | Distinguish observation, requirement, assumption, inference, hypothesis, and opinion. |
+| 🧪 **Evidence** | Provide reproducible examples and relevant environment details where practical. |
+| 🧭 **Transparency** | State uncertainty, limitations, conflicts of interest, and material dependencies. |
+| 🔄 **Correction** | Acknowledge mistakes openly when better evidence changes the conclusion. |
+| 🌱 **Inclusion** | Welcome contributors with different backgrounds and levels of expertise. |
+| 🔐 **Stewardship** | Respect privacy, confidentiality, security, licensing, and intellectual-property boundaries. |
+| 🧱 **Coherence** | Accept that maintainers may adopt, revise, defer, split, or decline a contribution. |
 
 ### Useful disagreement
 
-A useful technical disagreement is specific enough that another person can test
-it:
+A useful technical disagreement is specific and testable:
 
-> "`MeasureProcedure` requested QPC, but one measured cycle resolved to method 2
-> after a forced start failure. The vector was then summarized as if every
-> observation used QPC. The exact SHA, Excel build, bitness, requested method,
-> resolved method, and regression output are below."
+> "The observed result differs from the documented contract outside the stated
+> tolerance. The exact version, environment, minimal reproduction, expected
+> result, observed result, and independent reference are provided below."
 
-That can be investigated.
+A personal judgment is not testable:
 
-### Unhelpful disagreement
+> "This is wrong because the author does not understand the subject."
 
-A personal judgment cannot be tested:
-
-> "This benchmark is wrong because the author does not understand timing."
-
-Both statements may arise from frustration with the same problem.
-
-Only the first helps fix it.
+Only the first statement helps improve the project.
 
 ---
 
@@ -131,506 +84,151 @@ Only the first helps fix it.
 
 Unacceptable behavior includes:
 
-- personal attacks, insults, ridicule, or derogatory comments;
-- harassment in public or private;
-- discriminatory, demeaning, or sexualized language or imagery;
-- threats, intimidation, or encouragement of violence;
-- publishing another person's private information without permission;
-- deliberate misrepresentation of another participant's work or statements;
-- knowingly fabricating benchmark results, regression output, screenshots,
-  provenance evidence, reproduction steps, or implementation claims;
-- cherry-picking measurements while presenting them as representative;
-- sustained disruption of technical discussion;
-- repeated bad-faith argument after the technical decision and evidence have
-  been explained;
-- spam, unrelated promotion, or commercial solicitation;
-- attempts to pressure maintainers into unsafe disclosure, unverifiable claims,
-  or an unverified release;
+- harassment, intimidation, discrimination, threats, or personal attacks;
+- trolling, insulting or derogatory comments, and deliberately inflammatory
+  language;
+- unwelcome sexual attention or sexualized language or imagery;
+- publishing private or confidential information without permission;
+- deliberately misrepresenting results, sources, authorship, test evidence, or
+  another participant's statements;
+- fabricating, altering, or selectively presenting evidence to conceal a
+  material limitation or contrary result;
+- pressuring others to disclose employer, client, counterparty, student, or
+  proprietary information;
+- using credentials, reputation, job title, or academic status to silence a
+  technical challenge rather than addressing its substance;
+- spam, unrelated promotion, commercial solicitation, or sustained disruption;
 - public disclosure of a suspected vulnerability before reasonable coordinated
   remediation;
-- retaliation against someone who reports misconduct, a security concern, a
-  benchmark-validity concern, or a technical failure.
+- repeated disruption after a maintainer has asked participants to stop; and
+- retaliation against a reporter, witness, or participant in an investigation.
 
-Disagreement is allowed.
-
-Abuse is not.
+Disagreement is allowed. Abuse is not.
 
 ---
 
-<a id="technical-discussion-standards"></a>
+<a id="technical-collaboration"></a>
 
-## 🧪 Technical discussion standards
+## 🧪 Technical collaboration
 
-VBA-PERFORMANCE_MANAGER interacts with timing and Excel surfaces whose behavior
-can depend on the host process and execution context.
+Performance claims require both a reproducible execution environment and a faithful account of the measurement path. Clock properties, harness overhead, sample distributions, fallback behavior, and state restoration are different facts.
 
-Relevant surfaces include:
+Where relevant, technical reports and review comments should identify:
 
-```text
-Timer
-GetTickCount / GetTickCount64
-timeGetTime
-timeGetSystemTime
-QueryPerformanceCounter
-Now
-timeBeginPeriod / timeEndPeriod
-Application.ScreenUpdating
-Application.EnableEvents
-Application.DisplayAlerts
-Application.Calculation
-Application.Cursor
-Application.Run
-DoEvents
-```
+| Evidence | Expected information |
+|---|---|
+| 🧾 **Identity** | Repository release, tag, branch or commit; affected file, procedure, API or artifact |
+| 🖥️ **Environment** | Excel and Office version/build, 32-bit or 64-bit, Windows version, and relevant locale or host settings |
+| 🔬 **Reproduction** | Smallest deterministic input and exact steps needed to reproduce the behavior |
+| 🎯 **Comparison** | Expected and observed behavior, error or diagnostic output, and the acceptance criterion |
+| ✅ **Validation** | Relevant automated, static, manual or Excel regression evidence and whether the run completed |
+| ⚠️ **Boundary** | Assumptions, limitations, untested configurations, uncertainty, and what cannot yet be concluded |
+| ⏱️ **Timing configuration** | Requested and resolved backend, strictness, iterations, warm-ups, alignment, and relevant process uptime |
+| 📊 **Sample quality** | Retained, failed and excluded reads; fallbacks; median, minimum, tail statistic, and variability |
+| 📏 **Baseline** | What path the baseline measures, whether it matches the measured dispatch path, and how it is applied |
+| 🧹 **Application state** | Starting state, requested suppression, overlapping instances, effective state, exemptions, and restoration/cleanup outcome |
 
-A technical report is therefore more useful when its environment is explicit.
+Prefer explicit evidence classifications:
 
-### For timing and runtime behavior
+| Classification | Meaning |
+|---|---|
+| **Observed** | Reproduced directly |
+| **Derived** | Follows from stated inputs and rules |
+| **Inferred** | Best explanation, but not independently proven |
+| **Expected** | Required by the documented contract |
+| **Environment-specific** | Verified only in the stated host configuration |
+| **Unverified** | Plausible, but evidence is incomplete |
 
-Where relevant, include:
+Do not present a plausible inference as a verified fact. A screenshot may
+illustrate a result, but it does not replace the inputs, environment, contract,
+reference, and steps needed to reproduce the claim.
 
-- exact repository tag, branch, or commit SHA;
-- Excel version and build;
-- Office 32-bit or 64-bit;
-- Windows version;
-- requested timing backend;
-- `ActiveMethodID` / resolved backend when different;
-- `StrictMode`;
-- `LastReadStatus`;
-- whether aligned start was requested;
-- process uptime where a 32-bit rolling counter may matter;
-- whether another `cPerformanceManager` instance is active;
-- whether TW suppression is active;
-- whether `Application.Calculation` control was exempted;
-- reproduction steps;
-- observed behavior;
-- expected behavior;
-- regression evidence, logs, screenshots, or minimal workbooks when safe to
-  share.
+Project-specific expectations:
 
-Do not infer a backend, failure cause, or source-resolution behavior merely from
-a plausible numeric result when the project exposes a status or diagnostic that
-can be inspected directly.
-
-Where the platform makes a fact unavailable or impractical to verify, say so and
-classify the evidence appropriately:
-
-```text
-automated regression
-manual Excel certification
-source inspection
-Windows / VBA platform contract
-benchmark observation
-unresolved hypothesis
-```
-
-That distinction is part of this project's quality standard.
+- Do not present a minimum as representative performance or cherry-pick samples while hiding variability.
+- A failed timing read is not a zero-duration sample, and a fallback backend is not automatically equivalent to the requested backend.
+- A file digest proves identity, not source-to-workbook provenance or successful Excel execution.
 
 ---
 
-## ⏱️ Benchmark and measurement standards
+<a id="data-and-confidentiality"></a>
 
-Performance claims require more discipline than ordinary functional claims.
+## 🔐 Data, privacy, and confidentiality
 
-When presenting a benchmark, identify enough information for another person to
-understand what was actually measured.
+Do not upload confidential or restricted material to demonstrate a defect or
+support a contribution. This includes:
 
-Where relevant, include:
+- client, employer, counterparty, student, or personal data;
+- credentials, tokens, signing material, connection strings, or internal URLs;
+- proprietary code, models, workbooks, market data, business assumptions, or
+  production extracts;
+- licensed vendor content that cannot be redistributed; and
+- files or examples that the contributor is not authorized to share.
 
-```text
-commit / version
-Excel build
-Office bitness
-timing backend
-requested iterations
-warm-up iterations
-retained sample count
-failed / excluded reads
-fallbacks or resolved-backend changes
-median
-minimum
-P95 or another tail measure
-coefficient of variation / contamination result
-baseline method, if one was subtracted
-```
+Use the smallest synthetic example that preserves the relevant behavior.
 
-### Do not confuse clock properties with harness results
-
-The minimum returned by an empty timing cycle is not automatically the clock's
-resolution.
-
-A measurement harness may include:
-
-```text
-class dispatch
-start read
-end read
-loop overhead
-Application.Run dispatch
-warm-up behavior
-Excel scheduling noise
-OS scheduling noise
-```
-
-Use the project's diagnostic functions when discussing the timing source itself,
-and benchmark observations when discussing the whole measurement path.
-
-### Matched baselines
-
-A baseline is meaningful only when it matches the execution path whose overhead
-is being estimated.
-
-`MeasureBaseline` exists to use the same `Application.Run` dispatch path as
-`MeasureProcedure`.
-
-Do not describe `MeasureOverhead_Samples` as a matched `Application.Run`
-baseline: it measures a different path.
-
-### Failed or fallback reads are not ordinary samples
-
-A failed timing read is not a zero-duration measurement.
-
-A fallback backend is not automatically equivalent to the backend originally
-requested.
-
-When a harness exposes failure counts, statuses, or resolved-method information,
-include them in the interpretation rather than discarding them.
-
-### Representative reporting
-
-Do not present a single exceptionally low observation as representative without
-saying that it is a minimum.
-
-For optimization claims, prefer the full sample distribution or at least a
-summary that makes variability visible.
+Excel workbooks can contain hidden names, external links, connections, cached
+values, queries, metadata, comments, hidden sheets, and VBA that are not visible
+on the active sheet. Sanitize and inspect every reproduction before uploading
+it.
 
 ---
 
-## ✅ Regression evidence
+<a id="security"></a>
 
-The current regression harness is:
+## 🔑 Security reports
 
-```text
-test/M_cPM_Test.bas
-```
+Suspected vulnerabilities must follow [SECURITY.md](SECURITY.md). Do not
+publish exploit details, credentials, private keys, or a working proof of
+concept in a public issue before coordinated remediation.
 
-Current public entry point:
-
-```vb
-Run_cPerformanceManager_RegressionSuite
-```
-
-The suite covers both the class and its required shared-state companion module.
-
-For production changes, contributors should normally compile first:
-
-```text
-VBA Editor → Debug → Compile VBAProject
-```
-
-and then run the regression suite against the exact source being proposed.
-
-A useful report includes at least:
-
-```text
-Cases
-Assertions
-Failures
-Excel version/build
-Office bitness
-commit SHA
-```
-
-For release-quality evidence:
-
-```text
-Failures = 0
-```
-
-is required.
-
-The count alone is not enough. A statement such as:
-
-```text
-N assertions passed
-```
-
-is incomplete if it omits:
-
-- whether the suite finished;
-- whether failures occurred elsewhere;
-- which commit was tested;
-- which Excel build and bitness executed the run.
-
-If a future headless Excel regression gate publishes machine-readable evidence,
-that artifact should be preferred over manually transcribed counts.
-
-Static source checks are useful, but they do not substitute for importing,
-compiling, and executing the VBA in Excel.
-
----
-
-## 🔍 Review standards
-
-Review comments should be actionable whenever possible.
-
-A strong review comment identifies:
-
-1. **where** the concern exists;
-2. **what** behavior or invariant is at risk;
-3. **why** it matters;
-4. **what evidence** supports the concern;
-5. whether the requested change is:
-   - required;
-   - recommended;
-   - optional;
-6. whether the concern affects:
-   - correctness;
-   - timing validity;
-   - benchmark methodology;
-   - compatibility;
-   - Excel state safety;
-   - diagnostics;
-   - test validity;
-   - documentation;
-   - release provenance;
-   - security;
-   - maintainability;
-   - style.
-
-Example:
-
-> "`OverheadMeasurement_Seconds` averages requested iterations even when a
-> non-strict endpoint read fails and returns zero. That lowers the reported mean.
-> The compatibility wrapper should delegate to the validated sample path so the
-> denominator reflects retained observations."
-
-This is preferable to:
-
-> "I don't like this benchmark API."
-
----
-
-## 🧹 Excel Application-state discussions
-
-The component can change process-wide Excel settings for performance.
-
-Those settings affect more than the calling procedure.
-
-When discussing TW behavior, distinguish at least:
-
-```text
-baseline capture
-baseline validity
-per-instance request
-aggregate effective state
-overlapping instances
-Calculation exemption
-strict vs non-strict policy
-last-session restoration
-emergency cleanup
-```
-
-Do not describe global Application-state manipulation as harmless merely because
-the calling macro is local to one workbook.
-
-When reporting a restoration problem, include:
-
-- the starting Application state;
-- which TW flags were requested;
-- how many manager instances were active;
-- whether workbooks were opened or closed during the scope;
-- whether `TW_CalculationExempted` became true;
-- whether cleanup completed normally or through recovery.
-
-The project prefers:
-
-```text
-explicit state ownership
-```
-
-over:
-
-```text
-implicit global side effects
-```
-
-and:
-
-```text
-reported inability to restore/control a state
-```
-
-over:
-
-```text
-guessing a replacement value
-```
-
-Technical discussion should preserve those distinctions.
-
----
-
-## 📦 Source-first and release-evidence discussions
-
-The repository is source-first.
-
-Authoritative implementation lives in exported source such as:
-
-```text
-src/classes/cPerformanceManager.cls
-src/modules/M_cPM_TIMEWASTERS.bas
-```
-
-The demo workbook distributed through GitHub Releases is a convenience artifact,
-not the authoritative source tree.
-
-When discussing a release, distinguish:
-
-```text
-tag / commit identity
-source hashes
-static-check evidence
-Excel regression evidence
-Office bitness
-workbook digest
-source-to-workbook provenance
-```
-
-A SHA-256 digest proves the identity of a file.
-
-It does not, by itself, prove how that file was produced.
-
-Do not claim reproducibility, execution certification, or source provenance
-beyond what the published evidence actually establishes.
-
----
-
-<a id="privacy-and-confidentiality"></a>
-
-## 🔒 Privacy, confidentiality, and safe reproductions
-
-Do not upload confidential business material merely to demonstrate a timing,
-state-management, or benchmark problem.
-
-That includes:
-
-- client workbooks;
-- proprietary VBA;
-- credentials;
-- private signing keys;
-- personal data;
-- internal URLs;
-- connection strings;
-- production data extracts;
-- non-public add-ins or modules you are not authorized to distribute.
-
-Create a sanitized minimal reproduction instead.
-
-Excel files can contain more than visible worksheet values, including:
-
-```text
-defined names
-external links
-connection strings
-Power Query metadata
-cached values
-comments
-document properties
-hidden sheets
-VBA
-```
-
-A workbook that appears anonymized may still disclose information elsewhere in
-the package.
-
-If a private reproduction is genuinely necessary, coordinate privately with the
-maintainer before sharing it.
-
----
-
-## 🔑 Security issues are different from ordinary bugs
-
-A dedicated `SECURITY.md` is not currently part of the repository.
-
-Until one is added, suspected vulnerabilities should be reported **privately**
-to the maintainer rather than opened as a normal public issue when disclosure
-could expose users, credentials, signing material, or an exploitable condition.
-
-Do **not** publish exploit details, credentials, private keys, or a working proof
-of concept in a normal public issue before coordinated disclosure.
-
-The Code of Conduct reporting channel is for participant behavior.
-
-A security report is about software risk.
-
-If an incident involves both, use the private channel and say so.
+The Code of Conduct reporting channel is for participant behavior. A security
+report concerns software risk. If an incident involves both, use the private
+channel and make that clear.
 
 ---
 
 <a id="scope"></a>
 
-## 🛠️ Scope
+## 🌐 Scope
 
 This Code of Conduct applies to:
 
-- this GitHub repository;
-- issues;
-- pull requests;
-- review comments;
-- GitHub Discussions, if enabled;
-- release threads;
-- the Wiki;
-- project-related email;
-- project-related private communication between participants;
-- public spaces where someone is representing the project.
+- source code, committed artifacts, documentation, examples, and releases;
+- issues, pull requests, reviews, comments, discussions, and the Wiki;
+- project-related email and private communication between participants; and
+- public spaces where someone represents the project or its community.
 
-Examples of project representation include:
+It applies to maintainers, contributors, reviewers, users, and visitors alike.
 
-- speaking on behalf of the project;
-- using an official project account;
-- presenting oneself as a maintainer or contributor in a project-related forum;
-- moderating a project discussion.
-
-The standards apply to both maintainers and contributors.
+Project representation includes using an official account, speaking on behalf
+of the project, presenting oneself as a maintainer or contributor in a
+project-related forum, or moderating a project discussion.
 
 ---
 
-<a id="reporting-unacceptable-behavior"></a>
+<a id="reporting"></a>
 
 ## 📣 Reporting unacceptable behavior
 
 Report unacceptable behavior **privately** to the maintainer:
 
-```text
-danielep71@gmail.com
-```
+**danielep71@gmail.com**
 
-Where available, include:
+Do not publish sensitive personal information in a public issue.
 
-- what happened;
-- where it happened;
-- dates or approximate times;
-- links, screenshots, or quoted text;
-- whether the behavior is ongoing;
-- whether another participant witnessed it;
-- any immediate safety, privacy, or confidentiality concern.
+Where available, include what happened, where and approximately when it
+happened, relevant links or screenshots, whether the behavior is ongoing,
+whether another participant witnessed it, and any immediate safety, privacy, or
+confidentiality concern.
 
-Do not post sensitive personal information in a public issue.
+Reports will be reviewed as promptly, fairly, and discreetly as reasonably
+possible. Information will be shared only as needed to understand the report,
+protect participants, enforce this policy, or comply with applicable platform
+or legal requirements.
 
-Reports will be handled as discreetly as reasonably possible.
-
-Information will be shared only as needed to:
-
-```text
-understand the report
-protect participants
-enforce this policy
-comply with platform or legal requirements where applicable
-```
-
-A good-faith report will not be treated as misconduct merely because the
-maintainer ultimately concludes that no violation occurred.
+A good-faith report is not misconduct merely because the maintainer ultimately
+concludes that no violation occurred.
 
 ---
 
@@ -638,158 +236,105 @@ maintainer ultimately concludes that no violation occurred.
 
 ## ⚖️ Enforcement
 
-The maintainer is responsible for interpreting and enforcing this Code of
-Conduct.
+The maintainer is responsible for clarifying and enforcing this Code of Conduct
+and may remove, edit, or reject comments, commits, code, issues, or other
+contributions that are inconsistent with it.
 
-Responses depend on seriousness, frequency, context, prior behavior, and risk to
-participants or the project.
-
-Possible actions include:
+Responses depend on seriousness, frequency, context, prior behavior, and risk.
+They may include:
 
 1. clarification or a private reminder;
-2. a formal warning;
-3. editing or removing comments or contributions;
+2. a formal warning and conditions for continued participation;
+3. editing or removing project content;
 4. closing or locking a discussion;
 5. rejecting or reverting a contribution;
 6. temporary restriction from project participation;
-7. permanent blocking;
+7. permanent exclusion from project spaces; or
 8. escalation to GitHub or another relevant platform.
 
-Enforcement aims to be:
-
-```text
-proportionate
-consistent
-documented where appropriate
-protective of participants
-protective of the technical record
-```
-
-Retaliation against a reporter, witness, or participant in an investigation is
-itself a violation.
+Enforcement aims to be fair, proportionate, consistent, protective of
+participants, and protective of the technical record. Retaliation against
+anyone who reports a concern or participates in its review is itself a
+violation.
 
 ---
 
 ## 🧩 Conflicts of interest
 
-Participants should disclose a material conflict when it could reasonably affect
-technical review.
+Disclose a material interest when it could reasonably affect technical review.
 
-Examples:
+Examples include ownership of a competing implementation, commercial interest
+in a dependency or benchmark, employer or client restrictions, uncertainty
+about the origin or license of submitted material, or reviewing one's own work
+under another identity.
 
-- ownership of a competing implementation;
-- commercial interest in a dependency, benchmark, or integration being
-  proposed;
-- employment/client restrictions that materially limit what can be disclosed;
-- inability to establish the origin or license of copied code;
-- evaluating a contribution one personally authored under another identity or
-  organization.
-
-A conflict is not automatically disqualifying.
-
-Undisclosed material influence is the problem.
+A conflict is not automatically disqualifying. Undisclosed material influence
+is the concern.
 
 ---
 
 ## 📜 Source and licensing integrity
 
-Contributors must have the right to submit the code, documentation, screenshots,
-benchmark data, or other material they provide.
+Contributors must have the right to submit every code fragment, document,
+screenshot, workbook, dataset, benchmark, image, and numerical reference they
+provide.
 
-Do not submit:
+Identify the source and license of adapted material. Do not submit proprietary
+code, incompatible licensed content, confidential screenshots, selectively
+edited evidence, or generated material whose provenance and right of use cannot
+be established.
 
-- proprietary code copied from an employer or client;
-- code with an incompatible license without clear attribution and discussion;
-- screenshots containing confidential data;
-- benchmark evidence that has been altered or selectively presented to hide
-  contrary results;
-- generated code presented as independently authored when its provenance or
-  license is uncertain;
-- binary workbook changes that bypass the repository's source-first architecture.
-
-If material was adapted from another source, identify that source and its license
-clearly enough for review.
+A file digest proves file identity. It does not by itself prove authorship,
+source provenance, reproducibility, or execution correctness.
 
 ---
 
 ## 🧱 Maintainer decisions
 
 A maintainer may decline a contribution even when it is technically valid.
+Reasons may include scope, compatibility, maintenance burden, testability,
+platform risk, API stability, duplication, architecture, or release timing.
 
-Reasons can include:
-
-```text
-scope
-compatibility
-maintenance burden
-testability
-platform risk
-API stability
-benchmark integrity
-release timing
-duplication
-architectural direction
-```
-
-A declined contribution is not a judgment about the contributor.
-
-When practical, the technical reason should be recorded so that the same design
-question does not need to be rediscovered repeatedly.
-
-Participants may challenge a decision respectfully with new evidence.
-
-Repeatedly reopening the same argument without new evidence is not constructive.
+A declined contribution is not a judgment about the contributor. When
+practical, the technical reason should be recorded. Participants may challenge
+a decision respectfully with new evidence; repeatedly reopening the same
+argument without new evidence is not constructive.
 
 ---
 
 ## 🙏 Project scale and response expectations
 
-VBA-PERFORMANCE_MANAGER is maintained by one person.
+This project is maintained by one person. That affects response capacity,
+not the seriousness of this policy.
 
-That affects response capacity, not the seriousness of this policy.
+Response times are best-effort. Complex reports may take longer when they
+require a particular Office configuration, Windows behavior, clean Excel
+process, long-running test, or manual workbook validation.
 
-Response times are best-effort.
+Reasonable delay is not dismissal. Repeatedly demanding immediate action is not
+a substitute for technical evidence.
 
-Complex reports may take longer when they require:
-
-- a particular Office bitness;
-- a clean Excel process;
-- long process uptime;
-- a specific timing backend;
-- fault-injection behavior;
-- overlapping manager instances;
-- workbook-lifecycle transitions;
-- a second Excel host or VM;
-- Windows API behavior that cannot be reproduced in hosted Linux CI.
-
-Reasonable delay is not dismissal.
-
-Repeatedly demanding immediate action is not an acceptable substitute for
-technical evidence.
-
-Where appropriate, GitHub's platform policies and community standards also
-apply.
+GitHub's platform policies and community standards also apply where relevant.
 
 ---
 
-## 🧭 Practical principle
+## 📜 Attribution
 
-The standard for this project can be summarized as:
-
-```text
-be precise about the software
-be honest about the measurement
-be generous toward the person
-show the evidence
-state the uncertainty
-protect user data
-```
-
-That is the environment in which difficult Excel/VBA timing and state-management
-problems are most likely to be solved well.
+This Code of Conduct is informed by and adapted from the
+[Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct.html).
+Its project-specific technical and data-handling provisions are maintained for
+this repository.
 
 ---
 
-## 👤 Maintainer
+<div align="center">
 
-Maintained by **Daniele Penza**.
+### Practical principle
+
+**Be precise about the work · Be generous toward the person · Show the evidence · State the boundary · Protect the data**
+
+<br>
+
+Maintained by **Daniele Penza**
+
+</div>
