@@ -104,6 +104,11 @@ Use only the categories needed by a release.
 - Added a root `VERSION` marker at `1.4.0`, aligned with the latest published
   release and the existing source-version contract.
 
+
+### Changed
+
+- Standardized the pull-request review contract around exact-candidate evidence, compatibility, risk and recovery, security and provenance, and project-specific validation gates.
+
 ---
 
 ## [1.4.0] — 2026-08-31
