@@ -153,6 +153,12 @@ class Matrix:
 
 
 def main() -> int:
+    # The fixtures print the same characters the tool does, and vba_lint.py
+    # captures this output through a pipe, so pin the encoding here too.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     ap = argparse.ArgumentParser(description="Strict-mode fixtures for release_provenance.py")
     ap.add_argument("-v", "--verbose", action="store_true", help="Print each case as it runs")
     ap.add_argument("--json", metavar="PATH", help="Write a machine-readable result document")

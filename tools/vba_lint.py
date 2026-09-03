@@ -19,6 +19,7 @@ import platform
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -531,6 +532,40 @@ def check_api_declarations(rep: Report) -> None:
 # Entry point
 # --------------------------------------------------------------------------- #
 
+def check_release_provenance_fixtures(rep: Report) -> None:
+    """Delegate the strict provenance matrix to its own module.
+
+    The matrix asserts process exit codes against a copy of the release tool in
+    throwaway repositories, so unlike the changelog fixtures it cannot run
+    inline. Invoking it here keeps it enforced by the same gate rather than by
+    whoever remembers to run it, which is the failure this check exists to
+    prevent in the first place.
+    """
+    harness = ROOT / "tools" / "test_release_provenance.py"
+    if not harness.exists():
+        rep.check("release provenance strict fixtures",
+                  [f"harness not found: {harness}"])
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "provenance-fixtures.json"
+        proc = subprocess.run(
+            [sys.executable, str(harness), "--json", str(out)],
+            cwd=str(ROOT), capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+        )
+        problems: list[str] = []
+        if out.exists():
+            problems = json.loads(out.read_text(encoding="utf-8")).get("failures", [])
+        # A crash before the result document is written must still fail the gate.
+        if proc.returncode != 0 and not problems:
+            problems = [f"harness exited {proc.returncode}"]
+            tail = (proc.stderr or proc.stdout).strip().splitlines()[-5:]
+            problems.extend(f"  {line}" for line in tail)
+
+    rep.check("release provenance strict fixtures", problems)
+
+
 def write_json(rep: Report, path: Path) -> None:
     """Emit a machine-readable result document.
 
@@ -583,6 +618,7 @@ def main() -> int:
     check_version_consistency(rep)
     check_api_declarations(rep)
     check_changelog_released_sections_frozen(rep)
+    check_release_provenance_fixtures(rep)
 
     print("-" * 60)
 

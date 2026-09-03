@@ -465,6 +465,15 @@ def write_atomically(path: Path, text: str) -> None:
 
 
 def main() -> int:
+    # The provenance block contains a padlock and em-dashes. A Windows console
+    # takes those directly, but a redirected or piped stdout falls back to the
+    # locale codepage - cp1252 here - and the whole block dies on the first
+    # non-Latin-1 character. Release output is routinely redirected to a file,
+    # so pin the encoding rather than depending on where stdout happens to go.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     ap = argparse.ArgumentParser(description=__doc__)
     # Nothing is argparse-required. Missing release inputs are a contract
     # failure diagnosed together with every other one and reported as exit 1;
