@@ -97,7 +97,10 @@ Use only the categories needed by a release.
 
 ## [Unreleased]
 
-No changes recorded yet.
+### Added
+
+- Added a root `VERSION` marker at `1.4.0`, aligned with the latest published
+  release and the existing source-version contract.
 
 ---
 
