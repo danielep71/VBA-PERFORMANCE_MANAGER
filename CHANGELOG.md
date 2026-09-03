@@ -9,26 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+No changes recorded yet.
+
+---
 
 ## [1.4.0] — 2026-08-31
 
-Measurement integrity. Repeated-measurement vectors contain only samples taken
-on the backend the caller requested; failures and backend rejections are counted
-separately and exposed on every harness member; the legacy overhead mean is
-derived from validated samples; and workbook qualification handles apostrophes.
+Work completed so far on the `release/v1.4.0` development line.
 
-The public API is extended additively — new trailing optional parameters on
-existing members, and new `Friend` test seams — so every existing call shape
-continues to compile. Behavior of existing members changes where noted; see the
-correction notice below.
-
-Certified against `a5390b4c6ca56ebbd87eca121b5167ee5dc09963` on Microsoft 365
-Excel 64-bit, Version 2607 Build 16.0.20228.20188: 80 cases, 643 assertions, 0
-failures, and 12 static checks with 0 failures. Real Office 32-bit execution
-evidence is deferred to v1.4.1 and tracked in
-[#29](https://github.com/danielep71/vba-performance_manager/issues/29); 32-bit support is unchanged, only its
-verification is outstanding.
+**Current scope: repository governance, documentation, installation, release
+assurance, and the first measurement-integrity corrections. The public API is
+extended additively — new trailing optional parameters on existing members, and
+new `Friend` test seams — so every existing call shape continues to compile and
+behave. Behavior of existing members changes where noted; see the correction
+notice below.**
 
 > [!IMPORTANT]
 > **BEHAVIORAL CORRECTION — requested-backend measurement integrity.**
@@ -719,7 +713,7 @@ Initial public release.
 ---
 
 [Unreleased]: https://github.com/danielep71/vba-performance_manager/compare/v1.4.0...main
-[1.4.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.4.0
+[1.4.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.3.0
 [1.2.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.2.0
 [1.1.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.1.0

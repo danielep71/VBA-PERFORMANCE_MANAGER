@@ -57,7 +57,7 @@
 > [!IMPORTANT]
 > **The primary deployment model is source-first.** Import the exported VBA
 > source into the workbook or add-in that needs the component. For the current
-> `v1.3.x` runtime and `v1.4.0` development line, the production package is
+> `v1.4.0` release, the production package is
 > exactly two files, imported in the documented order.
 >
 > The macro-enabled workbook published with GitHub Releases is a convenience
@@ -65,11 +65,9 @@
 > tagged source remains the authoritative implementation.
 
 > [!NOTE]
-> The latest tagged release is **v1.4.0**, certified against
-> [`a5390b4`](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/commit/a5390b4c6ca56ebbd87eca121b5167ee5dc09963) on Microsoft
-> 365 Excel 64-bit. This page documents that release. Work toward v1.4.1 is
-> tracked in its milestone and is not covered by any execution certification
-> until it is released.
+> The latest tagged release is **v1.4.0**. Development for **v1.4.1** is tracked
+> on `main`; unreleased changes do not alter the exact-tag v1.4.0 certification
+> record below.
 
 ## ✨ What this project is
 
@@ -147,7 +145,7 @@ benchmark repetition, statistics, and Excel-state cleanup.
 | Diagnostics | Timing environment | QPC frequency, system tick interval, backend overhead, active method and read status |
 | Failure policy | Strict by default | Raise on invalid measurement; optional non-strict fallback/zero with explicit status |
 | Deployment | Source-first | Two required production files; no official `.xlam` distribution |
-| Assurance | Static plus real Excel evidence | 12 hosted source checks; v1.3.0 certified with 72 cases / 511 assertions; v1.4.0 development line at 80 cases / 643 assertions, final certification pending |
+| Assurance | Static plus real Excel evidence | v1.4.0 exact-tag certification: 12 hosted source checks and 80 cases / 643 assertions / 0 failures on 64-bit Excel; Office 32-bit remains unverified |
 
 ---
 
@@ -850,9 +848,9 @@ workbook and manifest match the values above, so the upload preserved bytes and
 a downloader can verify what they received.
 
 > [!NOTE]
-> The local build is named `PERFORMANCE MANAGER.xlsm` with a space. GitHub
-> replaces the space with a dot on upload, so the published asset — and the name
-> recorded here — is `PERFORMANCE.MANAGER.xlsm`.
+> The locally assembled workbook and the uploaded Release asset use different
+> names. The manifest records `PERFORMANCE MANAGER.xlsm`; the actual published
+> asset name, which downloaders must use, is `PERFORMANCE.MANAGER.xlsm`.
 
 ### Previous published tagged evidence
 
@@ -1023,9 +1021,8 @@ the source in your own add-in, but that host is built and maintained by you.
 ### Platform and bitness
 
 - The supported host is Windows desktop Excel. Backends 2–5 use Windows APIs.
-- The source contains 32-/64-bit conditional branches, but every published
-  release so far, v1.3.0 and v1.4.0, was executed and certified only on 64-bit
-  Office.
+- The source contains 32-/64-bit conditional branches, but v1.3.0 was executed
+  and certified only on 64-bit Office.
 - Shared unsigned arithmetic tests reduce the untested 32-bit surface; they do
   not replace a real 32-bit Excel run. v1.4.0 was executed and certified on
   64-bit Office only, so 32-bit behavior remains unverified. Support is
@@ -1093,7 +1090,7 @@ working code does.
 ### Assurance and release trust
 
 - Hosted CI currently performs static source analysis only; it does not run Excel.
-- Release tags and tagged commits are unsigned.
+- The v1.3.0 tag and tagged commit are unsigned.
 - The release workbook is manually assembled; no deterministic source-to-workbook build exists.
 - Published hashes establish file identity, not cryptographic authorship or reproducible build provenance.
 - GitHub Release assets are technically mutable; stronger signing, attestation,
@@ -1148,29 +1145,18 @@ are the immediate reference for changes made after its last reviewed baseline.
 
 ## v1.4.0 — latest tagged release
 
-Published on **2026-08-31**, v1.4.0 delivered **measurement integrity**:
+Published on **2026-08-31**, v1.4.0 delivered backend-homogeneous measurement,
+complete failure/rejection evidence across all three measurement APIs, validated
+legacy overhead calculation, and robust workbook-name qualification.
 
-- backend-homogeneous measurement vectors, with fallback cycles rejected;
-- failures and backend rejections counted separately on every harness member;
-- the legacy overhead mean derived from validated samples;
-- apostrophes escaped in workbook-qualified `Application.Run` targets;
-- enum documentation corrected to reflect VBA `Long` semantics.
+The release is bound to tag target `a5390b4c6ca56ebbd87eca121b5167ee5dc09963`
+and certified on Microsoft 365 Excel 64-bit with **80 cases, 643 assertions and
+0 failures**, plus **12/12** static checks. See [CHANGELOG.md](CHANGELOG.md) and
+the [v1.4.0 Release](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0).
 
-Certified against
-[`a5390b4`](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/commit/a5390b4c6ca56ebbd87eca121b5167ee5dc09963)
-on Microsoft 365 Excel 64-bit: 80 cases, 643 assertions, 0 failures, and 12
-static checks with 0 failures.
-
-Two assurance gaps are stated rather than closed. Real Office 32-bit execution
-evidence requires a 32-bit host, which cannot coexist with 64-bit Office on one
-Windows installation, and is tracked in [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29).
-A real Excel regression gate running in CI needs a self-hosted Windows runner
-and is tracked in [#11](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/11). Neither
-changes what is supported; both concern verification.
-
-See [CHANGELOG.md](CHANGELOG.md) for the complete released record and the
-[v1.4.0 Release](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0)
-for the published workbook and manifest.
+Real Office 32-bit execution remains unverified and is tracked in
+[#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29); this is
+an assurance limitation, not a claim that 32-bit source support was removed.
 
 ## v1.3.0 — previous tagged release
 
@@ -1189,15 +1175,25 @@ Material additions and corrections included:
 - deterministic workbook qualification for unqualified `Application.Run` names;
 - release-source and asset provenance tooling.
 
-See the [v1.3.0 Release](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.3.0)
-for its published workbook and manifest.
+See [CHANGELOG.md](CHANGELOG.md) for the complete released record and the
+[v1.3.0 Release](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.3.0)
+for the published workbook and manifest.
 
-## v1.4.1 — active development
+## v1.4.1 — active development cycle
 
-The v1.4.1 milestone carries the deferred assurance work: real Office 32-bit
-execution evidence (#29), the headless Excel gate (#11), and repository and
-tooling corrections. Nothing on that line carries execution certification until
-it is released.
+The v1.4.1 milestone hardens the v1.4.0 runtime, documentation and assurance
+chain. Planned work includes:
+
+- release-ledger and current-documentation reconciliation;
+- fail-closed release-provenance generation and stronger static controls;
+- bounded timing, statistics and shared-state corrections;
+- a real-Excel executable gate and a rebuilt demonstration workbook;
+- contributor-dependent real Office 32-bit evidence when a suitable host is
+  available.
+
+The official add-in artifact remains a v1.5.0 goal. A real Excel regression
+gate needs a secured self-hosted Windows runner and is tracked in
+[#11](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/11).
 
 ---
 

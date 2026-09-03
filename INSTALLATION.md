@@ -45,7 +45,7 @@
 > not a different implementation and it is not the authoritative source tree.
 
 > [!IMPORTANT]
-> For the current v1.4.0 runtime, the production
+> For the current v1.4.0 release, the production
 > package consists of **two required source files**:
 >
 > ```text
@@ -691,520 +691,145 @@ The repository currently has hosted **static** source checks.
 
 They do not execute Excel or VBA.
 
-Until the headless Excel gate tracked in the repository is implemented, real
-Excel regression execution remains a separate certification step.
+Until the he…15495 tokens truncated…k invariant |
+| Regression module does not compile | Import `M_DEMO_BUILDER.bas` before `M_cPM_Test.bas` |
+| State is uncertain after a hard `End` or VBA reset | Save work, close every Excel window, confirm `EXCEL.EXE` exits, restart Excel, and rerun validation in a controlled workbook |
+
+For fuller procedures, see
+**[INSTALLATION.md — Troubleshooting](INSTALLATION.md#-troubleshooting)**.
 
 ---
 
-## 📦 Release-workbook validation
+## 📚 Documentation
 
-The GitHub Release may contain a macro-enabled convenience workbook.
+| Resource | Purpose |
+|---|---|
+| [README.md](README.md) | High-level contract, usage, architecture, assurance, and limitations |
+| [INSTALLATION.md](INSTALLATION.md) | Source import, validation, upgrade, recovery, and removal |
+| [CHANGELOG.md](CHANGELOG.md) | Released behavior and compatibility history |
+| [SECURITY.md](SECURITY.md) | Security model, private reporting, trusted inputs, runner and release boundaries |
+| [RELEASING.md](RELEASING.md) | Maintainer-only exact-SHA release procedure and evidence chain |
+| [Regression suite](test/M_cPM_Test.bas) | Executable Excel/VBA behavioral verification |
+| [Static linter](tools/vba_lint.py) | Machine-readable source consistency checks |
+| [GitHub Releases](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases) | Published workbook and release manifest assets |
+| [Wiki](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/wiki) | Extended API, timing, benchmarking, architecture, and testing guidance |
 
-Use the **exact asset name shown on the Release page**; do not assume the name
-from another version.
-
-The published workbook is:
-
-```text
-PERFORMANCE.MANAGER.xlsm
-```
-
-A Release workbook should be treated as executable Office content.
-
-Before relying on it:
-
-1. obtain it from the official GitHub Release;
-2. confirm the release tag;
-3. compare its SHA-256 with the published release/manifest evidence;
-4. satisfy the organization's macro policy;
-5. run a controlled smoke test on the actual downloaded binary.
-
-The workbook digest establishes **file identity**.
-
-It does not, by itself, prove an automated source-to-workbook build.
-
-Tagged exported source remains authoritative.
+The Wiki is useful extended documentation, but branch source and root documents
+are the immediate reference for changes made after its last reviewed baseline.
 
 ---
 
-# 🧭 Office bitness
+<a id="release-status"></a>
 
-The source contains explicit VBA7 / Win64 conditional compilation for Office
-32-bit and 64-bit.
+# 🧭 Release status
 
-That means:
+## v1.4.0 — latest tagged release
+
+Published on **2026-08-31**, v1.4.0 delivered backend-homogeneous measurement,
+complete failure/rejection evidence across all three measurement APIs, validated
+legacy overhead calculation, and robust workbook-name qualification.
+
+The release is bound to tag target `a5390b4c6ca56ebbd87eca121b5167ee5dc09963`
+and certified on Microsoft 365 Excel 64-bit with **80 cases, 643 assertions and
+0 failures**, plus **12/12** static checks. See [CHANGELOG.md](CHANGELOG.md) and
+the [v1.4.0 Release](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0).
+
+Real Office 32-bit execution remains unverified and is tracked in
+[#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29); this is
+an assurance limitation, not a claim that 32-bit source support was removed.
+
+## v1.3.0 — previous tagged release
+
+Published on **2026-08-16**, v1.3.0 focused on enforceable consistency, named
+API values, failure observability, honest statistics, and release provenance.
+
+Material additions and corrections included:
+
+- hosted static source analysis with machine-readable output;
+- named timer, pause, read-status, and error values;
+- dispatch-matched `MeasureBaseline`;
+- worker failure metadata on `MeasureProcedure`;
+- exclusion of failed endpoint reads from retained vectors;
+- finite, non-negative timing-vector validation;
+- explicit undefined-CV behavior for non-positive means;
+- deterministic workbook qualification for unqualified `Application.Run` names;
+- release-source and asset provenance tooling.
+
+See [CHANGELOG.md](CHANGELOG.md) for the complete released record and the
+[v1.3.0 Release](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.3.0)
+for the published workbook and manifest.
+
+## v1.4.1 — active development cycle
+
+The v1.4.1 milestone hardens the v1.4.0 runtime, documentation and assurance
+chain. Planned work includes:
+
+- release-ledger and current-documentation reconciliation;
+- fail-closed release-provenance generation and stronger static controls;
+- bounded timing, statistics and shared-state corrections;
+- a real-Excel executable gate and a rebuilt demonstration workbook;
+- contributor-dependent real Office 32-bit evidence when a suitable host is
+  available.
+
+The official add-in artifact remains a v1.5.0 goal. A real Excel regression
+gate needs a secured self-hosted Windows runner and is tracked in
+[#11](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/11).
+
+---
+
+## 🔐 Security and trust
+
+This project executes VBA inside Excel, calls Windows system timing APIs,
+controls process-wide Excel settings, and can dispatch trusted procedures
+through `Application.Run`.
+
+Before using it in a business-critical workbook:
+
+- review the exact tagged source you intend to import;
+- pass only trusted procedure names to measurement APIs;
+- follow your organization's macro-signing and deployment policy;
+- validate the exact Excel build and Office bitness used in production;
+- verify release-asset SHA-256 values after download;
+- understand the shared Application-state and timer-resolution boundaries;
+- do not treat the component as a sandbox or authorization boundary.
+
+Report suspected vulnerabilities privately. Do not publish exploit workbooks,
+credentials, client files, or sensitive runner details in a public issue.
+
+See **[SECURITY.md](SECURITY.md)** for the complete policy.
+
+---
+
+## 📌 Status
+
+The latest tagged source is suitable for controlled Windows Excel/VBA
+environments when the documented timing, bitness, `Application.Run`, and shared
+Application-state boundaries are respected.
+
+The repository deliberately separates:
 
 ```text
-source support
+source consistency
 ≠
-execution certification
+Excel execution
+≠
+Office-bitness certification
+≠
+release-workbook identity
+≠
+reproducible source-to-binary provenance
 ```
 
-A release is execution-certified only on bitnesses actually run.
-
-The published v1.3.0 release records a 64-bit Excel run. It does not claim real
-32-bit execution certification.
-
-For controlled deployment on 32-bit Office:
-
-- compile and run the regression suite on real 32-bit Excel where practical;
-- record the exact Excel build and bitness;
-- do not infer execution success merely from 64-bit results or source inspection.
-
-The 32-bit path is especially relevant to:
-
-```text
-GetTickCount declaration binding
-32-bit rollover behavior
-conditional branch selection
-Win32 API return semantics
-```
+That distinction is part of the product contract, not a footnote.
 
 ---
 
-# 🛡️ Strict and non-strict policy
+## 👤 Author
 
-`StrictMode` controls how invalid runtime conditions are handled.
+**Daniele Penza**
 
-Broadly:
+[![GitHub](https://img.shields.io/badge/GitHub-danielep71-181717?style=for-the-badge&logo=github)](https://github.com/danielep71)
 
-```text
-strict mode
-    fail fast with a named error
+## 📄 License
 
-non-strict mode
-    use the documented fallback/neutral behavior
-    and expose status/evidence
-```
-
-Do not use non-strict mode as permission to ignore diagnostics.
-
-Where measurement validity matters, inspect:
-
-```text
-ActiveMethodID
-LastReadStatus
-FailedReadsOut
-LastFailureStatusOut
-```
-
-as applicable.
-
-A numeric zero alone is not sufficient evidence that a read succeeded.
-
----
-
-# 🧹 Environment recovery
-
-The component can own process-wide Excel state and, for method 3, multimedia
-timer-resolution state.
-
-Use the least destructive recovery that fits the problem.
-
-## Normal instance cleanup
-
-```vb
-cPM.ResetEnvironment
-```
-
-This is the preferred per-instance cleanup.
-
-## End this instance's TW scope normally
-
-```vb
-cPM.TW_Turn_ON
-```
-
-## Emergency shared TW cleanup
-
-If a hard VBA `End`, project reset, or interrupted development run has left Excel
-state suppressed and ordinary instance ownership is no longer available:
-
-```vb
-PM_TW_EndAllSessions
-```
-
-This is a recovery helper, not the normal lifecycle.
-
-## Safest process reset
-
-If Excel Application state or timer-resolution ownership is uncertain:
-
-```text
-save work
-close all Excel windows
-confirm EXCEL.EXE exits
-restart Excel
-```
-
-A clean Excel process is safer than guessing which process-global state survived
-an abnormal VBA termination.
-
----
-
-# 🔁 Upgrade guide
-
-## Before upgrading
-
-```text
-save work
-make a backup
-record the currently installed version
-finish or cancel active benchmark work
-clean up active cPerformanceManager instances where possible
-```
-
-If there is any doubt about shared Excel state, close all Excel windows before
-replacing source.
-
----
-
-## ⬆️ Upgrade an embedded installation
-
-Replace the **complete production source package together**.
-
-For the current v1.4.0 layout:
-
-```text
-M_cPM_TIMEWASTERS.bas
-cPerformanceManager.cls
-```
-
-Recommended sequence:
-
-1. save and back up the host;
-2. call `ResetEnvironment` on live instances you control;
-3. close Excel completely if process-wide state is uncertain;
-4. remove/replace the old module and class;
-5. import the new support module first;
-6. import the new class;
-7. run `Debug → Compile VBAProject`;
-8. update optional test/demo modules if you use them;
-9. rerun the relevant smoke/regression validation;
-10. review `CHANGELOG.md` for behavioral changes.
-
-Do not mix:
-
-```text
-new class
-old support module
-```
-
-or:
-
-```text
-old class
-new support module
-```
-
-even if a partial combination happens to compile.
-
-The implementation and regression assumptions evolve together.
-
----
-
-## ⬆️ Upgrade the regression harness
-
-If the host carries development/test code, replace:
-
-```text
-test/M_cPM_Test.bas
-demo/M_DEMO_BUILDER.bas
-```
-
-with the versions matching the production source being validated.
-
-Compile again before running the suite.
-
-The current harness has an explicit dependency on `M_DEMO_BUILDER`.
-
----
-
-## ⚠️ Future module splits
-
-The current installation contract is two runtime files.
-
-The repository roadmap includes architectural work that may move native timing,
-measurement, statistics, or reporting responsibilities into dedicated modules.
-
-When upgrading to a future major release:
-
-```text
-do not assume the old two-file import list
-```
-
-Use the `INSTALLATION.md` and source inventory shipped with that release.
-
-Public class method compatibility and the number of physical files required to
-compile are separate concerns.
-
----
-
-# 🧯 Troubleshooting
-
-| Symptom | Most likely cause | Action |
-|---|---|---|
-| `Sub or Function not defined` after importing the class | Support module missing | Import `M_cPM_TIMEWASTERS.bas` first, then compile |
-| `Ambiguous name detected` | Duplicate old/new component | Remove duplicate module/class and import one coherent version |
-| Class imports but project will not compile | Mixed source versions or incomplete package | Replace both production files from the same tag/commit |
-| `MeasureProcedure` cannot find the target | Target is Private, in a class, in `Option Private Module`, or misnamed | Use a `Public Sub` in a normal standard module |
-| Measurement unexpectedly uses another backend | Non-strict start fallback may have occurred | Inspect `ActiveMethodID` and failure/status evidence |
-| A timing call returns `0` unexpectedly | Could be a real zero-like duration or non-strict invalid read | Inspect `LastReadStatus` |
-| Repeated measurement returns fewer valid samples than requested | Failed reads were excluded | Inspect failure count/status; do not silently change the denominator |
-| `ERR_CPM_MEASURE_NO_VALID_SAMPLES` | No measured iteration produced a valid sample | Diagnose worker read/fallback evidence and environment |
-| `Stats_CoefficientOfVariation` raises on all-zero data | CV is undefined when the timing mean is non-positive | Inspect the sample vector/read validity rather than forcing a numeric CV |
-| Excel remains visibly suppressed after interrupted VBA | Hard `End` / reset bypassed cleanup | Run `PM_TW_EndAllSessions` or restart Excel |
-| Calculation was not suppressed | Stable-host requirement unavailable/exempted | Inspect `TW_CalculationExempted` and workbook lifecycle |
-| Method 3 leaves timing behavior uncertain after a crash/reset | Timer-resolution cleanup may not have completed | `ResetEnvironment` if ownership remains; otherwise restart Excel |
-| Regression module does not compile in a clean host | `M_DEMO_BUILDER` missing | Import `demo/M_DEMO_BUILDER.bas` |
-| Release workbook hash does not match | Wrong/tampered/different asset | Do not run it as the certified artifact; obtain the official asset again |
-
----
-
-## ❌ `Sub or Function not defined`
-
-The minimum runtime is:
-
-```text
-M_cPM_TimeWasters
-cPerformanceManager
-```
-
-The support module must be present because the class directly references it.
-
-Compile after import:
-
-```text
-Debug → Compile VBAProject
-```
-
----
-
-## ❌ `Ambiguous name detected`
-
-A duplicate component is normally present.
-
-Common causes:
-
-```text
-old M_cPM_TimeWasters left in the project
-second cPerformanceManager class under the same VB_Name
-experimental copy imported without removing the prior one
-```
-
-Remove duplicates and import one coherent source set.
-
----
-
-## ⚠️ Measurement target not found
-
-`MeasureProcedure` and `MeasureBaseline` use `Application.Run`.
-
-The target must be reachable as:
-
-```text
-Public Sub
-in a normal standard module
-```
-
-Do not place the target in:
-
-```text
-a class module
-a Private procedure
-an Option Private Module
-```
-
-if it must be dispatched through `Application.Run`.
-
-An explicitly qualified target is executable input. Use procedure names
-controlled by trusted host code; do not route arbitrary worksheet/file/network
-values directly into the measurement API.
-
----
-
-## ⚠️ Excel state remains suppressed
-
-First try normal cleanup through the owning instance:
-
-```vb
-cPM.ResetEnvironment
-```
-
-If the instance is gone because of a hard project reset:
-
-```vb
-PM_TW_EndAllSessions
-```
-
-If you cannot establish what happened:
-
-```text
-restart Excel
-```
-
-Do not keep working in a production workbook while Application-wide state is
-known to be uncertain.
-
----
-
-# 🔐 Security and deployment hygiene
-
-Before deployment:
-
-- obtain source or release assets from the official repository/release;
-- review source where required by organizational policy;
-- keep Trust Center settings at approved levels;
-- do not embed credentials, signing keys, client data, or secrets in test/demo
-  workbooks;
-- treat procedure names passed to `Application.Run` as executable trusted input;
-- treat `.xlsm` release assets as executable Office content;
-- verify published hashes where available;
-- do not describe 32-bit or 64-bit execution as certified unless it was actually
-  run on that bitness.
-
-See:
-
-[SECURITY.md](SECURITY.md)
-
----
-
-# 📐 Repository line endings and binary handling
-
-The root `.gitattributes` is authoritative for Git normalization.
-
-Current repository policy includes:
-
-```text
-*.bas / *.cls / *.frm    CRLF in the working tree
-Python / YAML / Markdown LF
-Office files             binary / non-mergeable
-```
-
-Do not manually normalize exported VBA source to LF merely to make it resemble
-other text files.
-
-The VBE/Windows source contract is intentionally CRLF.
-
-Generated `.xlsm` files are release artifacts and are excluded by repository
-hygiene rules rather than treated as authoritative source.
-
----
-
-# 🗑️ Removing the component
-
-## Remove an embedded source installation
-
-### 1. End active ownership
-
-For each live instance you control:
-
-```vb
-cPM.ResetEnvironment
-```
-
-If shared TW state survived an abnormal project reset:
-
-```vb
-PM_TW_EndAllSessions
-```
-
-If state remains uncertain, close all Excel windows before editing/removing the
-source.
-
-### 2. Remove host calls
-
-Delete or update any host procedures that instantiate or call
-`cPerformanceManager`.
-
-Also remove any benchmark targets/examples you added only for this component.
-
-### 3. Remove VBA components
-
-Remove:
-
-```text
-M_cPM_TimeWasters
-cPerformanceManager
-```
-
-Remove optional test/demo modules if they are no longer needed.
-
-### 4. Compile the remaining project
-
-```text
-Debug → Compile VBAProject
-```
-
-### Persisted state
-
-VBA-PERFORMANCE_MANAGER does not maintain a user settings registry or installed
-background service.
-
-Removing the source therefore does not require a settings migration/uninstaller.
-
-A full Excel restart is still recommended after removal if the prior session
-ended abnormally.
-
----
-
-## Remove the release demo workbook
-
-Close it and delete the downloaded `.xlsm`.
-
-The release workbook does not install a background service or Windows component.
-
----
-
-# ✅ Final installation checklist
-
-## Embedded source
-
-```text
-[ ] Macro-enabled host backed up
-[ ] M_cPM_TIMEWASTERS.bas imported first
-[ ] cPerformanceManager.cls imported second
-[ ] Debug → Compile VBAProject passes
-[ ] QPC timing smoke test passes
-[ ] ResetEnvironment completes
-[ ] Shared TW restore tested where the feature will be used
-[ ] MeasureProcedure target reachability tested where the harness will be used
-[ ] Failure/status evidence understood for non-strict operation
-[ ] SECURITY.md reviewed where organizational controls require it
-```
-
-## Developer validation
-
-```text
-[ ] Production source imported from one tag/commit
-[ ] M_DEMO_BUILDER.bas imported
-[ ] M_cPM_Test.bas imported
-[ ] Debug → Compile VBAProject passes
-[ ] Run_cPerformanceManager_RegressionSuite executed
-[ ] Failures = 0
-[ ] Cases and assertions recorded
-[ ] Excel version/build recorded
-[ ] Office bitness recorded
-[ ] Excel Application state clean after the run
-```
-
-## Release workbook
-
-```text
-[ ] Official GitHub Release asset obtained
-[ ] Exact release tag identified
-[ ] SHA-256 compared with published provenance where available
-[ ] Macro/trust policy satisfied
-[ ] Actual downloaded workbook smoke-tested in controlled Excel
-[ ] Source/tag remains the authoritative implementation reference
-```
-
----
-
-<div align="center">
-
-## 📌 Installation principle
-
-**Import one coherent source set. Compile before use. Treat Excel state as process-wide. Validate the environment you actually deploy.**
-
-</div>
+Licensed under the [MIT License](LICENSE).

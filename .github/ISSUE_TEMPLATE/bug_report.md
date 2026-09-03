@@ -117,7 +117,7 @@ was required; both can hide cleanup defects and shared-state leaks.
 
 | Field | Value |
 | --- | --- |
-| Release tag or full 40-character commit SHA | <!-- e.g. v1.4.0 or 0123... --> |
+| Release tag or full 40-character commit SHA | <!-- e.g. v1.3.0 or 0123... --> |
 | Source origin | <!-- Official release / release branch / fork / copied files --> |
 | Local modifications | <!-- None, or describe/link the diff --> |
 | `VERSION` in the `cPerformanceManager.cls` header | <!-- Exact value --> |
@@ -138,9 +138,10 @@ was required; both can hide cleanup defects and shared-state leaks.
 | Regional settings | <!-- If date, number, or string formatting may matter --> |
 
 <!--
-The source contains VBA7 declarations for both 32-bit and 64-bit Office, but
-published execution evidence covers 64-bit Excel only. A 32-bit report is
-valuable; please identify it explicitly.
+The source contains VBA7 declarations for both 32-bit and 64-bit Office, but the
+published v1.4.0 execution evidence covers 64-bit Excel only. Real Office
+32-bit execution remains unverified, so a 32-bit report is especially valuable;
+please identify it explicitly.
 -->
 
 
@@ -175,11 +176,16 @@ requested method and ActiveMethodID; they answer different questions.
 Complete this section for MeasureProcedure, MeasureBaseline, or overhead/sample
 collection problems. Otherwise write "Not applicable".
 
-MeasureProcedure exposes worker-read evidence through FailedReadsOut and
-LastFailureStatusOut. The caller object's LastReadStatus describes the caller's
-own last read, not the internal measurement worker. Current MeasureBaseline and
-MeasureOverhead_Samples APIs do not expose equivalent worker outputs, so state
-that limitation rather than inferring "no failures".
+MeasureProcedure, MeasureBaseline and MeasureOverhead_Samples expose worker
+evidence through FailedReadsOut, LastFailureStatusOut and RejectedSamplesOut.
+The caller object's LastReadStatus describes the caller's own last read, not the
+internal measurement worker.
+
+FailedReadsOut and RejectedSamplesOut are initialized to -1. A negative count
+means the run ended before evidence was classified and published; on that path,
+Err.Number and Err.Description are authoritative. Non-negative counts are
+published on normal return and before the aggregate
+ERR_CPM_MEASURE_NO_VALID_SAMPLES raise. Do not interpret -1 as "no failures".
 
 Application.Run executes the supplied procedure name. Use only a trusted target
 and include the exact qualification used, including workbook/module names.
@@ -193,8 +199,9 @@ and include the exact qualification used, including workbook/module names.
 | Iterations / warm-up iterations | |
 | Requested timing method | |
 | `Stats_Count` returned | |
-| `FailedReadsOut` | <!-- MeasureProcedure, or N/A --> |
-| `LastFailureStatusOut` | <!-- MeasureProcedure, or N/A --> |
+| `FailedReadsOut` | <!-- Non-negative published count, -1 sentinel, or N/A --> |
+| `LastFailureStatusOut` | <!-- Meaningful when counts were published, or N/A --> |
+| `RejectedSamplesOut` | <!-- Non-negative published count, -1 sentinel, or N/A --> |
 | Sample vector concern | <!-- Mixed backend / invalid value / count / other --> |
 
 

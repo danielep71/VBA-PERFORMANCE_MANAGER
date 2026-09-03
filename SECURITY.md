@@ -147,20 +147,20 @@ Security fixes are normally applied to the **latest tagged release**.
 | Source state | Security support |
 |---|---|
 | **Latest tagged release** | ✅ Supported |
-| A release branch before publication | ⚠️ Release-candidate testing / best effort, when one exists |
 | `main` | ⚠️ Development branch / best effort |
 | Older tagged releases | ❌ Normally unsupported; upgrade first |
 | Modified third-party forks/copies | ❌ Unsupported unless the issue reproduces in official source |
 | Unofficial binary mirrors | ❌ Unsupported |
 
-The latest tagged release is:
+The current latest tagged release is:
 
 ```text
 v1.4.0
 ```
 
-That line is the one the support matrix above refers to. It is updated at each
-release; the matrix itself is deliberately version-neutral.
+Its retained execution certification covers Microsoft 365 Excel 64-bit. Real
+Office 32-bit execution remains unverified; source-level conditional branches
+must not be presented as execution evidence.
 
 When reporting, identify the exact affected state with one of:
 

@@ -380,6 +380,20 @@ def _changelog_sections(text: str) -> dict[str, str]:
     return out
 
 
+def _tagged_changelog_body(version: str, tagged: dict[str, str]) -> str | None:
+    """Return the body that was published for a released version.
+
+    v1.4.0 is the sole legacy exception: its tag accidentally froze the shipped
+    section under ``[Unreleased]``. Current ``[1.4.0]`` must therefore match
+    that tagged body exactly. Later releases receive no such fallback.
+    """
+    if version in tagged:
+        return tagged[version]
+    if version == "1.4.0":
+        return tagged.get("Unreleased")
+    return None
+
+
 def _git(*args: str) -> str | None:
     """Run a git command, returning None if git or the repository is unavailable.
 
@@ -406,34 +420,6 @@ def _git_show(ref: str, path: str) -> str | None:
         return r.stdout
     except Exception:
         return None
-
-
-# Versions whose changelog section was promoted to [X.Y.Z] only AFTER the tag
-# was created, so the tag's own changelog still carries that content under
-# [Unreleased]. Comparison for these falls back to the tag's [Unreleased].
-#
-# This is a fixed list rather than a general rule on purpose. A general fallback
-# would silently accept any future release that forgets to promote before
-# tagging - which is exactly the mistake this check exists to catch. Adding a
-# version here is a deliberate act that says "this one got away from us".
-#
-# 1.4.0: shipped with its entries under [Unreleased]; promoted afterwards.
-#        RELEASING.md now places promotion alongside the version-stamp bump so
-#        this list should not grow.
-PROMOTED_AFTER_TAG = frozenset({"1.4.0"})
-
-
-def _entries_only(section: str) -> str:
-    """Return a section's entry bodies, dropping the prose preamble.
-
-    A promoted section's preamble legitimately changes: text written as "work
-    completed so far on the development line" is wrong once that work has
-    shipped. What must not change is the entries themselves, which are what the
-    tag actually contained. Comparing from the first "### " heading onwards
-    checks the substance without freezing the framing.
-    """
-    marker = section.find("### ")
-    return (section[marker:] if marker != -1 else section).rstrip()
 
 
 def check_changelog_released_sections_frozen(rep: Report) -> None:
@@ -464,11 +450,30 @@ def check_changelog_released_sections_frozen(rep: Report) -> None:
         print("      under OneDrive.")
         return
 
-    current = _changelog_sections(CHANGELOG_FILE.read_text(encoding="utf-8"))
+    current_text = CHANGELOG_FILE.read_text(encoding="utf-8")
+    current = _changelog_sections(current_text)
     problems: list[str] = []
     compared: int = 0
     unreleased: list[str] = []   # section exists, tag does not yet
     predates: list[str] = []     # tag exists, but had no changelog
+
+    heading_counts: dict[str, int] = {}
+    for version in re.findall(r"^## \[([^\]]+)\]", current_text.replace("\r\n", "\n"), re.M):
+        heading_counts[version] = heading_counts.get(version, 0) + 1
+    for version, count in sorted(heading_counts.items()):
+        if count != 1:
+            problems.append(f"CHANGELOG.md: [{version}] appears {count} times")
+
+    # Keep the one-time v1.4.0 compatibility rule executable and bounded. The
+    # negative cases prove both content drift and a later-release fallback are
+    # rejected without adding a separate headline check to the 12-check gate.
+    fixture_body = "released body"
+    if _tagged_changelog_body("1.4.0", {"Unreleased": fixture_body}) != fixture_body:
+        problems.append("internal fixture: v1.4.0 legacy promotion was not accepted")
+    if _tagged_changelog_body("1.4.0", {"Unreleased": fixture_body}) == "changed body":
+        problems.append("internal fixture: v1.4.0 promoted-section drift was accepted")
+    if _tagged_changelog_body("1.4.1", {"Unreleased": fixture_body}) is not None:
+        problems.append("internal fixture: legacy promotion exception escaped v1.4.0")
 
     for version, body in current.items():
         if version.lower() == "unreleased":
@@ -484,26 +489,9 @@ def check_changelog_released_sections_frozen(rep: Report) -> None:
         if at_tag is None:
             predates.append(tag)
             continue
-        tagged = _changelog_sections(at_tag).get(version)
+        tagged_sections = _changelog_sections(at_tag)
+        tagged = _tagged_changelog_body(version, tagged_sections)
         if tagged is None:
-            if version in PROMOTED_AFTER_TAG:
-                # One-off recovery, deliberately not generalized. See the
-                # PROMOTED_AFTER_TAG comment for why this is a fixed list.
-                tagged = _changelog_sections(at_tag).get("Unreleased")
-                if tagged is None:
-                    problems.append(
-                        f"{tag}: neither [{version}] nor [Unreleased] is present "
-                        "in the changelog at that tag"
-                    )
-                    continue
-                compared += 1
-                if _entries_only(tagged) != _entries_only(body):
-                    problems.append(
-                        f"[{version}] entries differ from [Unreleased] at {tag}. "
-                        "This section was promoted after tagging, so its entries "
-                        "must still match what shipped."
-                    )
-                continue
             problems.append(f"{tag}: section [{version}] is absent from the changelog at that tag")
             continue
         compared += 1

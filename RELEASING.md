@@ -278,6 +278,10 @@ release.
 
 Move release version stamps **once**, after feature work is complete.
 
+Promote the changelog in the immediately following step before final
+certification or tagging. Version identity and the dated release ledger are one
+pre-tag preparation gate; neither may be deferred until after publication.
+
 For the current source layout, synchronize:
 
 | File | Release field |
@@ -617,29 +621,18 @@ A 32-bit run does not execute the Win64 branches.
 
 A release may claim execution certification only for environments actually run.
 
-### Bitness evidence
+### v1.4.0 bitness decision — historical record
 
-Do not treat any of these as execution certification for a bitness you did not
-run:
+v1.4.0 shipped on 2026-08-31 with exact-tag Microsoft 365 Excel **64-bit**
+certification: 80 cases, 643 assertions and 0 failures. A real Office 32-bit
+host was not available, so issue #29 moved to v1.4.1 as contributor-dependent,
+non-blocking assurance work.
 
-```text
-compiled by construction
-shared arithmetic is tested
-the other bitness passed
-```
-
-They are useful source-level facts and nothing more.
-
-Where a bitness cannot be provisioned, say so explicitly before release: name
-the environments actually certified, state that the other remains unverified
-rather than unsupported, and record the tracking issue. Deferring evidence is
-legitimate; implying it exists is not.
-
-> [!NOTE]
-> **v1.4.0 decision, 2026-08-31.** 32-bit Office could not be provisioned, since
-> it cannot coexist with 64-bit Office on one Windows installation. v1.4.0
-> shipped certified on 64-bit against its exact tag target, with 32-bit recorded
-> as unverified and tracked in [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29).
+The release notes and current documentation state that boundary explicitly.
+The source retains its 32-bit conditional branches, but source inspection and
+shared arithmetic tests are not described as 32-bit execution certification.
+This was a release-specific decision; the general one-bitness rule above is the
+prospective policy.
 
 ---
 
@@ -697,19 +690,19 @@ Where practical:
 
 Use the release's intended filename.
 
-The convention, used by v1.3.0 and v1.4.0, is:
+The current published asset convention (v1.3.0 and v1.4.0) is:
 
 ```text
 PERFORMANCE.MANAGER.xlsm
 ```
 
-> [!NOTE]
-> The local build is named `PERFORMANCE MANAGER.xlsm` with a space. GitHub
-> replaces the space with a dot on upload, so the published asset carries the
-> dotted name. Record the published name.
-
 If a future release changes the asset name, the Release page and documentation
 must use the exact new name consistently.
+
+The v1.4.0 assembly used `PERFORMANCE MANAGER.xlsm` locally while the uploaded
+asset used `PERFORMANCE.MANAGER.xlsm`. Do not infer or automate a rename from
+that history: pass the actual final upload file to the provenance tool and
+record both local-manifest and published names when they differ.
 
 ## Package-level smoke test
 
@@ -789,6 +782,15 @@ The resolved SHA must equal the release SHA recorded before the final gates.
 Run provenance **after the tag exists** and while `HEAD` is still the exact
 tagged commit.
 
+> [!CAUTION]
+> Until issue #51 is implemented, `release_provenance.py` does not fail closed
+> for every incomplete or inconsistent invocation. Before running it, manually
+> verify that the working tree is clean; `HEAD` equals `vX.Y.Z^{commit}`; the
+> asset exists; version and tag agree; Excel/build and bitness are explicit;
+> cases and assertions are positive; and failures was supplied explicitly as
+> zero. Treat any output containing `TODO`, missing-asset markers, tag problems,
+> or incomplete certification fields as non-publishable.
+
 The tool verifies the local source against the tag and hashes the Release asset.
 
 Windows Command Prompt example:
@@ -819,7 +821,8 @@ Require:
 ```text
 [ ] commit = tagged release commit
 [ ] tag_verified = vX.Y.Z
-[ ] no TODO required fields
+[ ] no TODO, missing, or incomplete required fields
+[ ] clean working tree; HEAD = vX.Y.Z^{commit}
 [ ] no tag problems
 [ ] source hashes present
 [ ] workbook asset hash present
@@ -1167,7 +1170,7 @@ RELEASE BRANCH
 [ ] Working tree clean
 [ ] Branch synced with origin
 [ ] Version stamps synchronized
-[ ] CHANGELOG current release prepared
+[ ] CHANGELOG promoted to a dated current-release section before certification/tagging
 [ ] Released CHANGELOG history untouched
 [ ] README / INSTALLATION / Wiki consistent
 [ ] Pre-merge vba_lint passes
@@ -1205,7 +1208,8 @@ TAG
 PROVENANCE
 [ ] release_provenance.py run after tag exists
 [ ] Source matches tag
-[ ] No required TODO fields
+[ ] No TODO, missing, or incomplete required fields
+[ ] Clean working tree and HEAD/tag-target identity verified manually until #51 lands
 [ ] Workbook SHA-256 recorded
 [ ] release-manifest.json generated from final tag/artifact
 [ ] Additional bitness evidence retained separately where required

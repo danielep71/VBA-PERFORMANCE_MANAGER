@@ -352,7 +352,7 @@ is required.
 The count alone is not enough. A statement such as:
 
 ```text
-511 assertions passed
+N assertions passed
 ```
 
 is incomplete if it omits:

@@ -230,6 +230,7 @@ Do not rely on Class_Terminate after a hard VBA End.
 ## 📚 Documentation and release hygiene
 
 - [ ] `CHANGELOG.md` updated under `[Unreleased]` for material user-visible behavior
+- [ ] Release preparation promoted `[Unreleased]` to a dated version section before final certification/tagging
 - [ ] Previously released CHANGELOG sections were not rewritten
 - [ ] README / installation / security / releasing guidance updated where affected
 - [ ] Wiki impact identified; updated now or explicitly deferred
