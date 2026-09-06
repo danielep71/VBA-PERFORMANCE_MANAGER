@@ -192,7 +192,21 @@ Where policy requires a pull request, make these items easy to verify:
 - compatibility, migration, and security notes;
 - remaining limitations.
 
-Require configured checks and record the resulting `main` SHA. If the merge changes source identity, certify that commit before tagging.
+Require configured checks and record the resulting full `main` SHA. Compare it
+with the SHA used for steps 5–7, even when the exported VBA files are unchanged.
+
+- If the SHA is unchanged (a fast-forward), retain the matching certification,
+  packaged-test result and hashes.
+- If the SHA changed (including a merge or squash commit), treat steps 5–7 as
+  pre-merge candidate evidence only. From a clean checkout of the resulting
+  `main` SHA, rerun static and Excel certification, rebuild the workbook from
+  that checkout's exports, reopen and test the packaged workbook, and record
+  its new size and SHA-256. Supersede the earlier artifact and evidence; do not
+  relabel a pre-merge workbook or reuse its hash as final release evidence.
+
+Retain evidence in one directory per certified full SHA. Freeze that final
+source and workbook before step 9. Provenance generation hashes an existing
+asset; it does not prove that the asset was built from the tagged checkout.
 
 ## 9. Create the annotated tag
 

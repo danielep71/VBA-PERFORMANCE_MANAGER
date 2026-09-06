@@ -107,6 +107,13 @@ Use only the categories needed by a release.
 
 ### Changed
 
+- Clarified changelog maintenance, release headings and comparison-link policy;
+  the previously introduced policy is now recorded in the unreleased ledger.
+- Required a fresh workbook build, packaged test and hash after a merge changes
+  the certified SHA; pre-merge artifacts cannot be relabelled as final evidence.
+- Corrected pull-request template documentation links and placed issue-closing
+  references outside code fences so they work in submitted pull requests.
+
 - Standardized the pull-request review contract around exact-candidate evidence, compatibility, risk and recovery, security and provenance, and project-specific validation gates.
 
 ---
