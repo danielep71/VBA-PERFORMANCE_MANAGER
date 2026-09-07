@@ -2,9 +2,9 @@
 """
 vba_lint.py — static consistency checks for the Class Performance Manager sources.
 
-These checks exist because every one of them corresponds to a defect that
-actually reached the repository during v1.2.0 development. None of them require
-Excel, so they can run on a hosted runner and gate every push.
+These checks cover source and release-assurance defects found during project
+development. None requires Excel; a pass is not VBA compilation or execution
+evidence. They can run on a hosted runner and gate every push.
 
     python3 tools/vba_lint.py
 
@@ -23,6 +23,9 @@ import tempfile
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from vba_compile_safety import analyse, LABEL_CHECK, ASSIGN_CHECK
+from test_vba_compile_safety import fixture_problems
 
 # --------------------------------------------------------------------------- #
 # Configuration
@@ -619,6 +622,15 @@ def main() -> int:
     check_api_declarations(rep)
     check_changelog_released_sections_frozen(rep)
     check_release_provenance_fixtures(rep)
+    # Discover all shipped, demo and regression exports, including future ones.
+    sources = {str(p.relative_to(ROOT)): read(p)
+               for directory in ("src", "test", "demo")
+               for p in sorted((ROOT / directory).rglob("*"))
+               if p.suffix.lower() in (".bas", ".cls", ".frm")}
+    label_problems, assignment_problems = analyse(sources)
+    label_fixtures, assignment_fixtures = fixture_problems()
+    rep.check(LABEL_CHECK, label_problems + label_fixtures)
+    rep.check(ASSIGN_CHECK, assignment_problems + assignment_fixtures)
 
     print("-" * 60)
 

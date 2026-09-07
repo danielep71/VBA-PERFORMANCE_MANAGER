@@ -12,7 +12,7 @@
 [![Windows](https://img.shields.io/badge/Platform-Windows_desktop-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#requirements)
 [![Version](https://img.shields.io/badge/Version-1.4.0-6f42c1?style=for-the-badge)](#release-status)
 [![Regression](https://img.shields.io/badge/Regression-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
-[![Static checks](https://img.shields.io/badge/Static_checks-12_%2F_12-0969da?style=for-the-badge)](#static-source-analysis)
+[![Static checks](https://img.shields.io/badge/Static_checks-15_%2F_15-0969da?style=for-the-badge)](#static-source-analysis)
 [![License](https://img.shields.io/badge/License-MIT-2ea44f?style=for-the-badge)](LICENSE)
 
 <br>
@@ -905,7 +905,8 @@ python3 tools/vba_lint.py --json vba-lint-results.json
 on every push and pull request. It publishes the machine-readable result even
 when a check fails.
 
-The current linter performs **12 checks**:
+The v1.4.1 working-branch linter performs **15 checks**. The published v1.4.0
+certification above remains **12/12**, and is not recertified by these additions:
 
 1. no merge-conflict markers;
 2. balanced procedure blocks;
@@ -918,7 +919,14 @@ The current linter performs **12 checks**:
 9. `TotalSteps` matches the executed case count;
 10. version stamps agree;
 11. native APIs have a single call site;
-12. released CHANGELOG sections remain frozen against their tags.
+12. released CHANGELOG sections remain frozen against their tags;
+13. strict release-provenance fixtures;
+14. error-handler labels resolve within their procedure;
+15. assigned identifiers are declared.
+
+The two compile-safety checks scan production, regression and demo exports with
+separate Windows conditional-compilation profiles and fixture-backed grammar.
+See [scope, limitations and verification](docs/COMPILE_SAFETY_CHECKS.md).
 
 > [!CAUTION]
 > Static source analysis does **not** establish VBE import success, VBA

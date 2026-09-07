@@ -99,6 +99,11 @@ Use only the categories needed by a release.
 
 ### Added
 
+- Added two independent compile-safety checks for same-procedure error-handler
+  labels and declared assignment targets across production, test and demo VBA.
+  Conditional profiles and positive/negative fixtures are checked locally;
+  this does not replace real Excel compilation or execution (#45).
+
 - Added a standardized installation and maintainer release documentation set with project-specific deployment, certification, provenance, recovery, and post-publication controls.
 
 - Added a root `VERSION` marker at `1.4.0`, aligned with the latest published
