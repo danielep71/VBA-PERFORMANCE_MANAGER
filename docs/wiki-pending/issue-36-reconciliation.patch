@@ -1,0 +1,480 @@
+diff --git a/Benchmarking-Guidance.md b/Benchmarking-Guidance.md
+index 7888a8d..3bd9f84 100644
+--- a/Benchmarking-Guidance.md
++++ b/Benchmarking-Guidance.md
+@@ -4,7 +4,7 @@
+ 
+ <div align="center">
+ 
+-[![Report](https://img.shields.io/badge/Report-Median_and_Min-0f766e?style=flat-square)](#-2-report-the-median-and-the-minimum)
++[![Report](https://img.shields.io/badge/Report-Median_and_Min-0f766e?style=flat-square)](#-2-report-a-distribution-not-one-average)
+ [![Repeat](https://img.shields.io/badge/Never-Trust_One_Run-d73a49?style=flat-square)](#-1-never-conclude-from-a-single-run)
+ [![Backend](https://img.shields.io/badge/Backend-QPC-c2185b?style=flat-square)](Timer-Methods)
+ 
+diff --git a/Core-API.md b/Core-API.md
+index af2703c..8babd1a 100644
+--- a/Core-API.md
++++ b/Core-API.md
+@@ -6,7 +6,7 @@
+ 
+ [![Members](https://img.shields.io/badge/Public_Members-44-217346?style=flat-square)](#-full-public-surface)
+ [![Model](https://img.shields.io/badge/Model-Session_Bound-00599C?style=flat-square)](#-the-session-model)
+-[![Version](https://img.shields.io/badge/Release-1.3.0-6f42c1?style=flat-square)](Version-History)
++[![Version](https://img.shields.io/badge/Release-1.4.0-6f42c1?style=flat-square)](Version-History)
+ 
+ </div>
+ 
+@@ -335,8 +335,10 @@ Three rules:
+ 
+ ## 📆 Changed in v1.4.0
+ 
+-This page documents the **unreleased v1.4.0 candidate**. The latest published
+-release is v1.3.0; final v1.4.0 certification is pending. Full detail is in
++This page documents the **released v1.4.0 contract**, certified on the stated
++64-bit Excel host. Real Office 32-bit execution remains unverified. See
++**[published evidence](Testing-and-Validation#-what-the-published-evidence-proves)**.
++Full change detail is in
+ **[CHANGELOG.md](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/CHANGELOG.md)**.
+ 
+ - All three harness members gain trailing optional evidence outputs; no public
+diff --git a/Diagnostics-and-Benchmark-Helpers.md b/Diagnostics-and-Benchmark-Helpers.md
+index cceb2fe..474fd0e 100644
+--- a/Diagnostics-and-Benchmark-Helpers.md
++++ b/Diagnostics-and-Benchmark-Helpers.md
+@@ -183,8 +183,10 @@ This is the quickest way to see, on **your** hardware, why method 5 is the defau
+ 
+ ## 📆 Changed in v1.4.0
+ 
+-This page documents the **unreleased v1.4.0 candidate**. The latest published
+-release is v1.3.0; final v1.4.0 certification is pending. Full detail is in
++This page documents the **released v1.4.0 contract**, certified on the stated
++64-bit Excel host. Real Office 32-bit execution remains unverified. See
++**[published evidence](Testing-and-Validation#-what-the-published-evidence-proves)**.
++Full change detail is in
+ **[CHANGELOG.md](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/CHANGELOG.md)**.
+ 
+ - `OverheadMeasurement_Seconds` accumulated every endpoint read and divided by
+diff --git a/FAQ.md b/FAQ.md
+index 1b3b6f8..8c80240 100644
+--- a/FAQ.md
++++ b/FAQ.md
+@@ -2,7 +2,7 @@
+ 
+ <div align="center">
+ 
+-[![Version](https://img.shields.io/badge/Version-1.3.0-4c1d95?style=flat-square)](Version-History)
++[![Version](https://img.shields.io/badge/Version-1.4.0-4c1d95?style=flat-square)](Version-History)
+ [![Files](https://img.shields.io/badge/Files-2_Required-217346?style=flat-square)](Installation-and-Import)
+ [![Backend](https://img.shields.io/badge/Use-Method_5-c2185b?style=flat-square)](Timer-Methods)
+ 
+@@ -276,13 +276,18 @@ No. It is a utility for demos, tests and simple waits. Sub-millisecond waits are
+ ## 🔄 Versions
+ 
+ <details>
+-<summary><strong>What changes matter when upgrading to 1.3.0?</strong></summary>
++<summary><strong>What changes matter when upgrading to 1.4.0?</strong></summary>
+ 
+ <br>
+ 
+ Import the companion module before the class, keep strict mode enabled for
+ benchmark evidence, and treat the new read-status and measurement-failure
+-outputs as part of the result. Earlier 1.2.0 behavior changes still apply:
++outputs as part of the result. All three harnesses now expose failed-read,
++last-failure-status and rejection evidence; a negative count means evidence was
++not published. Start-fallback cycles are rejected, and a rejected measured
++procedure cycle does not dispatch the workload. The legacy overhead numeric
++helper can raise when nothing survives; its text helper renders that condition
++as `undefined (...)`. Earlier 1.2.0 behavior changes still apply:
+ `Checkpoint` no longer updates `T2` / `ET`. Review the
+ **[upgrade notes](Installation-and-Import#-upgrading-safely)**.
+ 
+diff --git a/Home.md b/Home.md
+index 55dbf98..c4b19d1 100644
+--- a/Home.md
++++ b/Home.md
+@@ -9,9 +9,9 @@
+ [![Excel VBA](https://img.shields.io/badge/Excel_VBA-source_support_32%20%2F%2064--bit-217346?style=for-the-badge&logo=microsoft-excel&logoColor=white)](https://github.com/danielep71/vba-performance_manager)
+ [![Pure VBA](https://img.shields.io/badge/Implementation-Pure_VBA-00599C?style=for-the-badge)](https://github.com/danielep71/vba-performance_manager)
+ [![QPC](https://img.shields.io/badge/Default_Backend-QueryPerformanceCounter-c2185b?style=for-the-badge)](Timer-Methods)
+-[![Regression](https://img.shields.io/badge/Regression-72_Cases_·_511_Assertions-d97706?style=for-the-badge)](Testing-and-Validation)
++[![Regression](https://img.shields.io/badge/v1.4.0-80_Cases_·_643_Assertions-d97706?style=for-the-badge)](Testing-and-Validation)
+ [![Statistics](https://img.shields.io/badge/Statistics-Median_·_P95_·_CV-0f766e?style=for-the-badge)](Statistics-and-Measurement)
+-[![Version](https://img.shields.io/badge/Release-1.3.0-6f42c1?style=for-the-badge)](Version-History)
++[![Version](https://img.shields.io/badge/Release-1.4.0-6f42c1?style=for-the-badge)](Version-History)
+ 
+ </div>
+ 
+@@ -25,9 +25,9 @@
+ |---:|:---|
+ | **6** | timing backends behind one session-bound interface |
+ | **44** | public members — 25 methods and 19 properties |
+-| **72** | regression cases and **511** assertions; published v1.3.0 result: 0 failures |
++| **80** | regression cases and **643** assertions; published v1.4.0 result: 0 failures on 64-bit Excel |
+ | **30** | named error values — 24 class and 6 companion-module errors |
+-| **12** | hosted static source checks; Excel execution remains a separate manual gate |
++| **12** | static checks in the published v1.4.0 evidence; the v1.4.1 branch has 15 after #51 and #45, independently of Excel execution |
+ | **2** | files to import. No reference, no add-in, no DLL |
+ 
+ </div>
+@@ -55,15 +55,14 @@ It documents:
+ > A backend is bound when the session starts, and every elapsed-time read is validated against that same backend. Rollover arithmetic, unsigned 32-bit conversion, timer-resolution lifecycle, and shared Excel state coordination are all handled explicitly rather than left to the caller. Backwards-clock detection covers backends 2, 3, 4 and 6 — see [Known Limitations](Known-Limitations) for backend 1.
+ 
+ > [!NOTE]
+-> This wiki documents the **unreleased v1.4.0 candidate**. The latest published
+-> release is **v1.3.0**, with execution evidence for the stated 64-bit Excel
+-> host.
++> This wiki documents **v1.4.0, released on 31 August 2026**. Its tag targets
++> `a5390b4c6ca56ebbd87eca121b5167ee5dc09963`; the workbook and provenance
++> manifest are published on the **[release page](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0)**.
++> Certification is **64-bit only**. Source retains 32-bit branches, but real
++> 32-bit execution remains unverified and tracked in #29.
+ >
+-> The `release/v1.4.0` line delivers measurement-integrity corrections —
+-> backend-homogeneous vectors, separated failure and rejection evidence, and a
+-> validated legacy overhead path — alongside governance, installation, security
+-> and release-assurance work. **Final v1.4.0 certification is pending**: no
+-> v1.4.0 tag, workbook or provenance manifest exists yet.
++> **v1.4.1 is development, not a new certified release.** Its hardening work
++> must not be read as delivered runtime behavior. See [Version History](Version-History).
+ 
+ ---
+ 
+@@ -169,7 +168,7 @@ RELEASING.md                             Maintainer release procedure
+ | [Error Handling and Strict Mode](Error-Handling-and-Strict-Mode) | Error constants and raise policy |
+ | [Architecture and Internal Design](Architecture-and-Internal-Design) | Internals and design reasoning |
+ | [Benchmarking Guidance](Benchmarking-Guidance) | Practical measurement discipline |
+-| [Testing and Validation](Testing-and-Validation) | The 72-case regression suite |
++| [Testing and Validation](Testing-and-Validation) | The published 80-case regression suite and evidence boundaries |
+ | [Examples and Usage Patterns](Examples-and-Usage-Patterns) | Worked patterns |
+ | [Known Limitations](Known-Limitations) | Documented boundaries |
+ | [FAQ](FAQ) | Common questions |
+diff --git a/Installation-and-Import.md b/Installation-and-Import.md
+index 79ba2e1..f257dcf 100644
+--- a/Installation-and-Import.md
++++ b/Installation-and-Import.md
+@@ -7,7 +7,7 @@
+ [![Files](https://img.shields.io/badge/Files-2_Required-217346?style=flat-square)](#-required-files)
+ [![References](https://img.shields.io/badge/References-None-00599C?style=flat-square)](#-requirements)
+ [![Import order](https://img.shields.io/badge/Import_Order-Module_First-d97706?style=flat-square)](#-import-order-matters)
+-[![Version](https://img.shields.io/badge/Release-1.3.0-6f42c1?style=flat-square)](Version-History)
++[![Version](https://img.shields.io/badge/Release-1.4.0-6f42c1?style=flat-square)](Version-History)
+ 
+ </div>
+ 
+@@ -22,6 +22,12 @@
+ 
+ Both are required. The class will not compile without the module.
+ 
++For the published runtime, take both files from **[tag v1.4.0](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/tree/v1.4.0)**,
++not a mixture of release and development revisions. The prebuilt demo workbook
++and manifest are **[release assets](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0)**;
++see [Testing and Validation](Testing-and-Validation#-what-the-published-evidence-proves)
++for the exact source SHA, asset-name distinction and hashes.
++
+ For the full source-first deployment, verification, upgrade, recovery, and
+ removal procedure, use the canonical repository guide:
+ **[INSTALLATION.md](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/INSTALLATION.md)**.
+@@ -82,7 +88,7 @@ Repeat step 8 until the command greys out.
+ 
+ > [!IMPORTANT]
+ > Source compatibility and execution certification are different claims. The
+-> published v1.3.0 evidence is Excel for Microsoft 365 **64-bit** only. It is
++> published v1.4.0 evidence is Excel for Microsoft 365 **64-bit** only. It is
+ > not real 32-bit execution evidence, and the repository does not currently
+ > declare a formal minimum supported Office/VBA version.
+ 
+@@ -123,10 +129,10 @@ Run_cPerformanceManager_RegressionSuite
+ Results are written to a dedicated worksheet log and summarised in the Immediate Window. See **[Testing and Validation](Testing-and-Validation)**.
+ 
+ > [!IMPORTANT]
+-> **The pass condition is zero failures**, not a particular count. The
+-> v1.4.0 candidate currently runs 80 cases and 643 assertions, and that snapshot
+-> will move as the suite grows. Do not hard-code case or assertion counts into
+-> your own acceptance checks.
++> Require a complete run with zero failures and the expected case inventory for
++> the exact source revision. Published v1.4.0 evidence is 80 cases and 643
++> assertions; future suites may change. Do not accept a truncated zero-failure
++> run or hard-code an older release's counts into future acceptance checks.
+ 
+ ---
+ 
+@@ -143,7 +149,10 @@ Results are written to a dedicated worksheet log and summarised in the Immediate
+ Read the version-specific changes before upgrading. In particular, v1.2.0
+ stopped `Checkpoint` from overwriting cached `T2`/`ET`, while v1.3.0 changed
+ undefined coefficient-of-variation handling and made unqualified measurement
+-targets resolve against `ThisWorkbook`. See **[Version History](Version-History)**
++targets resolve against `ThisWorkbook`. v1.4.0 additionally rejects start-fallback
++samples, uses negative evidence-publication sentinels, and lets the numeric
++legacy overhead helper raise when no sample survives. Its text helper renders
++only that expected condition as `undefined (...)`. See **[Version History](Version-History)**
+ and the canonical **[CHANGELOG.md](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/CHANGELOG.md)**.
+ 
+ ---
+diff --git a/Known-Limitations.md b/Known-Limitations.md
+index 5b8037f..dfcdecb 100644
+--- a/Known-Limitations.md
++++ b/Known-Limitations.md
+@@ -56,13 +56,17 @@ rather than fixed because the correct answer is to use backend 5.
+ If a suppression scope begins with no workbook, the baseline is **unknown** — a
+ distinct state from "the baseline was Automatic". The manager will not guess:
+ 
+-- the flag is exempted for the life of the scope;
++- the manager records a Calculation exemption;
+ - `TW_CalculationExempted` reports the exemption;
+ - a strict participant causes `TW_Turn_OFF` to raise.
+ 
+-No lazy capture occurs if a workbook opens mid-scope, because that would apply a
+-baseline the scope never observed, and nothing reapplies aggregate state on
+-workbook lifecycle events.
++**Open defect — [#33](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/33):**
++the apply guard does not check the recorded exemption flag. A later manager
++operation can re-enter Calculation handling if its other conditions are met.
++Do not treat the flag as proof that Calculation will remain untouched for the
++whole scope. Keep the workbook set stable and end the scope explicitly before
++changing host lifecycle. The sticky-exemption correction and deterministic
++lifecycle coverage are planned for v1.4.1, not shipped in v1.4.0.
+ 
+ ---
+ 
+@@ -79,9 +83,10 @@ for backend 2.
+ 
+ > [!NOTE]
+ > This is a materially smaller untested surface than the whole branch, but it is
+-> not zero. Treat 32-bit as **supported by construction and by shared
+-> arithmetic, not execution-certified**, until a release states otherwise in its
+-> provenance block.
++> not zero. The source retains **32-bit compatibility branches, not real
++> 32-bit execution certification**. v1.4.0 shipped certified on 64-bit only;
++> [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) remains
++> open for real-host evidence. Shared arithmetic is not a substitute for it.
+ 
+ The pre-VBA7 branch corresponds to Office 2007-era VBA. It remains in source,
+ but the project does not currently declare that environment as a formally
+@@ -316,8 +321,10 @@ published and `Err` carries the diagnosis. It does not mean nothing failed.
+ 
+ ## 📆 Changed in v1.4.0
+ 
+-This page documents the **unreleased v1.4.0 candidate**. The latest published
+-release is v1.3.0; final v1.4.0 certification is pending. Full detail is in
++This page documents the **released v1.4.0 contract**, certified on the stated
++64-bit Excel host. Real Office 32-bit execution remains unverified. See
++**[published evidence](Testing-and-Validation#-what-the-published-evidence-proves)**.
++Full change detail is in
+ **[CHANGELOG.md](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/CHANGELOG.md)**.
+ 
+ Limitations resolved since v1.3.0:
+diff --git a/Statistics-and-Measurement.md b/Statistics-and-Measurement.md
+index 0764934..3f54830 100644
+--- a/Statistics-and-Measurement.md
++++ b/Statistics-and-Measurement.md
+@@ -524,8 +524,9 @@ distribution and a dispersion heuristic.
+ 
+ ## 📆 Changed in v1.4.0
+ 
+-This page documents the **unreleased v1.4.0 candidate**. The latest published
+-release is v1.3.0; final v1.4.0 certification is pending. The authoritative
++This page documents the **released v1.4.0 contract**, certified on the stated
++64-bit Excel host; real Office 32-bit execution remains unverified. See
++**[published evidence](Testing-and-Validation#-what-the-published-evidence-proves)**. The authoritative
+ ledger is **[CHANGELOG.md](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/CHANGELOG.md)**.
+ 
+ | Area | v1.3.0 | v1.4.0 |
+diff --git a/Testing-and-Validation.md b/Testing-and-Validation.md
+index e7582b7..119422f 100644
+--- a/Testing-and-Validation.md
++++ b/Testing-and-Validation.md
+@@ -1,6 +1,6 @@
+ # 🧪 Testing and Validation
+ 
+-> **80 cases · 643 assertions · one entry point.**
++> **Published v1.4.0: 80 cases · 643 assertions · 0 failures · 64-bit Excel.**
+ 
+ <div align="center">
+ 
+@@ -223,25 +223,41 @@ Progress appears in the status bar as the run proceeds.
+ 
+ Three distinct things, kept separate on purpose.
+ 
+-**Latest published tagged evidence.** The v1.3.0 release record reports
+-**72 cases, 511 assertions, and 0 failures** from Excel for Microsoft 365
+-**64-bit**. That is execution evidence for that host and tagged source — not
+-certification of every supported Office build or the 32-bit declaration paths.
+-
+-**Current development-line regression.** The unreleased v1.4.0 candidate runs
+-**80 cases, 643 assertions, and 0 failures** on the same host. This is branch
+-evidence: it is not bound to a tag and does not describe a merged `main` commit.
+-
+-**Final v1.4.0 certification.** Pending. Certification must describe the exact
+-commit that will be tagged, and that commit does not exist until the release
+-branch is merged. Real Office 32-bit execution evidence is tracked in
+-[#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29).
+-
+-The separate Python linter currently runs **12 static source checks** on push and
+-pull request. It does not launch Excel, compile a VBA project, or execute this
+-regression suite. The live default-branch rules do not currently require a pull
+-request or this check; the maintainer release guide requires exact-tag-target
+-static and Excel evidence before publication.
++**Latest published tagged evidence — v1.4.0.** Released 31 August 2026 at
++`a5390b4c6ca56ebbd87eca121b5167ee5dc09963`: **80 cases, 643 assertions,
++0 failures**, on Microsoft 365 Excel **64-bit**, Version 2607,
++Build 16.0.20228.20188. The retained static result is **12/12**.
++See the **[release and provenance](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0)**.
++
++| Published asset | SHA-256 |
++|---|---|
++| `PERFORMANCE.MANAGER.xlsm` | `5eddd6473e43a5c9fb12a97f3d00c07117843368165082c947c953003ed7b4a2` |
++| `release-manifest.json` | `d13567b416c39dd0b62f2eaf4767f25d21a9daa300d8e7e8b2dc81db3fa8119f` |
++
++The manifest names the workbook `PERFORMANCE MANAGER.xlsm`; GitHub's uploaded
++asset uses dots. The matching digest establishes file identity, not an automated
++source-to-workbook build. Tagged source is authoritative; packaging is manual.
++
++**Previous published evidence — v1.3.0.** Its historical release record remains
++**72 cases, 511 assertions, 0 failures** on 64-bit Excel. It is not the current
++suite or certification baseline.
++
++**Current development — v1.4.1.** No v1.4.1 release certification is claimed.
++At the 8 September 2026 audit, `main` is `bb5c5528` with 12 static checks;
++`v1.4.1` at `9fa0d738` has **15**, including #51's strict-provenance fixtures
++and #45's two compile-safety checks. Documentation reconciliation does not
++change that gate. The [plan on the working branch](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/v1.4.1/docs/V1.4.1_IMPLEMENTATION_PLAN.md)
++is canonical during the milestone; `main` carries a historical plan and pointer.
++PR #61 was closed unmerged. Implementation will reach `main` through a new
++release PR when ready.
++These are source/repository checks: they do not launch Excel, compile VBA, or
++execute this suite. Follow the current protected-main review workflow and
++record new execution evidence against the actual candidate SHA.
++
++**32-bit boundary.** Real Office 32-bit execution is still unverified.
++[#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) remains
++open and contributor-dependent, not an unconditional release gate when no real
++host is available. Shared arithmetic tests do not certify native 32-bit binding.
+ 
+ ---
+ 
+diff --git a/Time-Waster-Suppression.md b/Time-Waster-Suppression.md
+index 17aff33..90f6607 100644
+--- a/Time-Waster-Suppression.md
++++ b/Time-Waster-Suppression.md
+@@ -208,7 +208,14 @@ Both capture and apply paths guard on `Workbooks.Count`.
+   `TW_CalculationExempted=True` makes that visible;
+ - if any active participant requires strict handling, a Calculation request
+   that cannot be honored raises `ERR_TW_CALCULATION_UNAVAILABLE`;
+-- no synthetic or lazy baseline is invented if the workbook set later changes.
++- the workbook-less baseline is not evidence of a previously observed mode.
++
++> [!WARNING]
++> In released v1.4.0, the recorded exemption is not a reliable scope-wide guard:
++> later manager operations can re-enter Calculation handling. The sticky-state
++> correction is still open in [#33](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/33).
++> Keep the workbook set stable and close the scope before lifecycle changes.
++> See [Known Limitations](Known-Limitations#-calculation-control-requires-a-stable-workbook-set).
+ 
+ ---
+ 
+diff --git a/Timer-Methods.md b/Timer-Methods.md
+index e0f3ede..eb4387a 100644
+--- a/Timer-Methods.md
++++ b/Timer-Methods.md
+@@ -5,7 +5,7 @@
+ <div align="center">
+ 
+ [![Backends](https://img.shields.io/badge/Backends-6-217346?style=flat-square)](#-the-six-backends)
+-[![Default](https://img.shields.io/badge/Default-QPC-c2185b?style=flat-square)](#-5--queryperformancecounter--recommended)
++[![Default](https://img.shields.io/badge/Default-QPC-c2185b?style=flat-square)](#-5--queryperformancecounter-recommended)
+ [![Rollover](https://img.shields.io/badge/Rollover-Handled-d97706?style=flat-square)](#-rollover-and-the-249-day-problem)
+ 
+ </div>
+diff --git a/Version-History.md b/Version-History.md
+index da4bd60..876793c 100644
+--- a/Version-History.md
++++ b/Version-History.md
+@@ -8,8 +8,8 @@ This page is a navigable summary, not a second release ledger.
+ 
+ <div align="center">
+ 
+-[![Current](https://img.shields.io/badge/Current-1.3.0-6f42c1?style=flat-square)](#-version-130)
+-[![Development](https://img.shields.io/badge/Development-1.4.0_Unreleased-d97706?style=flat-square)](#-unreleased--targeting-v140)
++[![Current](https://img.shields.io/badge/Current-1.4.0-6f42c1?style=flat-square)](#-version-140)
++[![Development](https://img.shields.io/badge/Development-1.4.1_Unreleased-d97706?style=flat-square)](#-unreleased--targeting-v141)
+ [![SemVer](https://img.shields.io/badge/Versioning-SemVer-00599C?style=flat-square)](#versioning-policy)
+ [![Releases](https://img.shields.io/badge/Downloads-Releases-2ea44f?style=flat-square)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases)
+ 
+@@ -19,19 +19,44 @@ This page is a navigable summary, not a second release ledger.
+ 
+ | Version | Date | Status | Theme |
+ |:---:|:---:|---|---|
+-| **[Unreleased](#-unreleased--targeting-v140)** | — | Candidate | Measurement integrity · executable assurance · governance |
+-| **[1.3.0](#-version-130)** | 2026-08-16 | Current | Evidence · named values · honest measurement failures |
++| **[Unreleased](#-unreleased--targeting-v141)** | — | Development | Boundary hardening · failure paths · release assurance |
++| **[1.4.0](#-version-140)** | 2026-08-31 | Current | Measurement integrity · backend-homogeneous samples |
++| **[1.3.0](#-version-130)** | 2026-08-16 | Superseded | Evidence · named values · honest measurement failures |
+ | **[1.2.0](#-version-120)** | 2026-08-16 | Superseded | Correctness hardening · measurement vectors · statistics |
+ | **[1.1.0](#-version-110)** | 2026-04-19 | Superseded | Structured checkpoints and reporting |
+ | **[1.0.0](#-version-100)** | 2026-04-18 | Superseded | Initial public release |
+ 
+ ---
+ 
+-## 🧭 Unreleased — targeting v1.4.0
++## 🧭 Unreleased — targeting v1.4.1
++
++**Theme: boundary hardening and contract definition.**
++
++The [milestone](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/milestone/4)
++owns numerical boundaries, timer-period rollback, sticky Calculation exemption,
++deterministic failure/lifecycle coverage, compile-safety controls, immutable
++action pins, documentation consistency and a rebuilt demo. These are milestone scope, not claims about the released runtime. Real Office 32-bit certification
++remains contributor-dependent; the official add-in is deferred to v1.5.0.
++
++At the 8 September 2026 audit, #49's changelog repair is complete, and #51's
++strict-provenance implementation and #45's compile-safety controls are on
++`v1.4.1`. #45 remains open until its documentation publication criterion is
++verified. PR #61 was closed unmerged; a new release PR will carry implementation
++to `main` when ready. The working branch has **15 static checks**, while `main`
++and the retained v1.4.0 evidence have **12**. These additions are not a new
++Excel certification. Live issues and the canonical
++[working-branch implementation plan](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/v1.4.1/docs/V1.4.1_IMPLEMENTATION_PLAN.md)
++carry current implementation status; the plan copy on `main` is historical.
++
++---
++
++## 🧭 Version 1.4.0
++
++**Release date:** 2026-08-31
+ 
+ **Theme: measurement integrity and executable assurance.**
+ 
+-The v1.4.0 candidate makes measurement results homogeneous, diagnosable and
++Released v1.4.0 makes measurement results homogeneous, diagnosable and
+ honest. Repeated-measurement vectors now contain only samples taken on the
+ backend the caller requested; failures and backend rejections are counted
+ separately and exposed on every harness member; the legacy overhead mean is
+@@ -41,9 +66,11 @@ work started earlier on the line.
+ 
+ | | |
+ |---|---|
+-| Status | **Unreleased candidate** |
+-| Latest published release | v1.3.0 |
+-| Final certification | Pending — no v1.4.0 tag or provenance exists yet |
++| Status | **Published, latest release** |
++| Tag target | `a5390b4c6ca56ebbd87eca121b5167ee5dc09963` |
++| Certification | 80 cases · 643 assertions · 0 failures; Microsoft 365 Excel 64-bit Version 2607 Build 16.0.20228.20188; 12 static checks |
++| Assets | [Workbook and provenance manifest](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0) |
++| Architecture boundary | 32-bit source branches retained; real 32-bit execution unverified (#29) |
+ 
+ > [!IMPORTANT]
+ > The authoritative ledger is **[CHANGELOG.md](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/CHANGELOG.md)**. This page deliberately
+@@ -97,10 +124,9 @@ release evidence.
+   `LastFailureStatusOut`.
+ 
+ > [!NOTE]
+-> The hosted workflow runs 12 static checks on pushes and pull requests. The
+-> live branch rules protect against deletion and non-fast-forward updates but
+-> do **not** currently make that workflow or a pull request mandatory. The
+-> release procedure imposes stricter evidence requirements than branch rules.
++> The v1.3.0 release introduced the 12-check static baseline. Historical gate
++> counts do not describe current branch-protection requirements; follow the
++> live repository review policy and [release procedure](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/RELEASING.md).
+ 
+ ---
+ 

@@ -142,7 +142,9 @@ Capture commands, tool versions, timestamps, and complete results. Rerun affecte
 - Run **Debug → Compile VBAProject** on the exact candidate.
 - Run `Run_cPerformanceManager_RegressionSuite`.
 - Exercise timing backends, nested scopes, error recovery, and Excel-state restoration.
-- Record supported 32-bit and 64-bit Excel environments.
+- Record each Excel environment actually run, including Office bitness.
+- A release may claim execution certification only for environments actually run.
+- State retained source-compatibility paths separately from certified environments.
 
 Certification rules:
 
@@ -152,6 +154,16 @@ Certification rules:
 - Test the advertised environment matrix.
 - Treat warnings, repairs, or unexplained numerical deltas as failures.
 - If code changes after certification, restart static and Excel validation.
+
+### Historical decision — v1.4.0, 31 August 2026
+
+v1.4.0 shipped with exact-SHA **64-bit-only certification** at
+`a5390b4c6ca56ebbd87eca121b5167ee5dc09963`: 80 cases, 643 assertions,
+0 failures, and 12 static checks. Real Office 32-bit certification was
+transparently deferred to [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29).
+The 32-bit source branches remain supported but execution-unverified. #29 is
+contributor-dependent, not an unconditional release gate while no host is
+available. This history does not certify any later candidate or additional host.
 
 ## 7. Build release artifacts
 

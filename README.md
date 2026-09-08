@@ -66,7 +66,8 @@
 
 > [!NOTE]
 > The latest tagged release is **v1.4.0**. Development for **v1.4.1** is tracked
-> on `main`; unreleased changes do not alter the exact-tag v1.4.0 certification
+> on the `v1.4.1` working branch; its [implementation plan](docs/V1.4.1_IMPLEMENTATION_PLAN.md)
+> is canonical during the milestone. Unreleased changes do not alter the exact-tag v1.4.0 certification
 > record below.
 
 ## ✨ What this project is
@@ -1190,10 +1191,11 @@ for the published workbook and manifest.
 ## v1.4.1 — active development cycle
 
 The v1.4.1 milestone hardens the v1.4.0 runtime, documentation and assurance
-chain. Planned work includes:
+chain. The release ledger is reconciled (#49); fail-closed provenance (#51)
+and compile-safety checks (#45) are implemented on the working branch. These
+controls do not constitute a new Excel certification. Remaining work includes:
 
-- release-ledger and current-documentation reconciliation;
-- fail-closed release-provenance generation and stronger static controls;
+- completing current-documentation reconciliation and release-state enforcement;
 - bounded timing, statistics and shared-state corrections;
 - a real-Excel executable gate and a rebuilt demonstration workbook;
 - contributor-dependent real Office 32-bit evidence when a suitable host is
