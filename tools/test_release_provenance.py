@@ -1,27 +1,11 @@
 #!/usr/bin/env python3
-"""
-test_release_provenance.py - the strict-mode fixture matrix for the provenance tool.
-
-Every case builds a throwaway git repository, copies the production script into
-its tools/ directory, and invokes that copy as a subprocess. The copy is
-necessary rather than fastidious: release_provenance.py derives ROOT from
-__file__ and passes cwd=ROOT to every git call, so running the real script from
-a different working directory would silently verify the real checkout while the
-fixture believed it was testing a temporary one.
-
-Run standalone for the closure matrix:
-
-    python tools/test_release_provenance.py -v
-
-vba_lint.py runs it as the `release provenance strict fixtures` check, so a
-non-zero result here is an ordinary static-gate failure.
-"""
+"""Strict-mode fixture matrix for release_provenance.py."""
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -31,11 +15,8 @@ from pathlib import Path
 
 TOOL = Path(__file__).resolve().parent / "release_provenance.py"
 ROOT = TOOL.parent.parent
-
 PROVENANCE_MARKER = "## 🔐 Provenance"
 
-# Mirrors REQUIRED + OPTIONAL in the tool. Content is arbitrary; only identity
-# and tag agreement matter here.
 SOURCES = [
     "src/modules/M_cPM_TIMEWASTERS.bas",
     "src/classes/cPerformanceManager.cls",
@@ -44,7 +25,6 @@ SOURCES = [
     "demo/M_cPM_USAGE_EXAMPLES.bas",
     "demo/M_DEMO_BUILDER.bas",
 ]
-
 ASSET = "PERFORMANCE MANAGER.xlsm"
 
 VALID = {
@@ -60,20 +40,30 @@ VALID = {
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, check=True,
-                   capture_output=True, text=True, encoding="utf-8", errors="replace")
+    subprocess.run(
+        ["git", *args], cwd=repo, check=True, capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
+    )
 
 
-def make_repo(tmp: Path, tag: str = "v1.4.0") -> Path:
-    """A minimal repository at a tag, with the tool copied in and a clean tree."""
+def make_repo(
+    tmp: Path,
+    tag: str = "v1.4.0",
+    *,
+    version: str = "1.4.0",
+    annotated: bool = True,
+    include_version: bool = True,
+) -> Path:
     repo = tmp / "repo"
     (repo / "tools").mkdir(parents=True)
     shutil.copy2(TOOL, repo / "tools" / TOOL.name)
 
     for rel in SOURCES:
-        p = repo / rel
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(f"' fixture content for {rel}\n", encoding="utf-8")
+        path = repo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"' fixture content for {rel}\n", encoding="utf-8")
+    if include_version:
+        (repo / "VERSION").write_text(version + "\n", encoding="utf-8")
 
     _git(repo, "init", "-q", "-b", "main")
     _git(repo, "config", "user.email", "fixture@example.invalid")
@@ -81,28 +71,23 @@ def make_repo(tmp: Path, tag: str = "v1.4.0") -> Path:
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "fixture baseline")
     if tag:
-        _git(repo, "tag", tag)
+        if annotated:
+            _git(repo, "tag", "-a", tag, "-m", f"fixture {tag}")
+        else:
+            _git(repo, "tag", tag)
 
-    # Written after the commit, so it stays untracked. That is how a real
-    # release runs: the workbook is a Release asset and is not in the
-    # repository, so a fixture that commits it would prove the wrong thing.
     (repo / ASSET).write_bytes(b"fixture workbook bytes")
     return repo
 
 
 def run(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(repo / "tools" / TOOL.name), *args],
-        cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        [sys.executable, str(repo / "tools" / TOOL.name), *args], cwd=repo,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
 
 
 def valid_args(**overrides) -> list[str]:
-    """The successful invocation, with named flags replaced or dropped.
-
-    Pass None to drop a flag entirely, which is how the missing-input cases are
-    expressed without hand-assembling argument lists.
-    """
     merged = dict(VALID)
     for key, value in overrides.items():
         flag = "--" + key.replace("_", "-")
@@ -110,10 +95,10 @@ def valid_args(**overrides) -> list[str]:
             merged.pop(flag, None)
         else:
             merged[flag] = value
-    args: list[str] = []
+    result: list[str] = []
     for flag, value in merged.items():
-        args += [flag, value]
-    return args
+        result += [flag, value]
+    return result
 
 
 class Matrix:
@@ -125,24 +110,21 @@ class Matrix:
         self.run_count += 1
         if ok:
             print(f"ok    {name}")
-        else:
-            self.failures.append(f"{name}: {detail}" if detail else name)
-            print(f"FAIL  {name}")
-            if detail:
-                print(f"        {detail}")
+            return
+        self.failures.append(f"{name}: {detail}" if detail else name)
+        print(f"FAIL  {name}")
+        if detail:
+            print(f"        {detail}")
 
-    def rejects(self, name: str, repo: Path, args: list[str], *, out_name: str = "release-manifest.json") -> None:
-        """A release-contract violation: exit 1, no publishable block, no output file.
-
-        The three assertions travel together deliberately. Exit 1 alone would
-        pass even if the tool had already printed a manifest and written JSON
-        before deciding to fail, which is the defect this issue exists for.
-        """
+    def rejects(
+        self, name: str, repo: Path, args: list[str], *,
+        out_name: str = "release-manifest.json", expected: str | None = None,
+    ) -> None:
         out = repo / out_name
         sentinel = "PREVIOUS MANIFEST - MUST NOT BE TOUCHED\n"
+        out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(sentinel, encoding="utf-8")
         before = out.stat().st_mtime_ns
-
         proc = run(repo, *args, "--out", out_name)
 
         problems = []
@@ -154,32 +136,26 @@ class Matrix:
             problems.append("the existing --out file was overwritten")
         if out.stat().st_mtime_ns != before:
             problems.append("the existing --out file was touched")
+        if expected and expected not in proc.stderr:
+            problems.append(f"stderr does not contain {expected!r}")
         self.case(name, not problems, "; ".join(problems))
 
 
 def main() -> int:
-    # The fixtures print the same characters the tool does, and vba_lint.py
-    # captures this output through a pipe, so pin the encoding here too.
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
 
-    ap = argparse.ArgumentParser(description="Strict-mode fixtures for release_provenance.py")
-    ap.add_argument("-v", "--verbose", action="store_true", help="Print each case as it runs")
-    ap.add_argument("--json", metavar="PATH", help="Write a machine-readable result document")
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--json", metavar="PATH")
     args = ap.parse_args()
 
-    if not TOOL.exists():
-        print(f"FAIL  tool not found: {TOOL}")
-        return 1
-
     m = Matrix()
-
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
-
-        # --- input completeness --------------------------------------------
         repo = make_repo(tmp / "a")
+
         m.rejects("missing --version", repo, valid_args(version=None))
         m.rejects("missing --asset", repo, valid_args(asset=None))
         m.rejects("missing --tag", repo, valid_args(tag=None))
@@ -190,84 +166,109 @@ def main() -> int:
         m.rejects("missing --failures", repo, valid_args(failures=None))
         m.rejects("blank --excel", repo, valid_args(excel="   "))
 
-        # --- asset integrity -------------------------------------------------
         m.rejects("asset file does not exist", repo, valid_args(asset="NOT THERE.xlsm"))
         (repo / "a-directory").mkdir()
         m.rejects("asset is not a regular file", repo, valid_args(asset="a-directory"))
-
-        # --- numeric domains -------------------------------------------------
         m.rejects("cases is zero", repo, valid_args(cases="0"))
         m.rejects("cases is negative", repo, valid_args(cases="-1"))
         m.rejects("assertions is zero", repo, valid_args(assertions="0"))
         m.rejects("failures is negative", repo, valid_args(failures="-1"))
         m.rejects("failures is non-zero", repo, valid_args(failures="1"))
 
-        # --- release identity ------------------------------------------------
         m.rejects("malformed version", repo, valid_args(version="1.4"))
         m.rejects("malformed tag", repo, valid_args(tag="release-1.4.0"))
         m.rejects("version and tag disagree", repo, valid_args(version="9.9.9", tag="v1.4.0"))
         m.rejects("version has a leading zero", repo, valid_args(version="01.4.0", tag="v01.4.0"))
         m.rejects("tag has a leading zero", repo, valid_args(tag="v01.4.0"))
+        m.rejects("pre-release numeric identifier has a leading zero", repo,
+                  valid_args(version="1.4.0-01", tag="v1.4.0-01"))
+        m.rejects("empty pre-release identifier is invalid", repo,
+                  valid_args(version="1.4.0-", tag="v1.4.0-"))
 
-        # A tag that does not exist at all, distinguished from one that does.
         untagged = make_repo(tmp / "b", tag="")
         m.rejects("tag does not exist", untagged, valid_args())
+        lightweight = make_repo(tmp / "c", annotated=False)
+        m.rejects("lightweight tag is rejected", lightweight, valid_args(), expected="annotated tag")
 
-        # --- repository state ------------------------------------------------
-        ahead = make_repo(tmp / "c")
-        (ahead / "src/classes/cPerformanceManager.cls").write_text(
-            "' a later commit\n", encoding="utf-8")
+        ahead = make_repo(tmp / "d")
+        (ahead / SOURCES[1]).write_text("' a later commit\n", encoding="utf-8")
         _git(ahead, "add", "-A")
         _git(ahead, "commit", "-q", "-m", "later than the tag")
         m.rejects("HEAD is not the tag target", ahead, valid_args())
 
-        dirty = make_repo(tmp / "d")
-        (dirty / "src/classes/cPerformanceManager.cls").write_text(
-            "' uncommitted edit\n", encoding="utf-8")
+        dirty = make_repo(tmp / "e")
+        (dirty / SOURCES[1]).write_text("' uncommitted edit\n", encoding="utf-8")
         m.rejects("tracked file is modified", dirty, valid_args())
 
-        missing_src = make_repo(tmp / "e", tag="")
-        (missing_src / "src/modules/M_cPM_TIMEWASTERS.bas").unlink()
+        missing_src = make_repo(tmp / "f", tag="")
+        (missing_src / SOURCES[0]).unlink()
         _git(missing_src, "add", "-A")
         _git(missing_src, "commit", "-q", "-m", "drop a required source")
-        _git(missing_src, "tag", "v1.4.0")
+        _git(missing_src, "tag", "-a", "v1.4.0", "-m", "fixture")
         m.rejects("required source is missing", missing_src, valid_args())
 
-        # --- tag/source content mismatch --------------------------------------
-        # Reachable through the CLI only when git is told to stop noticing a
-        # modification. assume-unchanged does exactly that, and a stale
-        # assume-unchanged bit is a real way to end up hashing content that is
-        # not what the tag holds while `git status` reports nothing.
-        content = make_repo(tmp / "f")
-        _git(content, "update-index", "--assume-unchanged",
-             "src/classes/cPerformanceManager.cls")
-        (content / "src/classes/cPerformanceManager.cls").write_text(
-            "' drifted from the tag\n", encoding="utf-8")
+        content = make_repo(tmp / "g")
+        _git(content, "update-index", "--assume-unchanged", SOURCES[1])
+        (content / SOURCES[1]).write_text("' drifted from the tag\n", encoding="utf-8")
         m.rejects("source content differs from the tag", content, valid_args())
 
-        # --- documentation drift ---------------------------------------------
-        # The tool's help and RELEASING.md must show the same command. They
-        # drifted apart once already, which is how a documented invocation
-        # stops being one the tool would accept.
+        wrong_version = make_repo(tmp / "h", tag="v9.9.9", version="1.4.0")
+        m.rejects("requested version disagrees with tagged VERSION", wrong_version,
+                  valid_args(version="9.9.9", tag="v9.9.9"), expected="VERSION")
+        missing_version = make_repo(tmp / "i", include_version=False)
+        m.rejects("tagged VERSION is required", missing_version, valid_args(), expected="VERSION")
+
+        alias_asset = make_repo(tmp / "j")
+        original_asset = (alias_asset / ASSET).read_bytes()
+        proc = run(alias_asset, *valid_args(), "--out", ASSET)
+        m.case(
+            "--out cannot alias the release asset",
+            proc.returncode == 1 and PROVENANCE_MARKER not in proc.stdout
+            and (alias_asset / ASSET).read_bytes() == original_asset
+            and "aliases a protected release input" in proc.stderr,
+            proc.stderr.strip()[:300],
+        )
+
+        alias_source = make_repo(tmp / "k")
+        source_path = alias_source / SOURCES[1]
+        original_source = source_path.read_bytes()
+        proc = run(alias_source, *valid_args(), "--out", SOURCES[1])
+        m.case(
+            "--out cannot alias a protected source",
+            proc.returncode == 1 and PROVENANCE_MARKER not in proc.stdout
+            and source_path.read_bytes() == original_source
+            and "aliases a protected release input" in proc.stderr,
+            proc.stderr.strip()[:300],
+        )
+
+        write_failure = make_repo(tmp / "l")
+        (write_failure / "manifest-target").mkdir()
+        proc = run(write_failure, *valid_args(), "--out", "manifest-target")
+        m.case(
+            "manifest write failure emits no publishable Markdown",
+            proc.returncode == 1 and PROVENANCE_MARKER not in proc.stdout
+            and "manifest write failed" in proc.stderr,
+            f"exit={proc.returncode}; stdout={proc.stdout[:80]!r}; stderr={proc.stderr[:200]!r}",
+        )
+
         releasing = ROOT / "RELEASING.md"
         problems = []
         if not releasing.exists():
             problems.append("RELEASING.md not found")
         else:
-            import importlib.util
             spec = importlib.util.spec_from_file_location("_rp", TOOL)
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
-            found = re.search(r"```bash\n(python tools/release_provenance\.py --version.*?)\n```",
-                              releasing.read_text(encoding="utf-8"), re.S)
+            found = re.search(
+                r"```bash\n(python tools/release_provenance\.py --version.*?)\n```",
+                releasing.read_text(encoding="utf-8"), re.S,
+            )
             if not found:
                 problems.append("RELEASING.md has no provenance invocation block")
             elif found.group(1) not in (mod.__doc__ or ""):
                 problems.append("the RELEASING.md invocation is not verbatim in the tool docstring")
-        m.case("documented invocation matches the tool docstring", not problems,
-               "; ".join(problems))
+        m.case("documented invocation matches the tool docstring", not problems, "; ".join(problems))
 
-        # --- parser-only syntax errors, which are exit 2 ----------------------
         for name, extra in [
             ("unknown option is exit 2", ["--nonsense"]),
             ("non-integer count is exit 2", ["--cases", "eighty"]),
@@ -276,20 +277,18 @@ def main() -> int:
             proc = run(repo, *valid_args(), *extra)
             m.case(name, proc.returncode == 2, f"exit {proc.returncode}, expected 2")
 
-        # --- the positive case ------------------------------------------------
-        good = make_repo(tmp / "g")
+        good = make_repo(tmp / "m")
         out_name = "release-manifest.json"
         proc = run(good, *valid_args(), "--out", out_name)
         problems = []
         if proc.returncode != 0:
-            problems.append(f"exit {proc.returncode}, expected 0: {proc.stderr.strip()[:300]}")
+            problems.append(f"exit {proc.returncode}: {proc.stderr.strip()[:300]}")
         if PROVENANCE_MARKER not in proc.stdout:
             problems.append("no provenance block was printed")
         for marker in ("TODO", "not found", "not checked", "*not present*"):
             if marker in proc.stdout:
-                problems.append(f"success output contains an incomplete marker: {marker!r}")
-        m.case("valid invocation succeeds and emits a complete block", not problems,
-               "; ".join(problems))
+                problems.append(f"success output contains {marker!r}")
+        m.case("valid invocation succeeds and emits a complete block", not problems, "; ".join(problems))
 
         manifest_path = good / out_name
         problems = []
@@ -297,8 +296,10 @@ def main() -> int:
             problems.append("no manifest was written")
         else:
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
-            head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=good, capture_output=True,
-                                  text=True, encoding="utf-8").stdout.strip()
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=good, capture_output=True,
+                text=True, encoding="utf-8",
+            ).stdout.strip()
             if data.get("version") != "1.4.0":
                 problems.append(f"version is {data.get('version')!r}")
             if data.get("tag") != "v1.4.0":
@@ -310,36 +311,56 @@ def main() -> int:
             if data["certification"]["failures"] != 0:
                 problems.append("certification.failures is not 0")
             scope = data.get("scope", {})
-            for key in ("source_files_match_tag", "head_equals_tag_target", "tracked_files_unmodified"):
+            for key in (
+                "source_files_match_tag", "head_equals_tag_target", "tag_is_annotated",
+                "version_matches_tagged_source", "tracked_files_unmodified",
+            ):
                 if scope.get(key) is not True:
                     problems.append(f"scope.{key} is {scope.get(key)!r}")
             if ASSET not in data.get("sha256", {}):
                 problems.append("the asset digest is absent")
             if "TODO" in manifest_path.read_text(encoding="utf-8"):
-                problems.append("the manifest contains a TODO sentinel")
-        m.case("successful manifest is complete and identity-consistent", not problems,
-               "; ".join(problems))
+                problems.append("the manifest contains TODO")
+        m.case("successful manifest is complete and identity-consistent", not problems, "; ".join(problems))
 
-        # Success must not be achievable without --out either, since a valid
-        # invocation may legitimately emit markdown alone.
         proc = run(good, *valid_args())
-        m.case("valid invocation without --out succeeds",
-               proc.returncode == 0 and PROVENANCE_MARKER in proc.stdout,
-               f"exit {proc.returncode}")
+        m.case(
+            "valid invocation without --out succeeds",
+            proc.returncode == 0 and PROVENANCE_MARKER in proc.stdout,
+            f"exit {proc.returncode}",
+        )
+
+        prerelease = make_repo(
+            tmp / "n", tag="v1.4.1-rc.1", version="1.4.1-rc.1", annotated=True,
+        )
+        proc = run(
+            prerelease,
+            *valid_args(version="1.4.1-rc.1", tag="v1.4.1-rc.1"),
+            "--out", "release-manifest.json",
+        )
+        m.case(
+            "valid SemVer pre-release succeeds",
+            proc.returncode == 0 and PROVENANCE_MARKER in proc.stdout
+            and (prerelease / "release-manifest.json").exists(),
+            f"exit={proc.returncode}; stderr={proc.stderr[:200]!r}",
+        )
 
     print("-" * 60)
     if args.json:
-        Path(args.json).write_text(json.dumps({
-            "tool": "test_release_provenance",
-            "cases_run": m.run_count,
-            "failures": m.failures,
-            "passed": not m.failures,
-        }, indent=2) + "\n", encoding="utf-8")
+        Path(args.json).write_text(
+            json.dumps({
+                "tool": "test_release_provenance",
+                "cases_run": m.run_count,
+                "failures": m.failures,
+                "passed": not m.failures,
+            }, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     if m.failures:
         print(f"{len(m.failures)} of {m.run_count} fixtures failed:")
-        for f in m.failures:
-            print(f"  - {f}")
+        for failure in m.failures:
+            print(f"  - {failure}")
         return 1
 
     print(f"all {m.run_count} fixtures passed")
