@@ -7,11 +7,15 @@ Issue #45 adds two independent results to `tools/vba_lint.py`:
 
 The active v1.4.1 gate has **15 checks**: the previous 13, including #51's
 provenance fixtures, plus these two. Published v1.4.0 evidence remains 12/12.
+Issue #64 hardens the assignment-declaration parser without adding a new gate
+result, so the active count remains 15.
 
 ## Supported source grammar
 
 The scanner recursively reads `.bas`, `.cls` and `.frm` exports in `src/`,
 `test/` and `demo/`. It normalizes line endings in memory without changing files.
+Object-module scope is determined from the export path: `.cls` and `.frm` are
+object modules even when the exported header does not contain `VERSION ... CLASS`.
 
 - Public, Private, Friend and implicit-public Sub/Function/Property procedures;
   Static procedures; multiline declarations/signatures; case-insensitive names.
@@ -22,7 +26,13 @@ The scanner recursively reads `.bas`, `.cls` and `.frm` exports in `src/`,
   is not a claim about their runtime semantics or validity in every VBA host.
 - Dim, Static, Const, parameters, module declarations and public standard-module
   declarations in other project files. Type fields are not standalone variables;
-  class instance fields do not become project-global variables.
+  class and UserForm instance fields remain object-module scoped and do not
+  become project-global variables.
+- `Property Let` and `Property Set` names are assignable within their own module.
+  They are not exported into the project-wide assignment symbol set merely
+  because the property is Public. A `Property Get` name is valid as a return
+  assignment only inside that getter unless a Let/Set of the same name declares
+  an assignable property in the module.
 - Ordinary, Let and Set assignments; array-element assignments; For/For Each
   targets; ReDim/Preserve targets. Function and Property Get result assignments
   are permitted only within their own procedure.
@@ -64,12 +74,14 @@ python tools/vba_lint.py --json vba-lint-results.json
 
 The ordinary linter runs the local fixture matrix as part of the respective
 two results, without adding a third check. Each single-defect fixture requires
-the other check to remain green. The optional integration test copies the
-source tree to a temporary directory and drives the real CLI in three cases:
-valid input, missing handler and undeclared assignment. Each negative case must
-return 1 and fail only its intended JSON result. The copy has no Git identity;
-this test proves CLI wiring, not release-history verification. Exact-SHA gate
-evidence must come from a real clean checkout separately.
+the other check to remain green. #64 expands the matrix from 41 to **47 fixtures**
+with Property Let/Set, Get-only, undeclared object-member and UserForm-scope cases.
+The optional integration test copies the source tree to a temporary directory and
+drives the real CLI in three cases: valid input, missing handler and undeclared
+assignment. Each negative case must return 1 and fail only its intended JSON
+result. The copy has no Git identity; this test proves CLI wiring, not
+release-history verification. Exact-SHA gate evidence must come from a real clean
+checkout separately.
 
 No workflow or VBA-source change is required. Real Excel compilation and
 execution remain separate certification gates.

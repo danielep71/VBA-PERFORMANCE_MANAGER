@@ -166,10 +166,9 @@ class Procedure:
     targets: list[tuple[int, str]] = field(default_factory=list)
 
 
-def parse(text: str, vba7: bool, win64: bool):
+def parse(text: str, vba7: bool, win64: bool, *, object_module: bool = False):
     module, exported, procedures = set(), set(), []
     current, block = None, None
-    is_class = bool(re.search(r"^VERSION\s+\d+\.\d+\s+CLASS", text, re.M | re.I))
     for number, logical in lines(text, vba7, win64):
         # := is a named argument, never a statement separator.
         parts = re.split(r":(?!=)", logical)
@@ -184,7 +183,14 @@ def parse(text: str, vba7: bool, win64: bool):
             if m:
                 if current:
                     raise ValueError(f"line {number}: nested procedure")
-                current = Procedure(m[2], m[1].lower())
+                kind = m[1].lower()
+                current = Procedure(m[2], kind)
+                # Property Let/Set names are assignable members of their own
+                # module. Keep them module-scoped: object members must never
+                # become project-wide declarations merely because they are
+                # Public in a class or UserForm export.
+                if kind in ("property let", "property set"):
+                    module.add(m[2].lower())
                 signature = m[3]
                 if signature.startswith("("):
                     end = signature.rfind(")")
@@ -218,7 +224,7 @@ def parse(text: str, vba7: bool, win64: bool):
                     current.locals |= names
                 else:
                     module |= names
-                    if not is_class and m[1].lower() in ("public", "global"):
+                    if not object_module and m[1].lower() in ("public", "global"):
                         exported |= names
                 continue
             if not current:
@@ -272,7 +278,8 @@ def analyse(sources: dict[str, str]) -> tuple[list[str], list[str]]:
         parsed, public = {}, set()
         for path, text in sources.items():
             try:
-                parsed[path] = parse(text, vba7, win64)
+                object_module = path.lower().endswith((".cls", ".frm"))
+                parsed[path] = parse(text, vba7, win64, object_module=object_module)
                 public |= parsed[path][1]
             except ValueError as exc:
                 problem = f"{path}: [{profile}] unsupported source: {exc}"

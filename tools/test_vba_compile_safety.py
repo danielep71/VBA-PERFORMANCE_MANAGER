@@ -1,4 +1,4 @@
-"""Local deterministic fixtures for #45; also enforced by the ordinary gate."""
+"""Local deterministic fixtures for #45 and #64; also enforced by the ordinary gate."""
 from __future__ import annotations
 
 from vba_compile_safety import analyse
@@ -52,6 +52,15 @@ CASES = [
     ("unknown conditional fails closed", {"a.bas": "#If UNKNOWN Then\n" + procedure("Missing=1") + "#End If"}, ["unsupported conditional"], ["unsupported conditional"]),
     ("label and assignment same line", {"a.bas": procedure("Dim A As Long\nOn Error GoTo Clean\nClean: A=1")}, [], []),
     ("enum declarations not executable", {"a.bas": "Public Enum Choice\nFirst=1\nSecond=2\nEnd Enum\n" + procedure("Dim A As Long\nA=First")}, [], []),
+    # #64: Property Let/Set names are assignable only within their own module.
+    ("property let member assignment", {"a.cls": "Public Property Let Value(ByVal NewValue As Long)\nEnd Property\n" + procedure("Value=1")}, [], []),
+    ("property set member assignment", {"a.cls": "Public Property Set Value(ByVal NewValue As Object)\nEnd Property\n" + procedure("Set Value=Nothing")}, [], []),
+    ("undeclared property-like assignment", {"a.cls": "Public Property Let Value(ByVal NewValue As Long)\nEnd Property\n" + procedure("Missing=1")}, [], ["'Missing'"]),
+    ("property get does not become assignable member", {"a.cls": "Public Property Get Value() As Long\nValue=1\nEnd Property\n" + procedure("Value=2")}, [], ["Test:", "'Value'"]),
+    # #64: .frm is an object module even though normal exports do not use
+    # VERSION ... CLASS. Its public members stay local to the form module.
+    ("userform member local", {"f.frm": "VERSION 5.00\nPublic Value As Long\n" + procedure("Value=1")}, [], []),
+    ("userform member not global", {"a.bas": procedure("Value=1"), "f.frm": "VERSION 5.00\nPublic Value As Long"}, [], ["a.bas:2: Test:", "'Value'"]),
 ]
 
 
