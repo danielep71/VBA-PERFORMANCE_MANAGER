@@ -112,6 +112,8 @@ Use only the categories needed by a release.
 
 ### Changed
 
+- Hardened release provenance against residual identity/output edge cases: requested JSON is committed before publishable Markdown, documented SemVer pre-releases are accepted, release tags must be annotated, manifest output cannot alias protected inputs, and the requested version must match the tagged repository `VERSION` (#63).
+- Hardened compile-safety assignment analysis for object modules: Property Let/Set names are module-scoped assignable symbols and UserForm `.frm` exports no longer leak public members into standard-module scope. The deterministic compile-safety matrix is now 47 fixtures while the top-level static gate remains 15 checks (#64).
 - Clarified changelog maintenance, release headings and comparison-link policy;
   the previously introduced policy is now recorded in the unreleased ledger.
 - Required a fresh workbook build, packaged test and hash after a merge changes
