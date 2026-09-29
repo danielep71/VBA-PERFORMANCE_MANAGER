@@ -66,8 +66,9 @@
 
 > [!NOTE]
 > The latest tagged release is **v1.4.0**. Development for **v1.4.1** is tracked
-> on the `v1.4.1` working branch; its [implementation plan](docs/V1.4.1_IMPLEMENTATION_PLAN.md)
-> is canonical during the milestone. Unreleased changes do not alter the exact-tag v1.4.0 certification
+> on the `v1.4.1` working branch and merged to `main` in reviewed increments; its
+> [implementation plan](docs/V1.4.1_IMPLEMENTATION_PLAN.md) on that branch is
+> canonical during the milestone. Unreleased changes do not alter the exact-tag v1.4.0 certification
 > record below.
 
 ## ✨ What this project is
@@ -906,7 +907,7 @@ python3 tools/vba_lint.py --json vba-lint-results.json
 on every push and pull request. It publishes the machine-readable result even
 when a check fails.
 
-The v1.4.1 working-branch linter performs **16 checks**. The published v1.4.0
+The current v1.4.1 development linter performs **16 checks**. The published v1.4.0
 certification above remains **12/12**, and is not recertified by these additions:
 
 1. no merge-conflict markers;
@@ -1200,7 +1201,8 @@ for the published workbook and manifest.
 
 The v1.4.1 milestone hardens the v1.4.0 runtime, documentation and assurance
 chain. The release ledger is reconciled (#49); fail-closed provenance (#51)
-and compile-safety checks (#45) are implemented on the working branch. These
+and compile-safety checks (#45) are implemented, and workflow actions are
+pinned to immutable commits (#46). These
 controls do not constitute a new Excel certification. Remaining work includes:
 
 - completing current-documentation reconciliation and release-state enforcement;
