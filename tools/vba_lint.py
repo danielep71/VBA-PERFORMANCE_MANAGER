@@ -26,6 +26,8 @@ from pathlib import Path
 
 from vba_compile_safety import analyse, LABEL_CHECK, ASSIGN_CHECK
 from test_vba_compile_safety import fixture_problems
+from workflow_pins import CHECK as PIN_CHECK, analyse as analyse_pins, repository_files
+from test_workflow_pins import fixture_problems as pin_fixture_problems
 
 # --------------------------------------------------------------------------- #
 # Configuration
@@ -631,6 +633,10 @@ def main() -> int:
     label_fixtures, assignment_fixtures = fixture_problems()
     rep.check(LABEL_CHECK, label_problems + label_fixtures)
     rep.check(ASSIGN_CHECK, assignment_problems + assignment_fixtures)
+    # Every external workflow action, including steps reached through local
+    # actions, must be pinned to a full commit SHA or image digest (#46).
+    pin_problems, _ = analyse_pins(repository_files(ROOT))
+    rep.check(PIN_CHECK, pin_problems + pin_fixture_problems())
 
     print("-" * 60)
 

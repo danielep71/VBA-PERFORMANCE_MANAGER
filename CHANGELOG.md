@@ -104,6 +104,11 @@ Use only the categories needed by a release.
   Conditional profiles and positive/negative fixtures are checked locally;
   this does not replace real Excel compilation or execution (#45).
 
+- Added a static check that every GitHub Actions reference, including steps
+  inside local composite actions, is pinned to a full commit SHA or Docker
+  image digest with a version comment. Mutable tags, branches, short SHAs and
+  unsupported YAML spellings of `uses` fail the gate (#46).
+
 - Added a standardized installation and maintainer release documentation set with project-specific deployment, certification, provenance, recovery, and post-publication controls.
 
 - Added a root `VERSION` marker at `1.4.0`, aligned with the latest published
@@ -113,7 +118,12 @@ Use only the categories needed by a release.
 ### Changed
 
 - Hardened release provenance against residual identity/output edge cases: requested JSON is committed before publishable Markdown, documented SemVer pre-releases are accepted, release tags must be annotated, manifest output cannot alias protected inputs, and the requested version must match the tagged repository `VERSION` (#63).
-- Hardened compile-safety assignment analysis for object modules: Property Let/Set names are module-scoped assignable symbols and UserForm `.frm` exports no longer leak public members into standard-module scope. The deterministic compile-safety matrix is now 47 fixtures while the top-level static gate remains 15 checks (#64).
+- Hardened compile-safety assignment analysis for object modules: Property Let/Set names are module-scoped assignable symbols and UserForm `.frm` exports no longer leak public members into standard-module scope. The deterministic compile-safety matrix is now 47 fixtures without adding a top-level static check (#64).
+- Pinned all workflow actions to immutable commits and upgraded
+  `actions/github-script` from v7 to v9.0.0 (#46).
+- Label color synchronization now reads the complete paginated label
+  inventory first and, if any declared label is missing, reports the full sorted
+  set and fails without changing any color. Labels are never auto-created (#46).
 - Clarified changelog maintenance, release headings and comparison-link policy;
   the previously introduced policy is now recorded in the unreleased ledger.
 - Required a fresh workbook build, packaged test and hash after a merge changes

@@ -5,10 +5,11 @@ Issue #45 adds two independent results to `tools/vba_lint.py`:
 1. `error-handler labels resolve within their procedure`
 2. `assigned identifiers are declared`
 
-The active v1.4.1 gate has **15 checks**: the previous 13, including #51's
+#45 brought the v1.4.1 gate to **15 checks**: the previous 13, including #51's
 provenance fixtures, plus these two. Published v1.4.0 evidence remains 12/12.
 Issue #64 hardens the assignment-declaration parser without adding a new gate
-result, so the active count remains 15.
+result, so the count remained 15. Issue #46 later adds the workflow pin check,
+bringing the active gate to **16**.
 
 ## Supported source grammar
 

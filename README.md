@@ -906,7 +906,7 @@ python3 tools/vba_lint.py --json vba-lint-results.json
 on every push and pull request. It publishes the machine-readable result even
 when a check fails.
 
-The v1.4.1 working-branch linter performs **15 checks**. The published v1.4.0
+The v1.4.1 working-branch linter performs **16 checks**. The published v1.4.0
 certification above remains **12/12**, and is not recertified by these additions:
 
 1. no merge-conflict markers;
@@ -923,11 +923,19 @@ certification above remains **12/12**, and is not recertified by these additions
 12. released CHANGELOG sections remain frozen against their tags;
 13. strict release-provenance fixtures;
 14. error-handler labels resolve within their procedure;
-15. assigned identifiers are declared.
+15. assigned identifiers are declared;
+16. workflow actions use immutable pins.
 
 The two compile-safety checks scan production, regression and demo exports with
 separate Windows conditional-compilation profiles and fixture-backed grammar.
 See [scope, limitations and verification](docs/COMPILE_SAFETY_CHECKS.md).
+
+The pin check follows every `uses:` reference reachable from
+`.github/workflows/`, including steps inside local composite actions. External
+actions and reusable workflows must name a full 40-hex commit SHA and Docker
+actions a complete `@sha256:` digest, each with a trailing version comment
+(`# v4.4.0`). Constructs the scanner does not model fail the check rather than
+being skipped. Run its fixtures with `python tools/test_workflow_pins.py`.
 
 > [!CAUTION]
 > Static source analysis does **not** establish VBE import success, VBA
