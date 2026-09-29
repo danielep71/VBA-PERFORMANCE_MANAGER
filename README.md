@@ -873,8 +873,10 @@ v1.4.0 is executed and certified on Microsoft 365 Excel **64-bit**. The source
 retains its Office 32-bit compatibility branches, but this release has not been
 executed or certified on a real 32-bit Office host, so 32-bit behavior remains
 **unverified rather than unsupported**. That assurance gap is tracked in
-[#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) for v1.4.1 and does not
-block v1.4.0.
+[#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29), now in v1.5.0
+as contributor-dependent work. The maintainer has no 32-bit Office test host;
+this gap does not block v1.4.1 or an otherwise complete release while qualified
+contributor evidence is unavailable. No 32-bit execution certification is inferred.
 
 The suite covers, among other areas:
 
@@ -1044,8 +1046,9 @@ the source in your own add-in, but that host is built and maintained by you.
 - Shared unsigned arithmetic tests reduce the untested 32-bit surface; they do
   not replace a real 32-bit Excel run. v1.4.0 was executed and certified on
   64-bit Office only, so 32-bit behavior remains unverified. Support is
-  unchanged; verification is tracked in [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)
-  for v1.4.1.
+  unchanged; contributor-provided verification is tracked in
+  [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) for v1.5.0,
+  independently of v1.4.1's 64-bit certification.
 
 ### Changed in v1.4.0
 
