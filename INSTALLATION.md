@@ -33,15 +33,27 @@ This guide covers installation, validation, upgrade, recovery, and removal of
 | Item | Requirement |
 |---|---|
 | Host | Desktop Microsoft Excel for Windows |
-| Office bitness | 32-bit and 64-bit Office |
+| Office bitness | 32-bit compatibility branches retained; v1.4.0 execution-certified on 64-bit only |
 | Version identity | Root `VERSION` file and the selected tag/commit |
 | Source policy | Exported repository source is authoritative |
 | Licence | MIT |
 | Current deployment status | Two-file source-first runtime with an optional evaluation workbook. |
 
-Compatibility claims apply only to environments actually certified for the
-selected release. Read [README.md](README.md), [CHANGELOG.md](CHANGELOG.md), and
-the release notes before installation.
+The current published package is **v1.4.0**, released on 31 August 2026. Import
+`src/modules/M_cPM_TIMEWASTERS.bas` and `src/classes/cPerformanceManager.cls`
+from the same tag. The optional `PERFORMANCE.MANAGER.xlsm` workbook and
+`release-manifest.json` are on the [official release page](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0);
+[README execution evidence](README.md#execution-evidence) records their hashes
+and the exact tag target.
+
+Source compatibility and execution certification are separate claims. v1.4.0
+was certified on Microsoft 365 Excel **64-bit** (80 cases, 643 assertions,
+0 failures). Real Office **32-bit remains unverified**, with evidence tracked
+in [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29);
+32-bit source support has not been removed. The minimum Office/VBA version
+remains an open contract in [#34](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/34).
+Read [README.md](README.md), [CHANGELOG.md](CHANGELOG.md), and the selected
+release notes before installation. Historical evidence describes only its own tag.
 
 <a id="deployment-model"></a>
 

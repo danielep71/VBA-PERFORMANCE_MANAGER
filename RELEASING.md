@@ -15,7 +15,7 @@ This maintainer guide turns a reviewed commit into a traceable VBA Performance M
 
 | Property | Requirement |
 | --- | --- |
-| Project maturity | Versioned library with reproducible workbook packaging |
+| Project maturity | Versioned library with hash-verified, manually packaged workbook releases |
 | Version source | [VERSION](VERSION) |
 | Version scheme | Semantic Versioning |
 | Tag format | Lower-case `vX.Y.Z` matching `VERSION` |
@@ -77,7 +77,7 @@ The Git tag adds the lower-case prefix: version `1.2.3` becomes annotated tag `v
 - The working tree and exported VBA sources are reproducible.
 - Maintainers and required reviewers are available.
 
-Use `tools/release_provenance.py` as the repository-specific provenance gate and reject incomplete or inconsistent output.
+`tools/release_provenance.py` is the repository-specific provenance gate. It runs after tagging, in step 9, and fails before producing anything when its inputs are incomplete or inconsistent.
 
 ## 1. Freeze and identify the candidate
 
@@ -142,7 +142,9 @@ Capture commands, tool versions, timestamps, and complete results. Rerun affecte
 - Run **Debug → Compile VBAProject** on the exact candidate.
 - Run `Run_cPerformanceManager_RegressionSuite`.
 - Exercise timing backends, nested scopes, error recovery, and Excel-state restoration.
-- Record supported 32-bit and 64-bit Excel environments.
+- Record each Excel environment actually run, including Office bitness.
+- A release may claim execution certification only for environments actually run.
+- State retained source-compatibility paths separately from certified environments.
 
 Certification rules:
 
@@ -153,11 +155,21 @@ Certification rules:
 - Treat warnings, repairs, or unexplained numerical deltas as failures.
 - If code changes after certification, restart static and Excel validation.
 
+### Historical decision — v1.4.0, 31 August 2026
+
+v1.4.0 shipped with exact-SHA **64-bit-only certification** at
+`a5390b4c6ca56ebbd87eca121b5167ee5dc09963`: 80 cases, 643 assertions,
+0 failures, and 12 static checks. Real Office 32-bit certification was
+transparently deferred to [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29).
+The 32-bit source branches remain supported but execution-unverified. #29 is
+contributor-dependent, not an unconditional release gate while no host is
+available. This history does not certify any later candidate or additional host.
+
 ## 7. Build release artifacts
 
 Planned outputs:
 
-- `PERFORMANCE.MANAGER.xlsm`
+- `PERFORMANCE MANAGER.xlsm`
 - Source archive created by GitHub from the tag
 
 For each artifact:
@@ -192,7 +204,21 @@ Where policy requires a pull request, make these items easy to verify:
 - compatibility, migration, and security notes;
 - remaining limitations.
 
-Require configured checks and record the resulting `main` SHA. If the merge changes source identity, certify that commit before tagging.
+Require configured checks and record the resulting full `main` SHA. Compare it
+with the SHA used for steps 5–7, even when the exported VBA files are unchanged.
+
+- If the SHA is unchanged (a fast-forward), retain the matching certification,
+  packaged-test result and hashes.
+- If the SHA changed (including a merge or squash commit), treat steps 5–7 as
+  pre-merge candidate evidence only. From a clean checkout of the resulting
+  `main` SHA, rerun static and Excel certification, rebuild the workbook from
+  that checkout's exports, reopen and test the packaged workbook, and record
+  its new size and SHA-256. Supersede the earlier artifact and evidence; do not
+  relabel a pre-merge workbook or reuse its hash as final release evidence.
+
+Retain evidence in one directory per certified full SHA. Freeze that final
+source and workbook before step 9. Provenance generation hashes an existing
+asset; it does not prove that the asset was built from the tagged checkout.
 
 ## 9. Create the annotated tag
 
@@ -208,6 +234,45 @@ git push origin vX.Y.Z
 ```
 
 Before pushing, confirm the tag equals `VERSION`, targets the certified commit, and has a matching dated changelog section. Never delete and recreate a public tag to hide a mistake.
+
+### Generate the provenance manifest
+
+Run this from the certified checkout, after the tag exists and before publishing. `HEAD` must be the tag target, so check the tag out first if the working branch has moved on.
+
+```bash
+python tools/release_provenance.py --version X.Y.Z --tag vX.Y.Z \
+    --asset "PERFORMANCE MANAGER.xlsm" \
+    --excel "Microsoft 365 MSO, Version 2607, Build 16.0.20228.20188" \
+    --bitness 64-bit --cases 80 --assertions 643 --failures 0 \
+    --out release-manifest.json
+```
+
+There is one strict path and no preview mode. Every flag above except `--out` is required by the tool; `--out` is optional to the tool but required by this procedure, because the manifest is a published artifact. Everything is validated before any Markdown is constructed or any JSON is serialized:
+
+- the asset must exist and be a regular file; it is normally untracked, which is allowed;
+- the Excel build must be recorded and non-blank;
+- cases and assertions must be positive, and failures must be supplied explicitly and equal zero;
+- the version and tag must be well formed SemVer, without leading zeros, and must correspond;
+- the tag must resolve, and `HEAD` must equal its target commit;
+- no tracked file may be modified. Untracked files are ignored, so the workbook and the manifest itself may sit in the working tree.
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | A validated manifest was produced |
+| 1 | The command parsed but violates the release contract |
+| 2 | A command-line syntax error, reported by the argument parser |
+
+A failed run writes diagnostics to stderr, prints no provenance block, and leaves any existing `--out` file untouched. A successful run writes the JSON through a temporary file and replaces the destination atomically. Never hand-edit the result: regenerate it.
+
+The Markdown block goes to stdout and is UTF-8. Redirect it if you want it in a file:
+
+```bash
+python tools/release_provenance.py ... > provenance.md
+```
+
+`tools/vba_lint.py` runs the tool's fixture matrix as the `release provenance strict fixtures` check, so a regression in this contract fails the ordinary static gate.
 
 <a id="evidence-record"></a>
 ## 🧾 Evidence record

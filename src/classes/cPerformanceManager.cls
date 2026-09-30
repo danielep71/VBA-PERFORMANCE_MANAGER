@@ -1275,7 +1275,7 @@ Public Property Get T2() As Double
 '   - m_T2 is updated when ElapsedSeconds() is evaluated.
 '   - m_T2 is also updated when ElapsedTime() is called without
 '     ElapsedSecondsIn, because that path internally measures elapsed time.
-'   - m_T2 is also updated by Checkpoint(), which measures internally.
+'   - Checkpoint() reads elapsed time without updating m_T2.
 '   - When ElapsedTime() is called with ElapsedSecondsIn, no new timing sample
 '     is taken and m_T2 is not updated by that formatting step.
 '   - The meaning of the value depends on the timing backend:
@@ -1329,7 +1329,7 @@ Public Property Get ET() As Double
 '   - m_ET is set by ElapsedSeconds().
 '   - m_ET is also updated when ElapsedTime() is called without
 '     ElapsedSecondsIn, because that path internally measures elapsed time.
-'   - m_ET is also updated by Checkpoint(), which measures internally.
+'   - Checkpoint() reads elapsed time without updating m_ET.
 '   - When ElapsedTime() is called with ElapsedSecondsIn, the supplied value is
 '     formatted directly and m_ET is not updated by that formatting step.
 '
@@ -5152,8 +5152,8 @@ Public Function MeasureOverhead_Samples( _
 '   the shape of the distribution. This routine returns every sample so the
 '   caller can report median, minimum, and spread
 '
-'   The minimum of this vector is the practical resolution floor of the selected
-'   backend: intervals shorter than it cannot be measured meaningfully
+'   The minimum of this vector is an observed empty-cycle floor of the selected
+'   backend on this host/run, not a timer-resolution or measurability guarantee.
 '
 ' INPUTS
 '   Iterations (optional)
@@ -6797,7 +6797,7 @@ Public Property Get LastReadStatus() As cPM_ReadStatus
 '                              LAST READ STATUS
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Returns the outcome of the most recent native timing read.
+'   Returns the outcome of the most recent timing read and elapsed validation.
 '
 ' WHY THIS EXISTS
 '   In non-strict mode a failed read returns 0 rather than raising. Without a
@@ -6815,6 +6815,7 @@ Public Property Get LastReadStatus() As cPM_ReadStatus
 '     cPM_ReadSystemTimeFormatInvalid - timeGetSystemTime returned a bad format
 '     cPM_ReadFallbackToMethod2       - the requested backend was unreadable and
 '                                       method 2 was bound instead
+'     cPM_ReadElapsedInvalid         - corrected elapsed value remained negative
 '
 ' BEHAVIOR
 '   Reset to cPM_ReadOK at the start of StartTimer, ElapsedSeconds and
