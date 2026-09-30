@@ -241,6 +241,31 @@ def main() -> int:
             proc.stderr.strip()[:300],
         )
 
+        tracked_output = make_repo(tmp / "tracked-output", tag="")
+        for rel in ("README.md", "docs/release notes [draft].md"):
+            target = tracked_output / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("tracked content must survive\n", encoding="utf-8")
+        _git(tracked_output, "add", "-A")
+        _git(tracked_output, "commit", "-q", "-m", "track documentation")
+        _git(tracked_output, "tag", "-a", "v1.4.0", "-m", "fixture")
+        for destination in (
+            "README.md", "docs/../README.md", str(tracked_output / "README.md"),
+            "docs/release notes [draft].md",
+        ):
+            target = (tracked_output / destination).resolve()
+            before_bytes = target.read_bytes()
+            before_mtime = target.stat().st_mtime_ns
+            proc = run(tracked_output, *valid_args(), "--out", destination)
+            m.case(
+                f"--out rejects tracked destination {destination}",
+                proc.returncode == 1 and PROVENANCE_MARKER not in proc.stdout
+                and "aliases a tracked file" in proc.stderr
+                and target.read_bytes() == before_bytes
+                and target.stat().st_mtime_ns == before_mtime,
+                proc.stderr.strip()[:300],
+            )
+
         write_failure = make_repo(tmp / "l")
         (write_failure / "manifest-target").mkdir()
         proc = run(write_failure, *valid_args(), "--out", "manifest-target")
