@@ -262,6 +262,14 @@ def validate(args: argparse.Namespace) -> list[str]:
 
     if args.out is not None:
         out_path = rooted_path(args.out)
+        tracked = git_raw("ls-files", "--cached", "-z")
+        if tracked is None:
+            problems.append("git ls-files failed, so --out could not be checked for tracked files")
+        elif out_path in {rooted_path(rel) for rel in tracked.split("\0") if rel}:
+            problems.append(
+                f"--out {args.out!r} aliases a tracked file; "
+                "the manifest must not overwrite repository content"
+            )
         if asset_path is not None and out_path in protected_paths(asset_path):
             problems.append(
                 f"--out {args.out!r} aliases a protected release input; "
