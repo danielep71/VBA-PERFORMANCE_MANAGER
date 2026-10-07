@@ -100,6 +100,35 @@ CASES = [
     ("trailing content", only(f"- uses: actions/checkout@{SHA} extra # v4"), ["trailing content"], None),
 ]
 
+# Node properties must neither hide checked keys nor be accepted with valid pins.
+for name, key in (
+        ("tag", "!!str uses"),
+        ("anchor", "&key uses"),
+        ("tagged quoted key", '!!str "uses"'),
+        ("anchored quoted key", "&key 'uses'"),
+        ("verbatim tag", "!<tag:yaml.org,2002:str> uses"),
+        ("tag then anchor", "!!str &key uses"),
+        ("anchor then tag", "&key !!str uses")):
+    for style, step in (("block", f"- {key}: owner/action@main"),
+                        ("flow", f"- {{name: x, {key}: owner/action@main}}")):
+        CASES.append((f"{name} {style}", only(step),
+                      ["ci.yml:6: unsupported YAML tag or anchor", "40-hex"],
+                      ["remote action"]))
+    CASES.append((f"{name} pinned", only(f"- {key}: owner/action@{SHA} # v1"),
+                  ["ci.yml:6: unsupported YAML tag or anchor"], ["remote action"]))
+
+CASES += [
+    ("properties in literal text", only(
+        "# !!str uses: owner/action@main", "- name: '&key uses: owner/action@main'",
+        "- run: |", "    !!str uses: owner/action@main", "    &key uses: owner/action@main"),
+     [], []),
+    ("property on previous line", only("- &key", "  uses: owner/action@main"),
+     ["ci.yml:6: unsupported YAML tag or anchor", "ci.yml:7", "40-hex"], ["remote action"]),
+    ("tagged image in local action", only("- uses: ./d",
+        d__action_dot_yml="runs:\n  !!str image: docker://alpine:3\n"),
+     ["d/action.yml:2: unsupported YAML tag or anchor", "@sha256:"], ["local action", "docker"]),
+]
+
 
 def fixture_problems() -> list[str]:
     failures: list[str] = []

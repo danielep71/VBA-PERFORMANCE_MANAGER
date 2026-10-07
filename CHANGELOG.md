@@ -117,6 +117,9 @@ Use only the categories needed by a release.
 
 ### Changed
 
+- Reject YAML tags and anchors before checked workflow keys so they cannot hide
+  mutable action references from the pin gate; retain reference inventory and
+  cover plain, quoted and flow keys with regression fixtures (#67).
 - Hardened release provenance against residual identity/output edge cases: requested JSON is committed before publishable Markdown, documented SemVer pre-releases are accepted, release tags must be annotated, manifest output cannot alias protected inputs, and the requested version must match the tagged repository `VERSION` (#63).
 - Hardened compile-safety assignment analysis for object modules: Property Let/Set names are module-scoped assignable symbols and UserForm `.frm` exports no longer leak public members into standard-module scope. The deterministic compile-safety matrix is now 47 fixtures without adding a top-level static check (#64).
 - Pinned all workflow actions to immutable commits and upgraded

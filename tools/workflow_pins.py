@@ -136,6 +136,18 @@ def scan(path: str, text: str, keys: tuple[str, ...] = ("uses",)) -> tuple[list[
             if c == "," and flow_depth:
                 i += 1
                 continue
+            if c in "!&":
+                # Reject node properties before reading the underlying key;
+                # otherwise e.g. '!!str uses' silently becomes an unrelated key.
+                problems.append(f"{path}:{number}: unsupported YAML tag or anchor")
+                if line.startswith("!<", i):
+                    end = line.find(">", i + 2)
+                    i = end + 1 if end != -1 else len(line)
+                    continue
+                while i < len(line) and line[i] not in " \t" and not (
+                        flow_depth and line[i] in ",{}[]"):
+                    i += 1
+                continue
 
             # One scalar token, quoted or plain.
             start, quoted, escaped = i, c in "\"'", False
