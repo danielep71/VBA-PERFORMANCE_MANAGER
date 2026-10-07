@@ -136,6 +136,15 @@ Use only the categories needed by a release.
 
 - Standardized the pull-request review contract around exact-candidate evidence, compatibility, risk and recovery, security and provenance, and project-specific validation gates.
 
+### Fixed
+
+- A Calculation exemption now lasts for the rest of the shared time-waster
+  scope. Previously, once a workbook reappeared, a later begin, update or end
+  could force Calculation back to Manual and final teardown could restore a
+  stale baseline. An exempt scope no longer reads, writes or restores
+  Calculation; final teardown clears the exemption. Public API is unchanged;
+  regression case 81 covers it (#33).
+
 ---
 
 ## [1.4.0] — 2026-08-31

@@ -578,6 +578,9 @@ xlCalculationAutomatic
 The documented invariant is that the open-workbook set remains stable while
 Calculation suppression is active. If Calculation control cannot be honored,
 `TW_CalculationExempted` exposes that outcome rather than inventing a baseline.
+On the v1.4.1 development line the exemption lasts for the rest of the shared
+scope: a workbook that opens later does not reactivate Calculation control, and
+final teardown leaves Calculation as the host has it (#33).
 
 ### Cleanup contract
 
@@ -885,7 +888,7 @@ The suite covers, among other areas:
 - unsigned 32-bit conversion boundaries and backend rollover constants;
 - checkpoint growth, cache preservation, delta/cumulative semantics, and exports;
 - overlapping TW scopes, termination cleanup, and 75 instance create/destroy cycles;
-- Calculation baseline validity, exemptions, overlapping scopes, and no synthetic baseline;
+- Calculation baseline validity, exemptions, overlapping scopes, no synthetic baseline, and sticky exemption across the workbook lifecycle;
 - known-vector statistics, order independence, domain validation, and CV policy;
 - measurement harness, workbook qualification, dispatch baseline, and failed-read exclusion.
 

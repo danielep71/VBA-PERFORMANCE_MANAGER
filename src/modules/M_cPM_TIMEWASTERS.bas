@@ -131,6 +131,7 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '   1.4.0
 '
 ' UPDATED
+'   2026-10-07 - Calculation exemption is sticky for the whole scope (#33)
 '   2026-08-30
 '
 ' AUTHOR
@@ -207,6 +208,12 @@ Attribute VB_Name = "M_cPM_TimeWasters"
     'TRUE when Calculation control could not be honoured on this host and has
     'been exempted from the effective state for the life of the scope
         Private g_TW_CalcExempted           As Boolean
+
+    'Regression seam only: TRUE makes the workbook-availability probe report no
+    'open workbook. A suite cannot close every workbook in-process, so this is
+    'the only deterministic way to drive the workbook lifecycle. Cleared by
+    'PM_TW_ResetSharedState, so it never outlives the scope that armed it
+        Private g_TW_TestNoWorkbook         As Boolean
 
     'Saved baseline Application state
         Private g_TW_SCREENUPDATING         As Boolean
@@ -929,12 +936,13 @@ Private Sub PM_TW_SaveBaseline()
 '
 ' DEPENDENCIES
 '   - Excel Application object model
+'   - PM_TW_WorkbookAvailable
 '
 ' NOTES
 '   This routine should only be called when the first shared session begins
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-07
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -952,7 +960,7 @@ Private Sub PM_TW_SaveBaseline()
             'state from "the baseline happened to be Automatic". Recording a
             'synthetic value here is what allowed a real baseline to be
             'overwritten later.
-                If .Workbooks.Count > 0 Then
+                If PM_TW_WorkbookAvailable() Then
                     g_TW_CALCULATION = .Calculation
                     g_TW_CALCULATION_VALID = True
                 Else
@@ -995,6 +1003,7 @@ Private Sub PM_TW_ResetSharedState()
 '   - Releases the shared session dictionary
 '   - Clears the baseline-saved flag
 '   - Clears the cached baseline values
+'   - Clears the Calculation exemption and the workbook-availability seam
 '
 ' ERROR POLICY
 '   Raises errors normally
@@ -1030,6 +1039,12 @@ Private Sub PM_TW_ResetSharedState()
         g_TW_CALCULATION_VALID = False
         g_TW_CalcExempted = False
         g_TW_CURSOR = xlDefault
+
+'------------------------------------------------------------------------------
+' CLEAR REGRESSION SEAM
+'------------------------------------------------------------------------------
+    'A workbook-availability override never outlives the scope that armed it
+        g_TW_TestNoWorkbook = False
 
 End Sub
 
@@ -1187,7 +1202,8 @@ Private Sub PM_TW_ApplyEffectiveState( _
 '     - if disabled by any active session => force benchmark/performance state
 '     - otherwise => restore original baseline state
 '
-'   Calculation is skipped entirely when no workbook is open
+'   Calculation is skipped entirely when no workbook is open, and for the rest
+'   of the scope once an exemption has been recorded (#33)
 '
 ' ERROR POLICY
 '   Raises errors normally
@@ -1197,6 +1213,7 @@ Private Sub PM_TW_ApplyEffectiveState( _
 '
 ' DEPENDENCIES
 '   - Excel Application object model
+'   - PM_TW_WorkbookAvailable
 '   - g_TW_SCREENUPDATING
 '   - g_TW_ENABLEEVENTS
 '   - g_TW_DISPLAYALERTS
@@ -1210,7 +1227,7 @@ Private Sub PM_TW_ApplyEffectiveState( _
 '     cursor state
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-07
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1236,9 +1253,16 @@ Private Sub PM_TW_ApplyEffectiveState( _
                 Else
                     .DisplayAlerts = g_TW_DISPLAYALERTS
                 End If
-            'Calculation requires BOTH a live workbook and a real captured
-            'baseline. Without both, the flag is exempted rather than guessed.
-                If g_TW_CALCULATION_VALID And .Workbooks.Count > 0 Then
+            'Calculation exemption is sticky for the whole scope. Once recorded,
+            'no later begin, update, workbook-lifecycle change or teardown may
+            'read, write or restore Calculation, even if a workbook reappears.
+            'PM_TW_ResetSharedState is the only path that clears it
+                If g_TW_CalcExempted Then
+                    'Leave Calculation exactly as the host now has it
+            'Otherwise Calculation requires BOTH a live workbook and a real
+            'captured baseline. Without both, the flag is exempted rather than
+            'guessed.
+                ElseIf g_TW_CALCULATION_VALID And PM_TW_WorkbookAvailable() Then
                     If (DisableMask And PM_TW_MASK_CALCULATION) <> 0 Then
                         .Calculation = xlCalculationManual
                     Else
@@ -1504,6 +1528,94 @@ Public Function PM_TW_CalculationExempted() As Boolean
         PM_TW_CalculationExempted = g_TW_CalcExempted
 
 End Function
+
+Private Function PM_TW_WorkbookAvailable() As Boolean
+'
+'==============================================================================
+'                         PM_TW_WORKBOOKAVAILABLE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns TRUE when Application.Calculation can be read and written
+'
+' WHY THIS EXISTS
+'   Calculation is only accessible while at least one workbook is open. Every
+'   Calculation decision goes through this single probe so the regression seam
+'   can drive the workbook lifecycle deterministically
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   Boolean
+'     TRUE  => at least one workbook is open and the seam is not armed
+'     FALSE => no workbook is open, or the seam simulates that state
+'
+' ERROR POLICY
+'   Raises errors normally
+'
+' NOTES
+'   Reads Workbooks.Count only; it never touches Application.Calculation
+'
+' UPDATED
+'   2026-10-07
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' ASSIGN RESULT
+'------------------------------------------------------------------------------
+    'A simulated workbook-less host takes precedence over the live count
+        If g_TW_TestNoWorkbook Then
+            PM_TW_WorkbookAvailable = False
+        Else
+            PM_TW_WorkbookAvailable = (Application.Workbooks.Count > 0)
+        End If
+
+End Function
+
+Public Sub PM_TW_Test_SimulateNoWorkbook( _
+    ByVal Simulate As Boolean)
+'
+'==============================================================================
+'                       PM_TW_TEST_SIMULATENOWORKBOOK
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Regression seam: makes the shared manager behave as if no workbook were
+'   open, or returns it to the live workbook count
+'
+' WHY THIS EXISTS
+'   The Calculation exemption only arises on a workbook-less host, and a
+'   regression suite running inside a workbook cannot close every workbook.
+'   Without this seam the sticky-exemption defect (#33) could not be driven
+'   deterministically
+'
+' INPUTS
+'   Simulate
+'     TRUE  => the workbook-availability probe reports no open workbook
+'     FALSE => the probe reports the live Workbooks.Count again
+'
+' RETURNS
+'   None
+'
+' ERROR POLICY
+'   Does not raise errors
+'
+' NOTES
+'   Internal test infrastructure only, not supported API. Option Private
+'   Module keeps it off the Macro dialog. The override is cleared by
+'   PM_TW_ResetSharedState, so final teardown and PM_TW_EndAllSessions
+'   always disarm it
+'
+' UPDATED
+'   2026-10-07
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' UPDATE STATE
+'------------------------------------------------------------------------------
+    'Arm or disarm the workbook-availability override
+        g_TW_TestNoWorkbook = Simulate
+
+End Sub
 
 
 

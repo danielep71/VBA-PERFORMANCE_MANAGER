@@ -67,6 +67,7 @@ Option Explicit     'Force explicit declaration of all variables
 '   1.4.0
 '
 ' UPDATED
+'   2026-10-07 - Added the sticky Calculation-exemption regression (#33)
 '   2026-08-30
 '
 ' AUTHOR
@@ -77,7 +78,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 80    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 81    'Total number of executed regression cases
     
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -637,6 +638,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation no synthetic baseline"
         Test_TW_Calculation_NoSyntheticBaseline
+
+    'Validate that a Calculation exemption stays sticky across the workbook lifecycle
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation sticky exemption"
+        Test_TW_Calculation_StickyExemption
 
 Clean_Exit:
 '------------------------------------------------------------------------------
@@ -8885,6 +8891,178 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_TW_Calculation_NoSyntheticBaseline"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_TW_Calculation_StickyExemption()
+'
+'==============================================================================
+'                   TEST TW CALCULATION STICKY EXEMPTION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that once a scope records a Calculation exemption, no later begin,
+'   update, end or final teardown in that scope writes or restores Calculation,
+'   even after a workbook becomes available again
+'
+' WHY THIS EXISTS
+'   This is the regression test for issue #33.
+'
+'   The apply guard previously checked only for a valid baseline and an open
+'   workbook. A scope that captured a real baseline, lost its workbook and
+'   recorded an exemption would, once a workbook reappeared, force Manual on
+'   the next recomputation and restore the stale baseline at teardown
+'
+'   A regression suite cannot close every workbook, so the workbook-less
+'   transition is driven through PM_TW_Test_SimulateNoWorkbook. The exemption
+'   itself is recorded by the production apply path, not set directly
+'
+'   Both participants run non-strict. In strict mode the second begin would
+'   raise ERR_TW_CALCULATION_UNAVAILABLE before the sticky assertions run
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-10-07
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM_A           As cPerformanceManager    'Scope owner with a real baseline
+    Dim cPM_B           As cPerformanceManager    'Joins while no workbook is open
+    Dim cPM_C           As cPerformanceManager    'Fresh scope after teardown
+    Dim CalcOriginal    As XlCalculation          'The caller's original setting
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "TW Calculation exemption is sticky across the workbook lifecycle"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Force a clean shared baseline before the case begins
+        PM_TW_EndAllSessions
+    'Record the caller's setting so it can be restored on exit
+        CalcOriginal = Application.Calculation
+    'Automatic is the baseline the scope captures; Semi-automatic is the later
+    'host value that a stale write or restore would overwrite
+        Application.Calculation = xlCalculationAutomatic
+
+'------------------------------------------------------------------------------
+' BEGIN A SCOPE WITH A REAL BASELINE
+'------------------------------------------------------------------------------
+    'A captures Automatic and forces Manual while a workbook is open
+        Set cPM_A = New cPerformanceManager
+        cPM_A.StrictMode = False
+        cPM_A.TW_Turn_OFF
+
+        Test_Assert_EqualLong CLng(xlCalculationManual), CLng(Application.Calculation), _
+                              "Calculation is suppressed while a workbook is open"
+        Test_Assert_EqualBoolean False, cPM_A.TW_CalculationExempted, _
+                                 "No exemption before the workbook disappears"
+
+'------------------------------------------------------------------------------
+' RECORD THE EXEMPTION ON A WORKBOOK-LESS HOST
+'------------------------------------------------------------------------------
+    'B joins while no workbook is available; the apply path records the exemption
+        PM_TW_Test_SimulateNoWorkbook True
+        Set cPM_B = New cPerformanceManager
+        cPM_B.StrictMode = False
+        cPM_B.TW_Turn_OFF
+
+        Test_Assert_EqualBoolean True, cPM_B.TW_CalculationExempted, _
+                                 "The workbook-less apply records the exemption"
+        Test_Assert_EqualLong CLng(xlCalculationManual), CLng(Application.Calculation), _
+                              "Recording the exemption does not touch Calculation"
+
+'------------------------------------------------------------------------------
+' A WORKBOOK BECOMES AVAILABLE AGAIN
+'------------------------------------------------------------------------------
+    'Return the probe to the live workbook count and change the host value
+        PM_TW_Test_SimulateNoWorkbook False
+        Application.Calculation = xlSemiautomatic
+
+    'A later update must not reactivate Calculation management
+        cPM_A.TW_Turn_OFF
+        Test_Assert_EqualLong CLng(xlSemiautomatic), CLng(Application.Calculation), _
+                              "A later update does not force Manual after the exemption"
+
+    'A later end with participants remaining must not reapply Manual
+        cPM_B.TW_Turn_ON
+        Test_Assert_EqualLong CLng(xlSemiautomatic), CLng(Application.Calculation), _
+                              "A later end does not reactivate Calculation"
+        Test_Assert_EqualBoolean True, cPM_A.TW_CalculationExempted, _
+                                 "The exemption persists for the rest of the scope"
+
+'------------------------------------------------------------------------------
+' FINAL TEARDOWN
+'------------------------------------------------------------------------------
+    'Final teardown must not restore the stale Automatic baseline
+        cPM_A.TW_Turn_ON
+        Test_Assert_EqualLong CLng(xlSemiautomatic), CLng(Application.Calculation), _
+                              "Final teardown does not restore a stale baseline"
+        Test_Assert_EqualLong 0, PM_TW_ActiveCount(), _
+                              "No shared session remains after teardown"
+        Test_Assert_EqualBoolean False, PM_TW_CalculationExempted(), _
+                                 "Final teardown clears the exemption"
+
+'------------------------------------------------------------------------------
+' A FRESH SCOPE IS HEALTHY AGAIN
+'------------------------------------------------------------------------------
+    'Teardown cleared the exemption and baseline, so a new scope captures and
+    'restores the current host value normally
+        Set cPM_C = New cPerformanceManager
+        cPM_C.StrictMode = False
+        cPM_C.TW_Turn_OFF
+        Test_Assert_EqualLong CLng(xlCalculationManual), CLng(Application.Calculation), _
+                              "A fresh scope suppresses Calculation again"
+        cPM_C.TW_Turn_ON
+        Test_Assert_EqualLong CLng(xlSemiautomatic), CLng(Application.Calculation), _
+                              "A fresh scope restores its own captured baseline"
+        Test_Assert_EqualBoolean False, PM_TW_CalculationExempted(), _
+                                 "A fresh scope on a live host reports no exemption"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Disarm the seam, release the instances and force a clean shared baseline
+        On Error Resume Next
+        PM_TW_Test_SimulateNoWorkbook False
+        If Not cPM_C Is Nothing Then
+            cPM_C.ResetEnvironment
+            Set cPM_C = Nothing
+        End If
+        If Not cPM_B Is Nothing Then
+            cPM_B.ResetEnvironment
+            Set cPM_B = Nothing
+        End If
+        If Not cPM_A Is Nothing Then
+            cPM_A.ResetEnvironment
+            Set cPM_A = Nothing
+        End If
+        PM_TW_EndAllSessions
+    'Restore the caller's original setting
+        Application.Calculation = CalcOriginal
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_TW_Calculation_StickyExemption"
     'Continue through centralized cleanup
         Resume CleanExit
 
