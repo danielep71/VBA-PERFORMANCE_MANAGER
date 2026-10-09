@@ -13,7 +13,7 @@
 [![Version](https://img.shields.io/badge/Version-1.4.0-6f42c1?style=for-the-badge)](#release-status)
 [![Regression](https://img.shields.io/badge/Regression-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
 [![Static checks](https://img.shields.io/badge/Static_checks-16_%2F_16-0969da?style=for-the-badge)](#static-source-analysis)
-[![License](https://img.shields.io/badge/License-MIT-2ea44f?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-2ea44f?style=for-the-badge)](LICENSE)
 
 <br>
 
@@ -1005,6 +1005,7 @@ VBA-PERFORMANCE_MANAGER/
 ├─ CODE_OF_CONDUCT.md
 ├─ INSTALLATION.md
 ├─ LICENSE
+├─ NOTICE
 ├─ README.md
 ├─ RELEASING.md
 └─ SECURITY.md
@@ -1278,4 +1279,9 @@ That distinction is part of the product contract, not a footnote.
 
 ## 📄 License
 
-Licensed under the [MIT License](LICENSE).
+Licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE)
+for the attribution notice that redistributions must carry.
+
+Releases up to and including v1.4.0 were published under the MIT License, and
+copies obtained under those terms remain MIT-licensed. Later changes are
+licensed under Apache 2.0.
