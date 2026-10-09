@@ -107,6 +107,10 @@ Use only the categories needed by a release.
 
 ### Changed
 
+- Relicensed the project from MIT to the Apache License, Version 2.0, and added
+  a `NOTICE` file. Releases up to and including v1.4.0 remain available under
+  MIT; the change applies from the next release. Source code and public API are
+  unchanged.
 - Standardized the pull-request review contract around exact-candidate evidence, compatibility, risk and recovery, security and provenance, and project-specific validation gates.
 
 ---
