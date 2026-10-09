@@ -12,7 +12,7 @@
 [![Windows](https://img.shields.io/badge/Platform-Windows_desktop-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#requirements)
 [![Version](https://img.shields.io/badge/Version-1.4.0-6f42c1?style=for-the-badge)](#release-status)
 [![Regression](https://img.shields.io/badge/Regression-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
-[![Static checks](https://img.shields.io/badge/Static_checks-12_%2F_12-0969da?style=for-the-badge)](#static-source-analysis)
+[![Static checks](https://img.shields.io/badge/Static_checks-16_%2F_16-0969da?style=for-the-badge)](#static-source-analysis)
 [![License](https://img.shields.io/badge/License-Apache_2.0-2ea44f?style=for-the-badge)](LICENSE)
 
 <br>
@@ -66,7 +66,9 @@
 
 > [!NOTE]
 > The latest tagged release is **v1.4.0**. Development for **v1.4.1** is tracked
-> on `main`; unreleased changes do not alter the exact-tag v1.4.0 certification
+> on the `v1.4.1` working branch and merged to `main` in reviewed increments; its
+> [implementation plan](docs/V1.4.1_IMPLEMENTATION_PLAN.md) on that branch is
+> canonical during the milestone. Unreleased changes do not alter the exact-tag v1.4.0 certification
 > record below.
 
 ## ✨ What this project is
@@ -871,8 +873,10 @@ v1.4.0 is executed and certified on Microsoft 365 Excel **64-bit**. The source
 retains its Office 32-bit compatibility branches, but this release has not been
 executed or certified on a real 32-bit Office host, so 32-bit behavior remains
 **unverified rather than unsupported**. That assurance gap is tracked in
-[#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) for v1.4.1 and does not
-block v1.4.0.
+[#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29), now in v1.5.0
+as contributor-dependent work. The maintainer has no 32-bit Office test host;
+this gap does not block v1.4.1 or an otherwise complete release while qualified
+contributor evidence is unavailable. No 32-bit execution certification is inferred.
 
 The suite covers, among other areas:
 
@@ -905,7 +909,8 @@ python3 tools/vba_lint.py --json vba-lint-results.json
 on every push and pull request. It publishes the machine-readable result even
 when a check fails.
 
-The current linter performs **12 checks**:
+The current v1.4.1 development linter performs **16 checks**. The published v1.4.0
+certification above remains **12/12**, and is not recertified by these additions:
 
 1. no merge-conflict markers;
 2. balanced procedure blocks;
@@ -918,7 +923,22 @@ The current linter performs **12 checks**:
 9. `TotalSteps` matches the executed case count;
 10. version stamps agree;
 11. native APIs have a single call site;
-12. released CHANGELOG sections remain frozen against their tags.
+12. released CHANGELOG sections remain frozen against their tags;
+13. strict release-provenance fixtures;
+14. error-handler labels resolve within their procedure;
+15. assigned identifiers are declared;
+16. workflow actions use immutable pins.
+
+The two compile-safety checks scan production, regression and demo exports with
+separate Windows conditional-compilation profiles and fixture-backed grammar.
+See [scope, limitations and verification](docs/COMPILE_SAFETY_CHECKS.md).
+
+The pin check follows every `uses:` reference reachable from
+`.github/workflows/`, including steps inside local composite actions. External
+actions and reusable workflows must name a full 40-hex commit SHA and Docker
+actions a complete `@sha256:` digest, each with a trailing version comment
+(`# v4.4.0`). Constructs the scanner does not model fail the check rather than
+being skipped. Run its fixtures with `python tools/test_workflow_pins.py`.
 
 > [!CAUTION]
 > Static source analysis does **not** establish VBE import success, VBA
@@ -1027,8 +1047,9 @@ the source in your own add-in, but that host is built and maintained by you.
 - Shared unsigned arithmetic tests reduce the untested 32-bit surface; they do
   not replace a real 32-bit Excel run. v1.4.0 was executed and certified on
   64-bit Office only, so 32-bit behavior remains unverified. Support is
-  unchanged; verification is tracked in [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)
-  for v1.4.1.
+  unchanged; contributor-provided verification is tracked in
+  [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) for v1.5.0,
+  independently of v1.4.1's 64-bit certification.
 
 ### Changed in v1.4.0
 
@@ -1183,10 +1204,12 @@ for the published workbook and manifest.
 ## v1.4.1 — active development cycle
 
 The v1.4.1 milestone hardens the v1.4.0 runtime, documentation and assurance
-chain. Planned work includes:
+chain. The release ledger is reconciled (#49); fail-closed provenance (#51)
+and compile-safety checks (#45) are implemented, and workflow actions are
+pinned to immutable commits (#46). These
+controls do not constitute a new Excel certification. Remaining work includes:
 
-- release-ledger and current-documentation reconciliation;
-- fail-closed release-provenance generation and stronger static controls;
+- completing current-documentation reconciliation and release-state enforcement;
 - bounded timing, statistics and shared-state corrections;
 - a real-Excel executable gate and a rebuilt demonstration workbook;
 - contributor-dependent real Office 32-bit evidence when a suitable host is

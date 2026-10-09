@@ -13,10 +13,10 @@
 
 ### Timing integrity · Excel-state ownership · Exact SHA · Reproducible evidence
 
-[![Contributing](https://img.shields.io/badge/guide-CONTRIBUTING-217346?style=flat-square)](../CONTRIBUTING.md)
-[![Security](https://img.shields.io/badge/security-private%20reporting-d73a49?style=flat-square)](../SECURITY.md)
-[![Release](https://img.shields.io/badge/release-RELEASING-6f42c1?style=flat-square)](../RELEASING.md)
-[![Changelog](https://img.shields.io/badge/changes-Unreleased-d97706?style=flat-square)](../CHANGELOG.md)
+[![Contributing](https://img.shields.io/badge/guide-CONTRIBUTING-217346?style=flat-square)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/CONTRIBUTING.md)
+[![Security](https://img.shields.io/badge/security-private%20reporting-d73a49?style=flat-square)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/SECURITY.md)
+[![Release](https://img.shields.io/badge/release-RELEASING-6f42c1?style=flat-square)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/RELEASING.md)
+[![Changelog](https://img.shields.io/badge/changes-Unreleased-d97706?style=flat-square)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/CHANGELOG.md)
 
 </div>
 
@@ -31,10 +31,13 @@
 
 ## 🔗 Related issues
 
-```text
-Closes #
-Related to #
-```
+<!-- Add real issue references below as ordinary Markdown, not in a code fence.
+     Use a closing keyword only for a fully satisfied issue; otherwise use
+     Related to followed by the issue number. Delete unused lines. -->
+
+Closes #<!-- number -->
+
+Related to #<!-- number -->
 
 Use a closing keyword only when this pull request satisfies the issue's complete acceptance criteria.
 

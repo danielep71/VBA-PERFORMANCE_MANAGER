@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Update label colors
-        uses: actions/github-script@v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const colors = {
@@ -40,6 +40,28 @@ jobs:
               "timing": "5319e7"
             };
 
+            // Audit the complete inventory before changing anything. Labels are
+            // not created here: the policy defines colors, not descriptions.
+            const labels = await github.paginate(github.rest.issues.listLabelsForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            const existing = new Set(labels.map((label) => label.name));
+            const missing = Object.keys(colors)
+              .filter((name) => !existing.has(name))
+              .sort();
+
+            if (missing.length > 0) {
+              core.setFailed(
+                missing.length + " declared label(s) missing from the repository; " +
+                "no colors were changed. Create them with a description, then re-run: " +
+                missing.join(", ")
+              );
+              return;
+            }
+
+            // Any API failure other than a missing label propagates and fails the job.
             for (const [name, color] of Object.entries(colors)) {
               await github.rest.issues.updateLabel({
                 owner: context.repo.owner,
