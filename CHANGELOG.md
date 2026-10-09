@@ -117,6 +117,10 @@ Use only the categories needed by a release.
 
 ### Changed
 
+- Relicensed the project from MIT to the Apache License, Version 2.0, and added
+  a `NOTICE` file. Releases up to and including v1.4.0 remain available under
+  MIT; the change applies from the next release. Source code and public API are
+  unchanged.
 - Reject YAML tags and anchors before checked workflow keys so they cannot hide
   mutable action references from the pin gate; retain reference inventory and
   cover plain, quoted and flow keys with regression fixtures (#67).
