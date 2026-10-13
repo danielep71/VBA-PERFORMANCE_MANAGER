@@ -66,7 +66,7 @@
 
 > [!NOTE]
 > The latest tagged release is **v1.4.0**. Development for **v1.4.1** is tracked
-> on the `v1.4.1` working branch and merged to `main` in reviewed increments; its
+> on the `release/v1.4.1` branch and squash-merged to `main` on request; its
 > [implementation plan](docs/V1.4.1_IMPLEMENTATION_PLAN.md) on that branch is
 > canonical during the milestone. Unreleased changes do not alter the exact-tag v1.4.0 certification
 > record below.
