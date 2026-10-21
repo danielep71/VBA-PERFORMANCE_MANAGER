@@ -103,6 +103,11 @@ coverage.xml
 
 # Repository-specific local run evidence. Root anchoring keeps similarly named
 # fixtures or publishable evidence in nested directories visible.
+#   release-manifest.json     tools/release_provenance.py --out
+#   vba-lint-results.json     tools/vba_lint.py --json (also the CI artifact)
+#   certification-*.json,
+#   precandidate-*.json       local records; no tracked tool writes them
+#   excel-regression-results  reserved for the Excel regression gate (#11)
 /certification-*.json
 /precandidate-*.json
 /release-manifest.json

@@ -37,16 +37,20 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '     - PM_TW_EndSession
 '     - PM_TW_ActiveCount
 '     - PM_TW_NewInstanceKey
+'     - PM_TW_CalculationExempted
 '
 '   Additional diagnostic / recovery procedures exposed here are:
 '
 '     - PM_TW_IsInstanceActive
 '     - PM_TW_EndAllSessions
-'     - PM_TW_CalculationExempted
 '
 '   Worksheet-output helper exposed here:
 '
 '     - cPM_Report_WriteToRange
+'
+'   Regression seam exposed here (test infrastructure, not supported API):
+'
+'     - PM_TW_Test_SimulateNoWorkbook
 '
 ' IMPORT REQUIREMENT
 '   Import this module together with cPerformanceManager.cls
@@ -131,6 +135,7 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '   1.4.0
 '
 ' UPDATED
+'   2026-10-21 - Comment accuracy pass (contract list, banners, headers)
 '   2026-10-07 - Calculation exemption is sticky for the whole scope (#33)
 '   2026-08-30
 '
@@ -315,6 +320,11 @@ Public Sub PM_TW_BeginSession( _
 '     Any flag present in ExceptMask remains at the original baseline state for
 '     this instance's request
 '
+'   StrictHost (optional)
+'     TRUE  => this instance wants an error when Calculation suppression was
+'              requested but cannot be honoured on this host
+'     FALSE => an unhonourable Calculation request is exempted silently
+'
 ' RETURNS
 '   None
 '
@@ -323,16 +333,25 @@ Public Sub PM_TW_BeginSession( _
 '   - Captures the original Application baseline when the first active session
 '     begins
 '   - Converts the supplied exemption mask into a disable-mask
-'   - Registers or updates this instance in the shared session store
+'   - Registers or updates this instance's mask and StrictHost preference in
+'     the shared session store
 '   - Recomputes and applies the aggregate effective state
-'   - Rolls back the registration/update if effective-state application fails
+'   - Rejects the session when Calculation is exempted, the aggregate mask still
+'     requests Calculation suppression, and any active instance is strict
+'   - Rolls back the registration/update if effective-state application or that
+'     strict check fails
 '   - Best-effort reapplies the previous effective state after rollback
 '
 ' ERROR POLICY
 '   Raises errors normally
 '
-'   On failure the original error is preserved and re-raised after rollback, so
-'   the caller always sees the true cause rather than a rollback side effect
+'   - ERR_TW_BEGIN_BLANK_KEY for a blank InstanceKey, before any state changes
+'   - ERR_TW_CALCULATION_UNAVAILABLE when Calculation suppression cannot be
+'     honoured and any active instance requested strict host semantics
+'
+'   On failure after registration the original error is preserved and re-raised
+'   after rollback, so the caller always sees the true cause rather than a
+'   rollback side effect
 '
 ' DEPENDENCIES
 '   - PM_TW_EnsureStore
@@ -340,15 +359,16 @@ Public Sub PM_TW_BeginSession( _
 '   - PM_TW_DisableMaskFromExcept
 '   - PM_TW_AggregateDisableMask
 '   - PM_TW_ApplyEffectiveState
+'   - PM_TW_AnyStrict
 '   - PM_TW_ResetSharedState
 '
 ' NOTES
 '   This routine is instance-idempotent:
 '     - first call for an instance => begin/register
-'     - later calls for same instance => update requested mask
+'     - later calls for same instance => update requested mask and strictness
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -376,7 +396,7 @@ Public Sub PM_TW_BeginSession( _
 '------------------------------------------------------------------------------
 ' INITIALIZE
 '------------------------------------------------------------------------------
-    'Ensure the shared dictionary exists
+    'Ensure the shared dictionaries exist
         PM_TW_EnsureStore
     'Capture whether the key already exists before modification
         HadKeyBefore = g_TW_Sessions.Exists(InstanceKey)
@@ -855,7 +875,8 @@ Private Sub PM_TW_EnsureStore()
 '                             PM_TW_ENSURESTORE
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Lazily creates the shared session dictionary
+'   Lazily creates the shared session dictionaries (g_TW_Sessions and
+'   g_TW_StrictKeys)
 '
 ' WHY THIS EXISTS
 '   The shared TW store should exist only when needed. This helper centralizes
@@ -868,7 +889,7 @@ Private Sub PM_TW_EnsureStore()
 '   None
 '
 ' BEHAVIOR
-'   - Creates the shared dictionary only when it does not already exist
+'   - Creates each shared dictionary only when it does not already exist
 '   - Uses late binding so no external reference is required
 '   - Sets binary key comparison explicitly
 '
@@ -883,13 +904,13 @@ Private Sub PM_TW_EnsureStore()
 '   idle project remains in a true idle state
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
 '------------------------------------------------------------------------------
-    'Create the shared dictionary only once
+    'Create the shared session dictionary only once
         If g_TW_Sessions Is Nothing Then
             Set g_TW_Sessions = CreateObject("Scripting.Dictionary")
             g_TW_Sessions.CompareMode = vbBinaryCompare
@@ -925,7 +946,9 @@ Private Sub PM_TW_SaveBaseline()
 '
 ' BEHAVIOR
 '   - Reads the current Application state into shared baseline variables
-'   - Skips Calculation when no workbook is open and records a safe default
+'   - Skips Calculation when no workbook is open and records the baseline as
+'     unknown (g_TW_CALCULATION_VALID = False); the placeholder value stored
+'     alongside it is never applied
 '   - Marks the baseline as captured
 '
 ' ERROR POLICY
@@ -942,7 +965,7 @@ Private Sub PM_TW_SaveBaseline()
 '   This routine should only be called when the first shared session begins
 '
 ' UPDATED
-'   2026-10-07
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1000,7 +1023,8 @@ Private Sub PM_TW_ResetSharedState()
 '   None
 '
 ' BEHAVIOR
-'   - Releases the shared session dictionary
+'   - Releases the shared session dictionaries (g_TW_Sessions and
+'     g_TW_StrictKeys)
 '   - Clears the baseline-saved flag
 '   - Clears the cached baseline values
 '   - Clears the Calculation exemption and the workbook-availability seam
@@ -1015,7 +1039,7 @@ Private Sub PM_TW_ResetSharedState()
 '   could still exist, which is exactly the collision hazard this design avoids
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1153,7 +1177,7 @@ Private Function PM_TW_AggregateDisableMask() As Long
 '------------------------------------------------------------------------------
 ' INITIALIZE
 '------------------------------------------------------------------------------
-    'Ensure the shared dictionary exists
+    'Ensure the shared dictionaries exist
         PM_TW_EnsureStore
 
 '------------------------------------------------------------------------------
@@ -1413,6 +1437,14 @@ Public Sub cPM_Report_WriteToRange( _
         OutputRange.EntireColumn.AutoFit
 
 End Sub
+
+'
+'------------------------------------------------------------------------------
+'
+'                 HOST-STATE HELPERS AND REGRESSION SEAM
+'
+'------------------------------------------------------------------------------
+'
 
 Private Function PM_TW_AnyStrict() As Boolean
 '

@@ -20,11 +20,20 @@ Attribute VB_Name = "M_DEMO_BUILDER"
 '     - helper-list storage
 '     - placeholder demo buttons
 '     - table / log setup
+'     - shape-button visual states and click feedback (Btn_ApplyState,
+'       Btn_Click)
+'     - regression-suite progress on the status bar (Demo_SB_SetProgress)
 '
 '   Centralizing that logic in one module keeps demo-sheet construction:
 '     - more consistent
 '     - easier to maintain
 '     - easier to reuse across projects
+'
+' REQUIRED BY
+'   - M_cPM_DEMO (demo sheet construction)
+'   - M_cPM_Test (the regression harness calls the fast-mode, band, border,
+'     status-bar and button helpers and uses COLOR_SUBHEADER, so this module
+'     must be imported for the suite to compile)
 '
 ' DESIGN
 '   - This module is workbook-oriented and defaults to ThisWorkbook for build
@@ -37,7 +46,7 @@ Attribute VB_Name = "M_DEMO_BUILDER"
 '     during sheet-building operations.
 '
 ' UPDATED
-'   2026-03-30
+'   2026-10-21
 '
 ' AUTHOR
 '   Daniele Penza
@@ -1521,7 +1530,8 @@ Public Sub DEMO_Write_BandHeader( _
 '                            WRITE BAND HEADER
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Writes and formats one left-aligned header band without merged cells.
+'   Writes and formats one header band without merged cells, centered across
+'   the band by default or left aligned on request.
 '
 ' WHY THIS EXISTS
 '   Demo sheets often use title, subtitle, or banner ranges spanning multiple
@@ -1552,6 +1562,10 @@ Public Sub DEMO_Write_BandHeader( _
 '     TRUE  => apply an outside border
 '     FALSE => do not apply a border
 '
+'   IsCentered (optional, default TRUE)
+'     TRUE  => center the text across the band (xlCenterAcrossSelection)
+'     FALSE => left align the text
+'
 ' RETURNS
 '   None.
 '
@@ -1561,14 +1575,15 @@ Public Sub DEMO_Write_BandHeader( _
 '   - Clears prior contents from the full target range
 '   - Writes the requested text into the first cell only
 '   - Applies fill / font / alignment formatting
-'   - Keeps the band left aligned
+'   - Centers the text across the band, or left aligns it when IsCentered is
+'     FALSE
 '   - Optionally applies a border
 '
 ' ERROR POLICY
 '   Raises errors normally.
 '
 ' UPDATED
-'   2026-03-30
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------

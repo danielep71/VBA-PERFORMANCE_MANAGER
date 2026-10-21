@@ -40,12 +40,20 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
 '   - The checkpoint example can also write a structured report to a worksheet
 '
 ' ERROR POLICY
-'   Individual examples use local cleanup and re-raise normally unless the
-'   example intentionally demonstrates expected invalid usage
+'   The core, time-waster, safe-pattern and checkpoint examples use local
+'   cleanup and re-raise normally unless the example intentionally
+'   demonstrates expected invalid usage
+'
+'   The measurement examples (Run_MeasurementUsageExamples) print an unexpected
+'   error to the Immediate Window and exit through cleanup without re-raising,
+'   so one failing example does not stop the rest of the group
 '
 ' DEPENDENCIES
 '   - cPerformanceManager
 '   - Excel Application object model
+'   - A worksheet named DATA_cPM in ThisWorkbook, used by the examples and
+'     workloads that write cells (cPM_Usage_GetDataSheet raises if it is
+'     missing)
 '
 ' MEASUREMENT TARGETS
 '   The measurement examples call procedures by name through Application.Run,
@@ -60,7 +68,7 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
 '   - Run worksheet-writing examples from a safe workbook / worksheet
 '
 ' UPDATED
-'   2026-08-27
+'   2026-10-21
 '
 ' AUTHOR
 '   Daniele Penza
@@ -1481,13 +1489,15 @@ Public Sub Example_CheckpointReport()
 '   None
 '
 ' BEHAVIOR
+'   - Resolves the DATA_cPM worksheet and its D3 output anchor
 '   - Creates a fresh performance manager instance
-'   - Assigns a run label
-'   - Starts a fresh QPC timing session
+'   - Starts a fresh QPC timing session and assigns the run label in the same
+'     StartTimer call (StartTimer clears any label set before it)
 '   - Runs three simple benchmark phases
 '   - Captures a checkpoint after each phase
 '   - Prints the text report to the Immediate Window
-'   - Writes the array report to DATA_cPM starting at D3
+'   - Clears the target area and writes the array report to DATA_cPM starting
+'     at D3
 '
 ' ERROR POLICY
 '   Restores the class environment before re-raising unexpected errors
@@ -1499,7 +1509,7 @@ Public Sub Example_CheckpointReport()
 '   - ReportAsArray
 '
 ' UPDATED
-'   2026-08-16
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1693,7 +1703,8 @@ Public Sub Example_Benchmark_WithStatistics()
 '   - Checks explicitly whether the run is trustworthy
 '
 ' ERROR POLICY
-'   Raises errors normally after cleanup
+'   Does not raise. An unexpected error is printed to the Immediate Window and
+'   the routine exits through the best-effort cleanup
 '
 ' DEPENDENCIES
 '   - cPerformanceManager
@@ -1704,7 +1715,7 @@ Public Sub Example_Benchmark_WithStatistics()
 '   scheduling and is the closest estimate of the true cost
 '
 ' UPDATED
-'   2026-08-16
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1800,7 +1811,8 @@ Public Sub Example_Compare_TwoImplementations()
 '   - Refuses to state a speedup if either run looks contaminated
 '
 ' ERROR POLICY
-'   Raises errors normally after cleanup
+'   Does not raise. An unexpected error is printed to the Immediate Window and
+'   the routine exits through the best-effort cleanup
 '
 ' DEPENDENCIES
 '   - cPerformanceManager
@@ -1812,7 +1824,7 @@ Public Sub Example_Compare_TwoImplementations()
 '   number compared against today's is not a comparison
 '
 ' UPDATED
-'   2026-08-16
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1912,7 +1924,8 @@ Public Sub Example_DispatchMatchedBaseline()
 '   - Reports both, then the net cost
 '
 ' ERROR POLICY
-'   Raises errors normally after cleanup
+'   Does not raise. An unexpected error is printed to the Immediate Window and
+'   the routine exits through the best-effort cleanup
 '
 ' DEPENDENCIES
 '   - cPerformanceManager
@@ -1926,7 +1939,7 @@ Public Sub Example_DispatchMatchedBaseline()
 '   The baseline is machine-specific and worth re-measuring on each host
 '
 ' UPDATED
-'   2026-08-16
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2028,7 +2041,8 @@ Public Sub Example_ReadStatus_Diagnostics()
 '   - Explains why the two use different surfaces
 '
 ' ERROR POLICY
-'   Raises errors normally after cleanup
+'   Does not raise. An unexpected error is printed to the Immediate Window and
+'   the routine exits through the best-effort cleanup
 '
 ' DEPENDENCIES
 '   - cPerformanceManager
@@ -2040,7 +2054,7 @@ Public Sub Example_ReadStatus_Diagnostics()
 '   returned, so its outcome arrives through the FailedReadsOut argument instead
 '
 ' UPDATED
-'   2026-08-16
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------

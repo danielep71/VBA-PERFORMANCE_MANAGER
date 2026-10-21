@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-vba_lint.py — static consistency checks for the Class Performance Manager sources.
+vba_lint.py — static consistency checks for the VBA Performance Manager sources.
 
 These checks cover source and release-assurance defects found during project
 development. None requires Excel; a pass is not VBA compilation or execution
@@ -437,7 +437,9 @@ def check_changelog_released_sections_frozen(rep: Report) -> None:
     tag catches it without maintaining a separate list of what is allowed.
 
     Sections whose tag predates the changelog cannot be compared and are
-    reported as unverifiable rather than passed silently.
+    reported as unverifiable rather than passed silently. Sections with no
+    local tag are reported as not tagged yet; that covers the release being
+    prepared and, in a clone without all tags, older releases too.
     """
     if not CHANGELOG_FILE.exists():
         rep.check("released changelog sections frozen", ["CHANGELOG.md not found"])
@@ -472,7 +474,7 @@ def check_changelog_released_sections_frozen(rep: Report) -> None:
 
     # Keep the one-time v1.4.0 compatibility rule executable and bounded. The
     # negative cases prove both content drift and a later-release fallback are
-    # rejected without adding a separate headline check to the 12-check gate.
+    # rejected without adding a separate headline check to the gate.
     fixture_body = "released body"
     if _tagged_changelog_body("1.4.0", {"Unreleased": fixture_body}) != fixture_body:
         problems.append("internal fixture: v1.4.0 legacy promotion was not accepted")
@@ -485,8 +487,10 @@ def check_changelog_released_sections_frozen(rep: Report) -> None:
         if version.lower() == "unreleased":
             continue
         tag = f"v{version}"
-        # A section whose tag does not exist yet is the release being prepared,
+        # A section with no local tag is normally the release being prepared,
         # which is a different situation from a tag that predates the changelog.
+        # A clone that has not fetched every tag also lands here for older
+        # releases; CI fetches all tags, so it compares every released section.
         if _git("rev-parse", "-q", "--verify", f"refs/tags/{tag}") is None:
             unreleased.append(tag)
             continue
@@ -518,7 +522,11 @@ def check_changelog_released_sections_frozen(rep: Report) -> None:
 
 
 def check_api_declarations(rep: Report) -> None:
-    """Native timing APIs must be called from exactly one place each."""
+    """QueryPerformanceCounter and timeGetSystemTime must each have one call site.
+
+    Other native timing APIs (timeGetTime, GetTickCount) have several call
+    sites by design and are not checked here.
+    """
     if not CLASS_FILE.exists():
         rep.check("native APIs have a single call site", [f"{CLASS_FILE} not found"])
         return
@@ -532,10 +540,6 @@ def check_api_declarations(rep: Report) -> None:
             problems.append(f"{api}: {calls} call sites, expected exactly 1")
     rep.check("native APIs have a single call site", problems)
 
-
-# --------------------------------------------------------------------------- #
-# Entry point
-# --------------------------------------------------------------------------- #
 
 def check_release_provenance_fixtures(rep: Report) -> None:
     """Delegate the strict provenance matrix to its own module.
@@ -570,6 +574,10 @@ def check_release_provenance_fixtures(rep: Report) -> None:
 
     rep.check("release provenance strict fixtures", problems)
 
+
+# --------------------------------------------------------------------------- #
+# Result output and entry point
+# --------------------------------------------------------------------------- #
 
 def write_json(rep: Report, path: Path) -> None:
     """Emit a machine-readable result document.

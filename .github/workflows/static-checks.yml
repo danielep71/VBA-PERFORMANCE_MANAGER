@@ -1,7 +1,8 @@
 name: Static checks
 
 # Runs on every push and pull request. These checks analyse the exported VBA
-# sources as text and need no Excel, so they run on a hosted runner in seconds.
+# sources, CHANGELOG, workflow files and release tooling as text and need no
+# Excel, so they run on a hosted runner in seconds.
 #
 # One check needs git history: released changelog sections are compared against
 # their content at the matching tag, so the checkout fetches tags.
@@ -11,9 +12,11 @@ name: Static checks
 #
 # They cannot execute a single test. That is the job of the headless Excel
 # regression gate tracked in #11, which requires a self-hosted Windows runner.
-# What these checks do cover is the class of defect that reached this
-# repository during v1.2.0: version drift, stale error sources, unbalanced
-# procedure blocks, reserved-word identifiers, and committed conflict markers.
+# What these checks do cover are the defect classes found during development:
+# version drift, stale error sources, unbalanced procedure blocks,
+# reserved-word identifiers, committed conflict markers, compile-safety gaps
+# (handler labels, undeclared assignments), released changelog drift,
+# release-provenance contract violations, and mutable workflow action pins.
 
 on:
   push:
