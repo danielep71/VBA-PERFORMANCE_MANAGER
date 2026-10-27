@@ -40,7 +40,8 @@ Option Explicit     'Force explicit declaration of all variables
 '   - M_cPM_TimeWasters
 '   - M_DEMO_BUILDER, for the worksheet and status-bar presentation helpers:
 '       DEMO_Build_DemoTemplate, DEMO_Begin_FastMode, DEMO_End_FastMode,
-'       Demo_SB_SetProgress, Btn_Click and the tDemoFastModeState type
+'       DEMO_Write_BandHeader, DEMO_Set_RangeBorder, Demo_SB_SetProgress,
+'       Btn_Click, the COLOR_SUBHEADER constant and the tDemoFastModeState type
 '   - Excel Application object model
 '
 ' NOTES
@@ -49,24 +50,30 @@ Option Explicit     'Force explicit declaration of all variables
 '   - The companion TW manager module must already be imported and compiled
 '   - Results are written to a dedicated worksheet log and summarized in the
 '     Immediate Window
-'   - Three class members are declared Friend rather than Private so that their
-'     arithmetic can be tested directly: UInt32ToDouble, Elapsed_Validate and
-'     RolloverSeconds
+'   - Eleven class members are declared Friend rather than Private so that the
+'     suite can reach them directly:
+'       * arithmetic helpers: UInt32ToDouble, Elapsed_Validate and
+'         RolloverSeconds
+'       * test seams: Test_QualifyProcedureNameFor and the Test_Force*
+'         failure-injection members
 '   - cPM_Test_Workload must remain Public. Application.Run, used by
 '     MeasureProcedure, cannot reach Private procedures
-'   - This suite assumes the v1.2.0 class surface where:
+'   - This suite assumes the class surface of the VERSION below, where:
 '       * MethodName(2) returns "GetTickCount / GetTickCount64"
 '       * ElapsedTime supports formatting an already measured elapsed value
 '       * OverheadMeasurement_Text supports an optional Iterations argument
 '       * StartTimer accepts an optional RunLabel argument
 '       * Checkpoint does not overwrite the cached T2 / ET values
 '       * MeasureProcedure and MeasureOverhead_Samples return Double() vectors
-'       * The Stats_* routines operate on any Double() sample vector
+'       * The Stats_* routines accept a Double() vector of finite, non-negative
+'         timing observations and raise on an empty vector or out-of-domain
+'         value (Stats_Count alone tolerates an uninitialized array)
 '
 ' VERSION
 '   1.4.0
 '
 ' UPDATED
+'   2026-10-21 - Comment accuracy pass
 '   2026-08-30
 '
 ' AUTHOR
@@ -161,7 +168,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 '   TotalSteps must be kept aligned with the number of executed regression cases
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -433,6 +440,9 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         Demo_SB_SetProgress CurrentStep, TotalSteps, "SetRunLabel after ClearCheckpoints"
         Test_SetRunLabel_AfterClearCheckpoints
 
+'------------------------------------------------------------------------------
+' RUN BOUNDARY / ARITHMETIC / CHECKPOINT / LIFECYCLE REGRESSION CASES
+'------------------------------------------------------------------------------
     'Validate idempotent TW_Turn_ON behavior when no TW session is active
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "TW_Turn_ON when inactive"
@@ -483,6 +493,9 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         Demo_SB_SetProgress CurrentStep, TotalSteps, "TW instance key is not reused"
         Test_TW_InstanceKey_NoStaleReuse
 
+'------------------------------------------------------------------------------
+' RUN STATISTICS REGRESSION CASES
+'------------------------------------------------------------------------------
     'Validate statistics against a hand-computed sample vector
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics on a known vector"
@@ -513,6 +526,9 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics: Stats_Text undefined CV"
         Test_Stats_Text_ReportsUndefinedCV
 
+'------------------------------------------------------------------------------
+' RUN MEASUREMENT HARNESS REGRESSION CASES
+'------------------------------------------------------------------------------
     'Validate the repeated-measurement harness
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "MeasureProcedure and overhead samples"
@@ -578,6 +594,9 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: legacy overhead validity"
         Test_LegacyOverhead_ValidatedPath
 
+'------------------------------------------------------------------------------
+' RUN FAULT-INJECTION / READ-STATUS REGRESSION CASES
+'------------------------------------------------------------------------------
     'Validate strict-mode rejection of a failed QPC start read
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault: QPC start failure, strict"
@@ -618,6 +637,9 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         Demo_SB_SetProgress CurrentStep, TotalSteps, "LastReadStatus after strict failure"
         Test_LastReadStatus_AfterStrictFailure
 
+'------------------------------------------------------------------------------
+' RUN TW CALCULATION REGRESSION CASES
+'------------------------------------------------------------------------------
     'Validate that a real Calculation baseline is captured and restored
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation baseline validity"
@@ -3741,14 +3763,17 @@ Private Sub Test_Method4_TimeGetSystemTime_NonZeroAndAdvances()
 '              TEST METHOD 4 TIMEGETSYSTEMTIME NONZERO AND ADVANCES
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Validates that method 4 obtains real timeGetSystemTime timestamps rather than
-'   returning a zero fallback.
+'   Validates that method 4 obtains real, nonzero timeGetSystemTime timestamps
+'   that advance over a real delay.
 '
 ' WHY THIS EXISTS
 '   Method 4 depends on the MMTIME structure layout. A wrong layout can cause
 '   timeGetSystemTime to fail or return unusable data. This test verifies that
 '   method 4 captures a nonzero start timestamp, advances after a real delay,
-'   and produces a positive elapsed-time value.
+'   and produces a positive elapsed-time value. The class has no zero fallback:
+'   a failed read or a non-TIME_MS format raises in strict mode, but a read that
+'   succeeds with an empty Units field is not rejected, which is what the
+'   nonzero checks guard against.
 '
 ' INPUTS
 '   None
@@ -3781,7 +3806,7 @@ Private Sub Test_Method4_TimeGetSystemTime_NonZeroAndAdvances()
 '   itself dependent on method 4.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3814,7 +3839,7 @@ Private Sub Test_Method4_TimeGetSystemTime_NonZeroAndAdvances()
 '------------------------------------------------------------------------------
     'Start a method 4 session
         cPM.StartTimer 4, False
-    'Assert that method 4 did not return a zero fallback start timestamp
+    'Assert that method 4 did not return an empty (zero) start timestamp
         Test_Assert_True cPM.T1 > 0#, _
                          "Method 4 start timestamp is greater than zero"
     'Pause using Sleep-based pause method 1
@@ -6369,7 +6394,7 @@ Private Sub Test_ElapsedValidate_StrictAndNonStrict()
 '   None
 '
 ' UPDATED
-'   2026-08-16
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -6480,9 +6505,11 @@ Private Sub Test_ElapsedValidate_StrictAndNonStrict()
                               "LastReadStatus reports the reason after a strict raise"
 
 '------------------------------------------------------------------------------
-' ASSERT THE HARNESS REJECTS A CLAMPED SAMPLE
+' ASSERT A HEALTHY HARNESS RUN IS UNAFFECTED
 '------------------------------------------------------------------------------
-    'A clamped zero must not survive as the fastest sample in a benchmark
+    'No negative elapsed is injected here: this only checks that a healthy
+    'method-2 harness run keeps every sample. Harness rejection of a clamped
+    'sample is not exercised by this case
         cPM.StrictMode = False
         Samples = cPM.MeasureProcedure("cPM_Test_Workload", 4, 1, _
                                        cPM_MethodTickCount, FailedReads, LastStatus)
@@ -8301,7 +8328,7 @@ Private Sub Test_FaultInject_CheckpointFailure()
 '   None
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -8373,8 +8400,8 @@ Private Sub Test_FaultInject_CheckpointFailure()
         Test_Assert_EqualLong cPM.CheckpointCount, CountBefore + 1, _
                               "A successful checkpoint after a failure is recorded"
 
-    'Its delta must span BOTH pauses since Phase 2, because the failed capture
-    'must not have advanced the last-checkpoint marker
+    'Its delta must still include the pause before the failed Phase 3 capture,
+    'because the failed capture must not have advanced the last-checkpoint marker
         Arr = cPM.ReportAsArray
         DeltaAfter = CDbl(Arr(UBound(Arr, 1), 7))
 
@@ -8638,9 +8665,10 @@ Private Sub Test_TW_Calculation_OverlappingScopes()
 '   instances and is restored exactly once
 '
 ' WHY THIS EXISTS
-'   Calculation is the only supported flag with a non-Boolean baseline, so it is
-'   the one most likely to be mishandled when the effective state is recomputed
-'   after a partial release
+'   Calculation is one of two supported flags with a non-Boolean baseline
+'   (Cursor is the other) and the only one whose baseline depends on an open
+'   workbook, so it is the one most likely to be mishandled when the effective
+'   state is recomputed after a partial release
 '
 ' INPUTS
 '   None
@@ -8649,7 +8677,7 @@ Private Sub Test_TW_Calculation_OverlappingScopes()
 '   None
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -9571,15 +9599,16 @@ Private Sub Test_Measure_RejectsStartFallback()
 '   - A clean run reports no failures and no rejections
 '   - A forced QPC start failure is rejected, not counted as a failed read
 '   - A forced method-4 start failure is rejected the same way
-'   - A rejected cycle does not erase the evidence of later valid cycles
+'   - Rejected cycles remove only their own samples; the later valid cycles
+'     are kept and the fallback status is still reported
 '   - Endpoint failures and rejections are counted independently
-'   - A warm-up fallback is not counted as a measured rejection
+'   - Armed seam counts do not leak into the next run
 '
 ' ERROR POLICY
 '   Unexpected errors are recorded and the case continues through cleanup
 '
 ' UPDATED
-'   2026-08-30
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -9824,8 +9853,8 @@ Private Sub Test_Measure_WorkerRaiseEvidenceBoundary()
 '------------------------------------------------------------------------------
 ' PURPOSE
 '   Asserts that when the worker raises before the harness can classify a cycle,
-'   the optional outputs are left at their defaults and must not be read as
-'   evidence that nothing failed
+'   the optional count outputs read the not-published sentinel (-1) and cannot
+'   be mistaken for evidence that nothing failed
 '
 ' WHY THIS EXISTS
 '   In strict mode the worker raises from inside StartTimer, so execution never
@@ -9840,14 +9869,17 @@ Private Sub Test_Measure_WorkerRaiseEvidenceBoundary()
 '
 ' BEHAVIOR
 '   - A strict-mode forced start failure raises
-'   - The optional outputs remain at their pre-call values
+'   - FailedReadsOut and RejectedSamplesOut are overwritten with -1, not left
+'     at their pre-call values; the sentinel is assigned before validation, so
+'     a blank-name raise reports it too
 '   - Err.Number carries the diagnosis instead
+'   - An armed start failure does not survive the raise
 '
 ' ERROR POLICY
 '   Unexpected errors are recorded and the case continues through cleanup
 '
 ' UPDATED
-'   2026-08-30
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -10295,7 +10327,8 @@ Private Sub Test_MeasureOverhead_EvidenceContract()
 '   - A clean run reports no failures and no rejections
 '   - Endpoint failures shorten the vector and are counted as failures
 '   - Start fallbacks are counted as rejections, not failures
-'   - Warm-up native failures are counted; warm-up fallbacks are not
+'   - A forced failure lands on a measured cycle, never on a warm-up cycle,
+'     because the seams are not armed during warm-up
 '   - All-rejected raises with evidence published and a cycle-worded message
 '   - All-endpoint-failed raises with its own evidence and its own message,
 '     distinguishing "the clock broke" from "the backend would not start"
@@ -10306,7 +10339,7 @@ Private Sub Test_MeasureOverhead_EvidenceContract()
 '   Unexpected errors are recorded and the case continues through cleanup
 '
 ' UPDATED
-'   2026-08-30
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -10376,7 +10409,7 @@ Private Sub Test_MeasureOverhead_EvidenceContract()
                               "The overhead status names the fallback"
 
 '------------------------------------------------------------------------------
-' ASSERT WARM-UP FAILURES COUNT AND WARM-UP FALLBACKS DO NOT
+' ASSERT A FORCED FAILURE LANDS ON A MEASURED CYCLE
 '------------------------------------------------------------------------------
     'Neither seam is armed during warm-up, so a forced failure always lands on a
     'measured cycle. That is what makes the counts above attributable

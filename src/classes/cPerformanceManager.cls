@@ -115,7 +115,7 @@ Attribute VB_Exposed = False
 '   place and collisions remain visible.
 '
 ' UPDATED
-'   2026-08-30
+'   2026-10-21
 '
 ' AUTHOR
 '   Daniele Penza
@@ -196,7 +196,9 @@ Attribute VB_Exposed = False
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
 '------------------------------------------------------------------------------
-    'SMPTE is retained only to preserve the expected MMTIME structure layout.
+    'SMPTE is unused. It is kept only to document the native union's largest
+    'member; MMTIME below reproduces the 8-byte union with Units + Reserved and
+    'does not reference this type.
         Private Type SMPTE
             Hour        As Byte
             Min         As Byte
@@ -501,8 +503,9 @@ Attribute VB_Exposed = False
     '--------------------------------------------------------------------------
     ' NATIVE READ STATUS
     '--------------------------------------------------------------------------
-        'Outcome of the most recent native read performed by this instance.
-        'Reset at the start of every public timing operation.
+        'Outcome of the most recent timing read and elapsed validation
+        'performed by this instance. Set by StartTimer, ElapsedSeconds and
+        'Checkpoint.
         Private m_LastReadStatus As cPM_ReadStatus
 
     '--------------------------------------------------------------------------
@@ -1289,12 +1292,12 @@ Public Property Get T2() As Double
 '   - m_T2
 '
 ' NOTES
-'   - If ElapsedSeconds() has not yet been called after StartTimer(), T2 may
-'     still reflect a prior session or its reset value.
+'   - If ElapsedSeconds() has not yet been called since the last successful
+'     StartTimer(), T2 is 0 (StartTimer clears it when it commits).
 '   - T2 is an inspection/debugging surface, not the primary timing API.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1346,7 +1349,7 @@ Public Property Get ET() As Double
 '     primary timing API.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-09-08
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1561,7 +1564,7 @@ Public Function OverheadMeasurement_Seconds( _
 '     - the mean is computed over the retained sample count, not the requested
 '       iteration count, so a degraded run reports a higher and more honest
 '       figure than v1.3.0 did; and
-'     - this property previously always returned a Double. It can now raise
+'     - this function previously always returned a Double. It can now raise
 '       ERR_CPM_MEASURE_NO_VALID_SAMPLES when no cycle survives. Use
 '       OverheadMeasurement_Text for a rendering that degrades instead.
 '
@@ -1588,7 +1591,7 @@ Public Function OverheadMeasurement_Seconds( _
 '   one. Treat the value as indicative rather than as a reliable floor.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1689,9 +1692,14 @@ Public Property Get OverheadMeasurement_Text( _
 '   - If OverheadSecondsIn is supplied, formats that value directly
 '   - Returns a readable string containing the backend name and average
 '     measurement overhead in seconds
+'   - If the measurement raises ERR_CPM_MEASURE_NO_VALID_SAMPLES, returns
+'     "... - undefined (<original description>)" instead
 '
 ' ERROR POLICY
-'   Validation behavior is delegated to Method_NormalizeStart()
+'   Method validation is delegated to Method_NormalizeStart()
+'   ERR_CPM_MEASURE_NO_VALID_SAMPLES from the measurement is rendered as
+'   "undefined (...)"; every other error is re-raised with its original
+'   number, source and description
 '
 ' DEPENDENCIES
 '   - Method_NormalizeStart
@@ -1707,7 +1715,7 @@ Public Property Get OverheadMeasurement_Text( _
 '   regarding its sensitivity to scheduler outliers.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3299,7 +3307,7 @@ Private Function Method_NormalizeStart( _
 '     Requested timer method identifier.
 '
 ' RETURNS
-'   Integer
+'   cPM_TimerMethod
 '     A validated timer method identifier.
 '
 ' BEHAVIOR
@@ -3324,10 +3332,10 @@ Private Function Method_NormalizeStart( _
 '   practical general-purpose monotonic timing source.
 '
 '   The QPC availability check here is what makes the division by m_qpcFreq in
-'   ElapsedSeconds unreachable with a zero denominator.
+'   Elapsed_ComputeSeconds unreachable with a zero denominator.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3389,7 +3397,7 @@ Private Function Method_ResolveElapsed( _
 '       1-6 => explicit method to validate against the active session
 '
 ' RETURNS
-'   Integer
+'   cPM_TimerMethod
 '     The validated method that ElapsedSeconds should use.
 '
 ' BEHAVIOR
@@ -3414,7 +3422,7 @@ Private Function Method_ResolveElapsed( _
 '   timer wrapper into a real timing-session manager.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3663,12 +3671,12 @@ Private Function QPC_GetFrequencyHz() As Double
 ' NOTES
 '   m_qpcFreq is stored as Currency, so we must undo Currency's 10,000 scaling.
 '
-'   Note that ElapsedSeconds does NOT use this helper. There the Currency
-'   scaling cancels between the tick delta and the frequency, so the raw
-'   Currency division is already correct.
+'   Note that Elapsed_ComputeSeconds does NOT use this helper. There the
+'   Currency scaling cancels between the tick delta and the frequency, so the
+'   raw Currency division is already correct.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3924,13 +3932,14 @@ Friend Function RolloverSeconds( _
 ' NOTES
 '   - The rollover value 2^32 milliseconds equals 4294967296# / 1000# seconds.
 '   - This helper is intentionally limited to the backends whose rollover
-'     correction is handled centrally in ElapsedSeconds().
+'     correction is handled centrally in Elapsed_ComputeSeconds (shared by
+'     ElapsedSeconds and Checkpoint).
 '   - Returning 0 for the Win64 method 2 path means a negative elapsed value
 '     survives the correction step unchanged. Elapsed_Validate is what catches
 '     that case.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5208,8 +5217,8 @@ Public Function MeasureOverhead_Samples( _
 '
 '   FAILED
 '     The requested backend started but the endpoint read failed. Storing its
-'     zero would become the minimum and be read as the resolution floor, so the
-'     sample is excluded and counted in FailedReadsOut.
+'     zero would become the minimum and be read as the observed empty-cycle
+'     floor, so the sample is excluded and counted in FailedReadsOut.
 '
 ' COUNT EQUATION
 '
@@ -5251,7 +5260,7 @@ Public Function MeasureOverhead_Samples( _
 '   not enough to settle code paths and caches
 '
 ' UPDATED
-'   2026-08-30
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -5384,7 +5393,8 @@ Public Function MeasureOverhead_Samples( _
                 EndpointStatus = cPM_Work.LastReadStatus
 
                 'Exclude a failed read rather than storing its zero, which would
-                'otherwise become the minimum and be read as the resolution floor
+                'otherwise become the minimum and be read as the observed
+                'empty-cycle floor
                     If EndpointStatus <> cPM_ReadOK Then
                         FailedReads = FailedReads + 1
                         LastFailure = EndpointStatus
@@ -6312,8 +6322,10 @@ Private Function Elapsed_ComputeSeconds( _
 '   - NEVER raises for a read failure. A failed read is reported through
 '     StatusOut so the caller can publish it before deciding whether to fail.
 '   - Still raises for an invalid resolved method, which is a defensive branch
-'     with no corresponding read status, and through Elapsed_Validate for a
-'     backwards-moving clock, which is arithmetic validation rather than a read.
+'     with no corresponding read status.
+'   - Does not raise for a negative elapsed value that reaches Elapsed_Validate.
+'     That helper never raises: it clamps to 0 and reports
+'     cPM_ReadElapsedInvalid through StatusOut, like a failed read.
 '   - Never applies rollover correction to a failed read.
 '
 ' WHY THE READ POLICY LIVES IN THE CALLER
@@ -6331,7 +6343,7 @@ Private Function Elapsed_ComputeSeconds( _
 '   is the default hot path.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -7041,11 +7053,12 @@ Private Sub Measure_ArmWorkerEndpointFault( _
 '   Does not raise
 '
 ' NOTES
-'   Called after Application.Run returns, so the injected fault cannot land on
-'   the workload or on a warm-up cycle
+'   MeasureProcedure calls it after Application.Run returns, and
+'   MeasureOverhead_Samples after the measured session opens, so the injected
+'   fault cannot land on the workload or on a warm-up cycle
 '
 ' UPDATED
-'   2026-08-30
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -7460,7 +7473,7 @@ Friend Sub Test_ForceWorkerStartReadFailures( _
 '------------------------------------------------------------------------------
 ' PURPOSE
 '   Arms forced native read failures on the START capture of the next measured
-'   cycles run by MeasureProcedure
+'   cycles run by MeasureProcedure or MeasureOverhead_Samples
 '
 ' WHY THIS EXISTS
 '   A cycle whose requested backend fails to start falls back to method 2, and
@@ -7497,7 +7510,7 @@ Friend Sub Test_ForceWorkerStartReadFailures( _
 '   raised, so an armed failure cannot leak into a later call
 '
 ' UPDATED
-'   2026-08-30
+'   2026-10-21
 '==============================================================================
 
     'Arm the requested number of forced worker start read failures
@@ -7515,7 +7528,7 @@ Friend Sub Test_ForceWorkerEndpointReadFailures( _
 '------------------------------------------------------------------------------
 ' PURPOSE
 '   Arms forced native read failures on the ENDPOINT read of the next measured
-'   cycles run by MeasureProcedure
+'   cycles run by MeasureProcedure or MeasureOverhead_Samples
 '
 ' WHY THIS EXISTS
 '   The counterpart to Test_ForceWorkerStartReadFailures. Named explicitly so a
@@ -7531,8 +7544,9 @@ Friend Sub Test_ForceWorkerEndpointReadFailures( _
 '   None
 '
 ' BEHAVIOR
-'   Each armed count is consumed by one measured cycle, after Application.Run
-'   returns and before ElapsedSeconds. The fault matches the bound backend:
+'   Each armed count is consumed by one measured cycle, before ElapsedSeconds:
+'   after Application.Run returns in MeasureProcedure, and after the session
+'   opens in MeasureOverhead_Samples. The fault matches the bound backend:
 '   method 5 fails a QPC read, method 4 a system-time read
 '
 ' ERROR POLICY
@@ -7545,7 +7559,7 @@ Friend Sub Test_ForceWorkerEndpointReadFailures( _
 '   Cleared on every exit from MeasureProcedure, normal or raised
 '
 ' UPDATED
-'   2026-08-30
+'   2026-10-21
 '==============================================================================
 
     'Arm the requested number of forced worker endpoint read failures
@@ -7727,7 +7741,7 @@ Public Property Get TW_CalculationExempted() As Boolean
 '   never started.
 '
 ' UPDATED
-'   2026-08-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------

@@ -66,7 +66,7 @@
 
 > [!NOTE]
 > The latest tagged release is **v1.4.0**. Development for **v1.4.1** is tracked
-> on the `v1.4.1` working branch and merged to `main` in reviewed increments; its
+> on the `release/v1.4.1` branch and squash-merged to `main` on request; its
 > [implementation plan](docs/V1.4.1_IMPLEMENTATION_PLAN.md) on that branch is
 > canonical during the milestone. Unreleased changes do not alter the exact-tag v1.4.0 certification
 > record below.
@@ -959,7 +959,11 @@ being skipped. Run its fixtures with `python tools/test_workflow_pins.py`.
 
 The macro-enabled demo workbook is distributed from
 [GitHub Releases](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases)
-rather than maintained as an opaque binary in the source tree.
+rather than maintained as an opaque binary in the source tree. From v1.4.1 it
+is published only inside `VBA-Performance-Manager-vX.Y.Z.zip`, together with
+`LICENSE` and `NOTICE`; keep all three together when redistributing it.
+v1.4.0 and earlier published the bare `PERFORMANCE.MANAGER.xlsm`. See
+[verifying a release package](INSTALLATION.md#release-workbook-package).
 
 It is useful for:
 

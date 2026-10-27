@@ -169,8 +169,13 @@ available. This history does not certify any later candidate or additional host.
 
 Planned outputs:
 
-- `PERFORMANCE MANAGER.xlsm`
+- `VBA-Performance-Manager-vX.Y.Z.zip`, the Release package, holding exactly
+  `PERFORMANCE MANAGER.xlsm`, `LICENSE` and `NOTICE` at its root
 - Source archive created by GitHub from the tag
+
+The workbook is published only inside the package, so the Apache 2.0 licence
+and attribution notice always travel with it. Releases up to and including
+v1.4.0 published the bare workbook; their assets stay as published.
 
 For each artifact:
 
@@ -179,7 +184,8 @@ For each artifact:
 3. Preserve required form and resource companions.
 4. Compile before saving.
 5. Exclude developer-only tests unless the artifact promises them.
-6. Reopen and run the packaged smoke or regression test.
+6. Extract the package, reopen the extracted workbook, and run the packaged
+   smoke or regression test.
 7. Record filename, size, and SHA-256.
 8. Never edit the artifact after hashing.
 
@@ -190,6 +196,21 @@ Get-FileHash -Algorithm SHA256 .\dist\<artifact>
 ```bash
 sha256sum dist/<artifact>
 ```
+
+Build the package from the certified checkout once the workbook is frozen.
+Take `LICENSE` and `NOTICE` from that checkout, never from another branch or an
+edited copy:
+
+```powershell
+Compress-Archive -Path ".\PERFORMANCE MANAGER.xlsm", .\LICENSE, .\NOTICE `
+    -DestinationPath .\VBA-Performance-Manager-vX.Y.Z.zip
+```
+
+```bash
+zip -X VBA-Performance-Manager-vX.Y.Z.zip "PERFORMANCE MANAGER.xlsm" LICENSE NOTICE
+```
+
+Provenance generation (step 9) verifies the package before it emits anything.
 
 Publish only artifacts promised by the installation guide.
 
@@ -241,7 +262,7 @@ Run this from the certified checkout, after the tag exists and before publishing
 
 ```bash
 python tools/release_provenance.py --version X.Y.Z --tag vX.Y.Z \
-    --asset "PERFORMANCE MANAGER.xlsm" \
+    --asset VBA-Performance-Manager-vX.Y.Z.zip \
     --excel "Microsoft 365 MSO, Version 2607, Build 16.0.20228.20188" \
     --bitness 64-bit --cases 80 --assertions 643 --failures 0 \
     --out release-manifest.json
@@ -249,12 +270,12 @@ python tools/release_provenance.py --version X.Y.Z --tag vX.Y.Z \
 
 There is one strict path and no preview mode. Every flag above except `--out` is required by the tool; `--out` is optional to the tool but required by this procedure, because the manifest is a published artifact. Everything is validated before any Markdown is constructed or any JSON is serialized:
 
-- the asset must exist and be a regular file; it is normally untracked, which is allowed;
+- the asset must be the Release package named `VBA-Performance-Manager-vX.Y.Z.zip` for the requested version: a readable ZIP holding exactly one `.xlsm` workbook, `LICENSE` and `NOTICE` at its root, with no other entry, and with `LICENSE` and `NOTICE` byte-identical to the tagged files. It is normally untracked, which is allowed;
 - the Excel build must be recorded and non-blank;
 - cases and assertions must be positive, and failures must be supplied explicitly and equal zero;
 - the version and tag must be well formed SemVer, without leading zeros, and must correspond;
 - the tag must resolve, and `HEAD` must equal its target commit;
-- no tracked file may be modified. Untracked files are ignored, so the workbook and the manifest itself may sit in the working tree.
+- no tracked file may be modified. The tool does not rely on `git status` alone: it rejects `assume-unchanged` and `skip-worktree` index flags, which hide edits from status, and names the `git update-index` command that clears each one. It then re-hashes every file tracked at `HEAD` through git's own attribute filters, including end-of-line conversion, and compares it with the committed blob. A tracked entry it cannot verify, such as a submodule, fails the run. Untracked files are ignored, so the workbook and the manifest itself may sit in the working tree.
 
 Exit codes:
 
@@ -284,7 +305,7 @@ Retain at least:
 - Excel version and bitness
 - regression-suite result
 - `tools/release_provenance.py` output
-- artifact SHA-256 hashes
+- package and package-member SHA-256 hashes
 - version and tag
 - previous release tag
 - release-preparation pull request
@@ -303,11 +324,14 @@ Create the release from the annotated tag and include:
 3. Supported platform statement.
 4. Known limitations.
 5. Installation link.
-6. Asset table with SHA-256 hashes.
+6. Asset table with the package SHA-256 and the package contents table from
+   the provenance block.
 7. Full changelog comparison link.
 8. Security-reporting link.
 
-Upload the already-hashed artifacts. Do not rebuild between tagging and upload.
+Upload the already-hashed `VBA-Performance-Manager-vX.Y.Z.zip` and
+`release-manifest.json`; do not upload the bare workbook. Do not rebuild
+between tagging and upload.
 
 ## 11. Verify after publication
 
@@ -316,8 +340,9 @@ Upload the already-hashed artifacts. Do not rebuild between tagging and upload.
 | Tag resolves to the certified SHA | ☐ |
 | `VERSION` and changelog match the tag | ☐ |
 | Assets download and hashes match | ☐ |
+| Downloaded package holds exactly the workbook, `LICENSE` and `NOTICE`, matching the package contents table | ☐ |
 | Installation links and examples work | ☐ |
-| Packaged artifact opens and passes its smoke test | ☐ |
+| Workbook extracted from the downloaded package opens and passes its smoke test | ☐ |
 | Source archive contains expected release files | ☐ |
 | Default branch is ready for the next Unreleased cycle | ☐ |
 
@@ -353,7 +378,7 @@ Do not silently replace assets or move the tag.
 | 4 | Installation verified cleanly | ☐ |
 | 5 | Static checks pass | ☐ |
 | 6 | Excel certification passes | ☐ |
-| 7 | Artifacts built and packaged-tested | ☐ |
+| 7 | Package built (workbook, `LICENSE`, `NOTICE`) and packaged-tested | ☐ |
 | 8 | Hashes and evidence recorded | ☐ |
 | 9 | Required pull request merged | ☐ |
 | 10 | Annotated tag targets certified main SHA | ☐ |

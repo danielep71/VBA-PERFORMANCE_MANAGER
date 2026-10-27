@@ -124,6 +124,23 @@ Use only the categories needed by a release.
 - Reject YAML tags and anchors before checked workflow keys so they cannot hide
   mutable action references from the pin gate; retain reference inventory and
   cover plain, quoted and flow keys with regression fixtures (#67).
+- The pin gate now checks action references it previously skipped without a
+  diagnostic: JSON-style quoted keys with no space after the colon, such as
+  `{"uses":"owner/action@main"}` (#69), and references that follow a quoted
+  scalar spanning several lines and containing an escaped quote (#70).
+  Regression fixtures cover both, in workflows and local action metadata.
+- From v1.4.1 the workbook is published only inside the Release package
+  `VBA-Performance-Manager-vX.Y.Z.zip`, together with the tagged `LICENSE` and
+  `NOTICE`, so the licence and attribution notice travel with every download.
+  Release provenance (tool 3.0.0) accepts only that package. It verifies the
+  name, ZIP integrity, exact contents and byte-identical `LICENSE`/`NOTICE`
+  before emitting anything, and records each member's SHA-256. Releases up to
+  v1.4.0 keep their published bare-workbook assets (#72).
+- Release provenance no longer trusts `git status` alone to prove that tracked
+  files are unmodified. It rejects `assume-unchanged` and `skip-worktree`
+  index flags, naming the command that clears each, and re-hashes every file
+  tracked at `HEAD` through git's attribute filters against its committed
+  blob. Entries it cannot verify fail closed. Provenance tool 2.2.0 (#71).
 - Hardened release provenance against residual identity/output edge cases: requested JSON is committed before publishable Markdown, documented SemVer pre-releases are accepted, release tags must be annotated, manifest output cannot alias protected inputs, and the requested version must match the tagged repository `VERSION` (#63).
 - Hardened compile-safety assignment analysis for object modules: Property Let/Set names are module-scoped assignable symbols and UserForm `.frm` exports no longer leak public members into standard-module scope. The deterministic compile-safety matrix is now 47 fixtures without adding a top-level static check (#64).
 - Pinned all workflow actions to immutable commits and upgraded

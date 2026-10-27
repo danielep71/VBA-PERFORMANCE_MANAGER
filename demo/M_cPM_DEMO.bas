@@ -279,6 +279,8 @@ Private Sub cPM_BuildDemoSheet( _
 ' BEHAVIOR
 '   - Builds the control panel
 '   - Builds the action-button area
+'   - Adds the "Run Regression Tests" button, which runs
+'     Run_cPerformanceManager_RegressionSuite
 '   - Builds the structured results-log table
 '   - Applies lightweight number-format refinements to the results log
 '
@@ -290,11 +292,14 @@ Private Sub cPM_BuildDemoSheet( _
 '   - DEMO_Write_NamedInputRow
 '   - DEMO_Write_BandHeader
 '   - DEMO_Add_ButtonGrid
+'   - DEMO_Add_DemoButton
 '   - DEMO_Set_RangeBorder
 '   - DEMO_Create_TableSection
+'   - M_cPM_Test (Run_cPerformanceManager_RegressionSuite is the regression
+'     button's macro; it is resolved only when the button is clicked)
 '
 ' UPDATED
-'   2026-04-15
+'   2026-10-21
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1800,7 +1805,8 @@ Public Sub cPM_RunPauseDemo()
         PauseS = cPM_Demo_GetPauseSeconds()
     'Read the selected pause method
         PauseMethod = cPM_Demo_GetPauseMethod()
-    'Prepare a timer instance using QPC and current strict-mode setting
+    'Prepare a timer instance using the current strict-mode setting; QPC is
+    'selected by the StartTimer call below
         Set cPM = cPM_Demo_PrepareInstance()
 
 '------------------------------------------------------------------------------
