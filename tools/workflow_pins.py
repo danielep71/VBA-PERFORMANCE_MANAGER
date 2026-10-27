@@ -15,10 +15,11 @@ classified and checked:
 Local action metadata is also checked for ``image: docker://...`` references.
 
 The scanner understands the YAML a workflow can use to spell a ``uses`` key:
-plain and quoted keys, block and flow mappings, comments and block scalars. It
-fails closed on constructs it does not model (explicit ``?`` keys, escaped
-quoted keys, aliases, tags, anchors, and values that do not start on the key's
-line) instead of silently skipping them.
+plain and quoted keys (including JSON-style quoted keys with no space after the
+colon), block and flow mappings, comments, block scalars and quoted scalars
+that span lines, with their escapes. It fails closed on constructs it does not
+model (explicit ``?`` keys, escaped quoted keys, aliases, tags, anchors, and
+values that do not start on the key's line) instead of silently skipping them.
 """
 from __future__ import annotations
 
@@ -79,6 +80,27 @@ def _read_quoted(line: str, i: int) -> tuple[str | None, int, bool]:
     return None, len(line), escaped
 
 
+def _closing_quote(line: str, quote: str) -> int:
+    """Index of the delimiter that closes a quoted scalar continued onto ``line``.
+
+    Double quotes honour backslash escapes; single quotes treat ``''`` as an
+    escaped quote and backslashes as literal. Returns -1 if the scalar stays open.
+    """
+    j = 0
+    while j < len(line):
+        c = line[j]
+        if quote == '"' and c == "\\":
+            j += 2
+            continue
+        if c == quote:
+            if quote == "'" and line[j + 1:j + 2] == "'":
+                j += 2
+                continue
+            return j
+        j += 1
+    return -1
+
+
 def scan(path: str, text: str, keys: tuple[str, ...] = ("uses",)) -> tuple[list[Reference], list[str]]:
     """Find every mapping key in ``keys`` and return its same-line scalar."""
     refs: list[Reference] = []
@@ -102,9 +124,7 @@ def scan(path: str, text: str, keys: tuple[str, ...] = ("uses",)) -> tuple[list[
 
         i = 0
         if open_quote:
-            close = line.find(open_quote)
-            while open_quote == "'" and close != -1 and line[close:close + 2] == "''":
-                close = line.find("'", close + 2)
+            close = _closing_quote(line, open_quote)
             if close == -1:
                 continue
             i, open_quote = close + 1, None
@@ -169,7 +189,11 @@ def scan(path: str, text: str, keys: tuple[str, ...] = ("uses",)) -> tuple[list[
             k = i
             while k < len(line) and line[k] in " \t":
                 k += 1
-            if not key_follows(k):
+            # After a quoted (JSON-like) key YAML allows the value to follow the
+            # colon directly, as in {"uses":"a@b"}. That is only valid in flow
+            # context; accepting it everywhere checks more, never less.
+            json_key = quoted and k < len(line) and line[k] == ":"
+            if not (key_follows(k) or json_key):
                 continue   # a value or free text
 
             # An escape sequence could spell a checked key; do not decode it.

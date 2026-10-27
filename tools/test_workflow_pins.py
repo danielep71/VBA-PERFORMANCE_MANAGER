@@ -129,6 +129,70 @@ CASES += [
      ["d/action.yml:2: unsupported YAML tag or anchor", "@sha256:"], ["local action", "docker"]),
 ]
 
+# #69: a quoted (JSON-like) key may be followed by its value with no space
+# after the colon. Each spelling must keep its inventory entry.
+CASES += [
+    ("json key double-quoted", only('- {"uses":"actions/checkout@main"}'),
+     ["ci.yml:6", "40-hex"], ["remote action"]),
+    ("json key single-quoted", only("- {'uses':'actions/checkout@main'}"),
+     ["ci.yml:6", "40-hex"], ["remote action"]),
+    ("json key plain value", only('- {"uses":actions/checkout@main}'),
+     ["ci.yml:6", "40-hex"], ["remote action"]),
+    ("json key space before colon", only('- {"uses" :"actions/checkout@main"}'),
+     ["ci.yml:6", "40-hex"], ["remote action"]),
+    ("json key nested flow", only('- {name: x, "uses":"actions/checkout@v4", with: {"a":1}}'),
+     ["ci.yml:6", "40-hex"], ["remote action"]),
+    ("json key short SHA", only('- {"uses":"actions/checkout@11d5960"} # v4'),
+     ["40-hex"], ["remote action"]),
+    ("json key missing version comment", only(f'- {{"uses":"actions/checkout@{SHA}"}}'),
+     ["version comment"], ["remote action"]),
+    ("json key full pin", only(f'- {{"uses":"actions/checkout@{SHA}"}} # v4.4.0'),
+     [], ["remote action"]),
+    ("json key in block context", only('- "uses":"actions/checkout@main"'),
+     ["ci.yml:6", "40-hex"], ["remote action"]),
+    ("json key in local action", only("- uses: ./d",
+        d__action_dot_yml='runs:\n  steps:\n    - {"uses":"owner/x@main"}\n'),
+     ["d/action.yml:3", "40-hex"], ["local action", "remote action"]),
+    ("json key in literal text", only(
+        "- name: '{\"uses\":\"owner/a@main\"}'", "- run: |", "    {\"uses\":\"owner/a@main\"}",
+        "# {\"uses\":\"owner/a@main\"}"),
+     [], []),
+]
+
+# #70: a quoted scalar continued onto later lines closes at its real
+# delimiter, so the keys after it are still scanned.
+CASES += [
+    ("escaped quote in continuation", only('- name: "line one', '    escaped \\""',
+                                            "  uses: actions/checkout@main"),
+     ["ci.yml:8", "40-hex"], ["remote action"]),
+    ("odd backslashes escape the quote", only('- name: "one', '    tail \\\\\\""',
+                                              "  uses: actions/checkout@main"),
+     ["ci.yml:8", "40-hex"], ["remote action"]),
+    ("even backslashes close the quote", only('- name: "one', '    tail \\\\"',
+                                              "  uses: actions/checkout@main"),
+     ["ci.yml:8", "40-hex"], ["remote action"]),
+    ("several continuation lines", only('- name: "one', '    two \\" open', '    three \\" open',
+                                        '    end"', "  uses: actions/checkout@main"),
+     ["ci.yml:10", "40-hex"], ["remote action"]),
+    ("single quote doubling continued", only("- name: 'one", "    it''s open", "    end'",
+                                             "  uses: actions/checkout@main"),
+     ["ci.yml:9", "40-hex"], ["remote action"]),
+    ("single quote backslash is literal", only("- name: 'one", "    c:\\'",
+                                               "  uses: actions/checkout@main"),
+     ["ci.yml:8", "40-hex"], ["remote action"]),
+    ("continued quoted uses value", only('- uses: "actions/checkout@main', '    x \\""',
+                                         "- uses: actions/checkout@main"),
+     ["ci.yml:6: 'uses' value is an unsupported", "ci.yml:8", "40-hex"],
+     ["remote action"]),
+    ("escaped continuation in local action", only("- uses: ./d",
+        d__action_dot_yml='runs:\n  steps:\n    - name: "a\n        b \\""\n      uses: owner/x@main\n'),
+     ["d/action.yml:5", "40-hex"], ["local action", "remote action"]),
+    ("quote inside block scalar", only("- run: |", '    echo "open \\"', "  uses: actions/checkout@main"),
+     ["ci.yml:8", "40-hex"], ["remote action"]),
+    ("full pin after continuation", only('- name: "a', '    b \\""', f"  uses: actions/checkout@{SHA} # v4"),
+     [], ["remote action"]),
+]
+
 
 def fixture_problems() -> list[str]:
     failures: list[str] = []
