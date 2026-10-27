@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import re
@@ -11,6 +12,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import warnings
+import zipfile
 from pathlib import Path
 
 TOOL = Path(__file__).resolve().parent / "release_provenance.py"
@@ -25,8 +28,18 @@ SOURCES = [
     "demo/M_cPM_USAGE_EXAMPLES.bas",
     "demo/M_DEMO_BUILDER.bas",
 ]
-ASSET = "PERFORMANCE MANAGER.xlsm"
+WORKBOOK = "PERFORMANCE MANAGER.xlsm"
+WORKBOOK_BYTES = b"fixture workbook bytes"
+LICENSE_TEXT = b"fixture license text\n"
+NOTICE_TEXT = b"fixture notice text\n"
 NOTES = "NOTES.txt"
+
+
+def package_name(version: str) -> str:
+    return f"VBA-Performance-Manager-v{version}.zip"
+
+
+ASSET = package_name("1.4.0")
 
 VALID = {
     "--version": "1.4.0",
@@ -54,6 +67,7 @@ def make_repo(
     version: str = "1.4.0",
     annotated: bool = True,
     include_version: bool = True,
+    include_license: bool = True,
 ) -> Path:
     repo = tmp / "repo"
     (repo / "tools").mkdir(parents=True)
@@ -68,6 +82,9 @@ def make_repo(
     # A tracked file outside the hashed source set, which only the complete
     # tracked-content check covers.
     (repo / NOTES).write_text("tracked, not hashed\n", encoding="utf-8")
+    if include_license:
+        (repo / "LICENSE").write_bytes(LICENSE_TEXT)
+        (repo / "NOTICE").write_bytes(NOTICE_TEXT)
 
     _git(repo, "init", "-q", "-b", "main")
     _git(repo, "config", "user.email", "fixture@example.invalid")
@@ -80,8 +97,21 @@ def make_repo(
         else:
             _git(repo, "tag", tag)
 
-    (repo / ASSET).write_bytes(b"fixture workbook bytes")
+    write_package(repo, package_name(version))
     return repo
+
+
+def write_package(repo: Path, name: str = ASSET, members: list[tuple[str, bytes]] | None = None,
+                  *, compression: int = zipfile.ZIP_DEFLATED) -> Path:
+    """Write a Release package; by default the valid workbook, LICENSE and NOTICE."""
+    if members is None:
+        members = [(WORKBOOK, WORKBOOK_BYTES), ("LICENSE", LICENSE_TEXT), ("NOTICE", NOTICE_TEXT)]
+    path = repo / name
+    with zipfile.ZipFile(path, "w", compression) as package, warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)   # duplicate members are a fixture
+        for member, data in members:
+            package.writestr(member, data)
+    return path
 
 
 def run(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -257,6 +287,67 @@ def main() -> int:
         m.rejects("an unverifiable tracked entry fails closed", gitlink, valid_args(),
                   expected="vendor/module: tracked commit 160000 cannot be verified")
 
+        # #72: the Release package must carry the tagged LICENSE and NOTICE
+        # with exactly one workbook, and nothing else.
+        def package_rejects(name: str, label: str, expected: str, *, members=None,
+                            asset_name: str = ASSET, **repo_kwargs) -> None:
+            repo_dir = make_repo(tmp / f"pkg-{label}", **repo_kwargs)
+            if members is not None:
+                write_package(repo_dir, asset_name, members)
+            m.rejects(name, repo_dir, valid_args(asset=asset_name), expected=expected)
+
+        wb, lic, notice = (WORKBOOK, WORKBOOK_BYTES), ("LICENSE", LICENSE_TEXT), ("NOTICE", NOTICE_TEXT)
+        package_rejects("package without LICENSE", "no-license", "package is missing LICENSE",
+                        members=[wb, notice])
+        package_rejects("package without NOTICE", "no-notice", "package is missing NOTICE",
+                        members=[wb, lic])
+        package_rejects("package NOTICE differs from the tag", "notice-drift",
+                        "package NOTICE differs from NOTICE at v1.4.0",
+                        members=[wb, lic, ("NOTICE", b"edited notice\n")])
+        package_rejects("package LICENSE line endings differ from the tag", "license-crlf",
+                        "package LICENSE differs from LICENSE at v1.4.0",
+                        members=[wb, ("LICENSE", LICENSE_TEXT.replace(b"\n", b"\r\n")), notice])
+        package_rejects("package without a workbook", "no-workbook", "package has no .xlsm workbook",
+                        members=[lic, notice])
+        package_rejects("package with two workbooks", "two-workbooks", "exactly one is allowed",
+                        members=[wb, ("Other.xlsm", WORKBOOK_BYTES), lic, notice])
+        package_rejects("package with an empty workbook", "empty-workbook", "is empty",
+                        members=[(WORKBOOK, b""), lic, notice])
+        package_rejects("package with an unexpected file", "extra", "unexpected file 'README.md'",
+                        members=[wb, lic, notice, ("README.md", b"extra\n")])
+        package_rejects("package with a nested member", "nested", "not a plain file at the package root",
+                        members=[wb, ("legal/LICENSE", LICENSE_TEXT), lic, notice])
+        package_rejects("package with a directory entry", "directory", "not a plain file at the package root",
+                        members=[wb, lic, notice, ("docs/", b"")])
+        package_rejects("package with a duplicate member", "duplicate", "lists 'NOTICE' more than once",
+                        members=[wb, lic, notice, notice])
+        package_rejects("package named for another version", "wrong-name",
+                        "must be the Release package 'VBA-Performance-Manager-v1.4.0.zip'",
+                        asset_name=package_name("1.4.1"),
+                        members=[wb, lic, notice])
+        package_rejects("LICENSE missing from the tagged source", "untracked-license",
+                        "LICENSE is missing from tagged source v1.4.0",
+                        members=[wb, lic, notice], include_license=False)
+
+        bare = make_repo(tmp / "pkg-bare")
+        (bare / WORKBOOK).write_bytes(WORKBOOK_BYTES)
+        m.rejects("a bare workbook asset is rejected", bare, valid_args(asset=WORKBOOK),
+                  expected="must be the Release package")
+
+        not_zip = make_repo(tmp / "pkg-not-zip")
+        (not_zip / ASSET).write_bytes(WORKBOOK_BYTES)
+        m.rejects("an asset that is not a ZIP is rejected", not_zip, valid_args(),
+                  expected="is not a readable ZIP package")
+
+        corrupt = make_repo(tmp / "pkg-corrupt")
+        write_package(corrupt, members=[wb, lic, notice], compression=zipfile.ZIP_STORED)
+        raw = bytearray((corrupt / ASSET).read_bytes())
+        offset = raw.find(WORKBOOK_BYTES)
+        raw[offset] ^= 0xFF
+        (corrupt / ASSET).write_bytes(bytes(raw))
+        m.rejects("a corrupt package member is rejected", corrupt, valid_args(),
+                  expected="is corrupt (CRC mismatch)")
+
         wrong_version = make_repo(tmp / "h", tag="v9.9.9", version="1.4.0")
         m.rejects("requested version disagrees with tagged VERSION", wrong_version,
                   valid_args(version="9.9.9", tag="v9.9.9"), expected="VERSION")
@@ -355,6 +446,9 @@ def main() -> int:
             problems.append(f"exit {proc.returncode}: {proc.stderr.strip()[:300]}")
         if PROVENANCE_MARKER not in proc.stdout:
             problems.append("no provenance block was printed")
+        for text in ("**Package contents**", f"`{WORKBOOK}`", "`LICENSE`", "`NOTICE`"):
+            if text not in proc.stdout:
+                problems.append(f"success output lacks {text!r}")
         for marker in ("TODO", "not found", "not checked", "*not present*"):
             if marker in proc.stdout:
                 problems.append(f"success output contains {marker!r}")
@@ -389,6 +483,16 @@ def main() -> int:
                     problems.append(f"scope.{key} is {scope.get(key)!r}")
             if ASSET not in data.get("sha256", {}):
                 problems.append("the asset digest is absent")
+            members = data.get("package", {}).get("members", {})
+            expected_members = {
+                WORKBOOK: hashlib.sha256(WORKBOOK_BYTES).hexdigest(),
+                "LICENSE": hashlib.sha256(LICENSE_TEXT).hexdigest(),
+                "NOTICE": hashlib.sha256(NOTICE_TEXT).hexdigest(),
+            }
+            if members != expected_members:
+                problems.append(f"package members are {members!r}")
+            if scope.get("package_contents_verified") is not True:
+                problems.append("scope.package_contents_verified is not true")
             if "TODO" in manifest_path.read_text(encoding="utf-8"):
                 problems.append("the manifest contains TODO")
         m.case("successful manifest is complete and identity-consistent", not problems, "; ".join(problems))
@@ -424,7 +528,8 @@ def main() -> int:
         )
         proc = run(
             prerelease,
-            *valid_args(version="1.4.1-rc.1", tag="v1.4.1-rc.1"),
+            *valid_args(version="1.4.1-rc.1", tag="v1.4.1-rc.1",
+                        asset=package_name("1.4.1-rc.1")),
             "--out", "release-manifest.json",
         )
         m.case(

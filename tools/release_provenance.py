@@ -9,8 +9,15 @@ they received is what was built.
 This emits a markdown block recording:
 
   * the commit the release was cut from
-  * a SHA-256 for every shipped file, including the Release asset
+  * a SHA-256 for every shipped file, including the Release package and each
+    file inside it
   * the environment the regression suite was certified on
+
+The Release asset is one ZIP package, VBA-Performance-Manager-vX.Y.Z.zip,
+holding exactly the workbook, LICENSE and NOTICE at its root. The package is
+verified before anything is emitted: its name must match the version, it
+must be a sound ZIP with exactly those members, and LICENSE and NOTICE must be
+byte-identical to their blobs at the release tag.
 
 There is one strict path. Every release-critical input is required and is
 validated before any publishable markdown or JSON is produced. Incomplete
@@ -22,7 +29,7 @@ This is the same command RELEASING.md documents, and a fixture keeps the two
 identical:
 
 python tools/release_provenance.py --version X.Y.Z --tag vX.Y.Z \\
-    --asset "PERFORMANCE MANAGER.xlsm" \\
+    --asset VBA-Performance-Manager-vX.Y.Z.zip \\
     --excel "Microsoft 365 MSO, Version 2607, Build 16.0.20228.20188" \\
     --bitness 64-bit --cases 80 --assertions 643 --failures 0 \\
     --out release-manifest.json
@@ -47,10 +54,11 @@ import re
 import subprocess
 import sys
 import tempfile
+import zipfile
 from datetime import date
 from pathlib import Path
 
-TOOL_VERSION = "2.2.0"
+TOOL_VERSION = "3.0.0"
 ROOT = Path(__file__).resolve().parent.parent
 
 REQUIRED = [
@@ -64,6 +72,13 @@ OPTIONAL = [
     "demo/M_DEMO_BUILDER.bas",
 ]
 VERSION_FILE = "VERSION"
+LICENSE_FILES = ("LICENSE", "NOTICE")
+WORKBOOK_SUFFIX = ".xlsm"
+
+
+def package_name(version: str) -> str:
+    """The one accepted Release asset name for a version."""
+    return f"VBA-Performance-Manager-v{version}.zip"
 
 
 def sha256(path: Path) -> str:
@@ -94,6 +109,16 @@ def git_raw(*args: str) -> str | None:
             encoding="utf-8", errors="replace",
         )
         return out.stdout
+    except Exception:
+        return None
+
+
+def git_bytes(*args: str) -> bytes | None:
+    """Run a git command and return its raw stdout bytes, or None on failure."""
+    try:
+        return subprocess.run(
+            ["git", *args], cwd=ROOT, capture_output=True, check=True,
+        ).stdout
     except Exception:
         return None
 
@@ -216,6 +241,69 @@ def tracked_content_problems() -> list[str]:
         problems.extend(f"  missing: {rel}" for rel in missing[:20])
         problems.extend(f"  differs: {rel}" for rel in differing[:20])
     return problems
+
+
+def package_problems(asset: Path, version: str | None, tag: str | None) -> list[str]:
+    """Verify the Release package before it is described as published.
+
+    The package must be named for the release version, be a sound ZIP, and
+    hold exactly LICENSE, NOTICE and one workbook at its root. LICENSE and
+    NOTICE must be byte-identical to their blobs at the tag. Anything that
+    cannot be read or compared fails closed. tag is None when the tag itself
+    already failed validation, so the content comparison is skipped.
+    """
+    problems: list[str] = []
+    if version is not None and asset.name != package_name(version):
+        problems.append(
+            f"--asset must be the Release package {package_name(version)!r}, "
+            f"got {asset.name!r}"
+        )
+    try:
+        with zipfile.ZipFile(asset) as package:
+            bad = package.testzip()
+            if bad is not None:
+                return problems + [f"package member {bad!r} is corrupt (CRC mismatch)"]
+            infos = package.infolist()
+            names = [info.filename for info in infos]
+            members = {info.filename: package.read(info) for info in infos}
+    except (zipfile.BadZipFile, OSError, RuntimeError, ValueError) as exc:
+        return problems + [f"--asset is not a readable ZIP package: {exc}"]
+
+    for name in sorted({n for n in names if names.count(n) > 1}):
+        problems.append(f"package lists {name!r} more than once")
+    unsafe = [n for n in names if n.endswith("/") or "/" in n or "\\" in n or ":" in n]
+    for name in unsafe:
+        problems.append(f"package entry {name!r} is not a plain file at the package root")
+    root = [n for n in dict.fromkeys(names) if n not in unsafe]
+    workbooks = [n for n in root if n.lower().endswith(WORKBOOK_SUFFIX)]
+    for required in LICENSE_FILES:
+        if required not in root:
+            problems.append(f"package is missing {required}")
+    if not workbooks:
+        problems.append(f"package has no {WORKBOOK_SUFFIX} workbook")
+    elif len(workbooks) > 1:
+        problems.append(f"package has {len(workbooks)} workbooks; exactly one is allowed")
+    elif not members[workbooks[0]]:
+        problems.append(f"package workbook {workbooks[0]!r} is empty")
+    for name in root:
+        if name not in LICENSE_FILES and name not in workbooks:
+            problems.append(f"package contains unexpected file {name!r}")
+
+    if tag is not None:
+        for required in LICENSE_FILES:
+            tagged = git_bytes("show", f"{tag}:{required}")
+            if tagged is None:
+                problems.append(f"{required} is missing from tagged source {tag}")
+            elif required in members and members[required] != tagged:
+                problems.append(f"package {required} differs from {required} at {tag}")
+    return problems
+
+
+def package_members(asset: Path) -> dict[str, str]:
+    """SHA-256 of each file inside an already verified package."""
+    with zipfile.ZipFile(asset) as package:
+        return {info.filename: hashlib.sha256(package.read(info)).hexdigest()
+                for info in package.infolist()}
 
 
 GIT_MISSING_HINT = (
@@ -396,6 +484,13 @@ def validate(args: argparse.Namespace) -> list[str]:
                         f"({source_version!r})"
                     )
 
+    if asset_path is not None and asset_path.is_file():
+        tag_ok = args.tag is not None and tag_object_type(args.tag) == "tag"
+        problems.extend(package_problems(
+            asset_path, args.version if version_valid else None,
+            args.tag if tag_ok else None,
+        ))
+
     for rel in REQUIRED:
         if not (ROOT / rel).exists():
             problems.append(f"required source missing on disk: {rel}")
@@ -457,13 +552,21 @@ def build_markdown(args: argparse.Namespace, commit: str) -> str:
     out.append("| Asset | SHA-256 |")
     out.append("|---|---|")
     out.append(f"| `{asset_path.name}` | `{sha256(asset_path)}` |")
+    out.append("")
+    out.append("**Package contents**")
+    out.append("")
+    out.append("| File | SHA-256 |")
+    out.append("|---|---|")
+    out.extend(f"| `{name}` | `{digest}` |" for name, digest in package_members(asset_path).items())
 
     out.append("")
     out.append("### Source integrity")
     out.append("")
     out.append(f"`HEAD` is the target of annotated tag `{args.tag}`, `{VERSION_FILE}` agrees with")
     out.append("the requested release identity, no tracked file is modified, and every")
-    out.append(f"hashed source file matches its blob at `{args.tag}`.")
+    out.append(f"hashed source file matches its blob at `{args.tag}`. The package holds")
+    out.append(f"exactly the workbook, `LICENSE` and `NOTICE`, and the latter two are")
+    out.append(f"byte-identical to their blobs at `{args.tag}`.")
     out.append("")
     out.append("### What this establishes")
     out.append("")
@@ -473,6 +576,7 @@ def build_markdown(args: argparse.Namespace, commit: str) -> str:
     out.append("| The manifest describes the tagged commit | `HEAD` equals the annotated tag target |")
     out.append(f"| The release version is the tagged source version | `{VERSION_FILE}` comparison |")
     out.append("| A downloaded file is the one published here | its SHA-256 |")
+    out.append("| The package carries the tagged LICENSE and NOTICE | package verification against the tag |")
     out.append("| The suite passed in the stated environment | the certification block, asserted by the releaser |")
     out.append("")
     out.append("> [!IMPORTANT]")
@@ -494,13 +598,19 @@ def build_markdown(args: argparse.Namespace, commit: str) -> str:
     out.append("PowerShell:")
     out.append("")
     out.append("```powershell")
-    out.append('Get-FileHash -Algorithm SHA256 ".\\PERFORMANCE MANAGER.xlsm"')
+    out.append(f'Get-FileHash -Algorithm SHA256 ".\\{asset_path.name}"')
+    out.append(f'Expand-Archive ".\\{asset_path.name}" -DestinationPath ".\\{asset_path.stem}"')
+    out.append(f'Get-FileHash -Algorithm SHA256 ".\\{asset_path.stem}\\*"')
     out.append("```")
+    out.append("")
+    out.append("Compare the package hash with the release asset table and each extracted")
+    out.append("file with the package contents table. Keep `LICENSE` and `NOTICE` with the")
+    out.append("workbook when redistributing it.")
     out.append("")
     out.append("The source files are text and are also in the repository at the commit")
     out.append("above, so `git show <commit>:<path>` gives the same bytes. The workbook is")
-    out.append("only distributed as a Release asset, which is why its hash is published")
-    out.append("here.")
+    out.append("only distributed inside the Release package, which is why its hash is")
+    out.append("published here.")
     out.append("")
     out.append("</details>")
     return "\n".join(out)
@@ -531,12 +641,14 @@ def build_manifest(args: argparse.Namespace, commit: str, tag_target: str) -> di
             "tag_is_annotated": True,
             "version_matches_tagged_source": True,
             "tracked_files_unmodified": True,
+            "package_contents_verified": True,
             "workbook_built_from_source": False,
             "workbook_build_is_manual": True,
         },
     }
     asset_path = rooted_path(args.asset)
     manifest["sha256"][asset_path.name] = sha256(asset_path)
+    manifest["package"] = {"name": asset_path.name, "members": package_members(asset_path)}
     return manifest
 
 
@@ -566,7 +678,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--version", help="Release version, e.g. 1.4.0 or 1.4.1-rc.1")
     ap.add_argument("--tag", help="Annotated release tag, e.g. v1.4.0; HEAD must be its target")
-    ap.add_argument("--asset", help="Path to the Release asset to hash")
+    ap.add_argument("--asset", help="Path to the Release package, VBA-Performance-Manager-vX.Y.Z.zip")
     ap.add_argument("--excel", help="Excel version and build the suite was certified on")
     ap.add_argument("--bitness", choices=["32-bit", "64-bit"], help="Office bitness")
     ap.add_argument("--cases", type=int, help="Regression cases run")

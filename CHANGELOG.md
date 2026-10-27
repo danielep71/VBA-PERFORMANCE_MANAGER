@@ -129,6 +129,13 @@ Use only the categories needed by a release.
   `{"uses":"owner/action@main"}` (#69), and references that follow a quoted
   scalar spanning several lines and containing an escaped quote (#70).
   Regression fixtures cover both, in workflows and local action metadata.
+- From v1.4.1 the workbook is published only inside the Release package
+  `VBA-Performance-Manager-vX.Y.Z.zip`, together with the tagged `LICENSE` and
+  `NOTICE`, so the licence and attribution notice travel with every download.
+  Release provenance (tool 3.0.0) accepts only that package. It verifies the
+  name, ZIP integrity, exact contents and byte-identical `LICENSE`/`NOTICE`
+  before emitting anything, and records each member's SHA-256. Releases up to
+  v1.4.0 keep their published bare-workbook assets (#72).
 - Release provenance no longer trusts `git status` alone to prove that tracked
   files are unmodified. It rejects `assume-unchanged` and `skip-worktree`
   index flags, naming the command that clears each, and re-hashes every file

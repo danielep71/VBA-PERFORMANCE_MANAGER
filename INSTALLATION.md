@@ -73,6 +73,26 @@ Choose one supported model and keep its source identity explicit:
 Do not combine files from different tags, commits, release assets, local exports,
 or copied workbooks.
 
+### Release workbook package
+
+From v1.4.1 the optional workbook is published only inside
+`VBA-Performance-Manager-vX.Y.Z.zip`. The package holds exactly
+`PERFORMANCE MANAGER.xlsm`, `LICENSE` and `NOTICE`. To verify a download:
+
+1. Compare the package SHA-256 with the asset table in the release notes.
+2. Extract it and compare each file with the package contents table.
+3. Keep `LICENSE` and `NOTICE` with the workbook if you redistribute it, as
+   the Apache 2.0 licence requires.
+
+```powershell
+Get-FileHash -Algorithm SHA256 .\VBA-Performance-Manager-vX.Y.Z.zip
+Expand-Archive .\VBA-Performance-Manager-vX.Y.Z.zip -DestinationPath .\VBA-Performance-Manager-vX.Y.Z
+Get-FileHash -Algorithm SHA256 .\VBA-Performance-Manager-vX.Y.Z\*
+```
+
+v1.4.0 and earlier published the bare workbook as `PERFORMANCE.MANAGER.xlsm`
+under the MIT licence; those assets are unchanged.
+
 ---
 
 ## 📂 Production source package
