@@ -254,7 +254,7 @@ There is one strict path and no preview mode. Every flag above except `--out` is
 - cases and assertions must be positive, and failures must be supplied explicitly and equal zero;
 - the version and tag must be well formed SemVer, without leading zeros, and must correspond;
 - the tag must resolve, and `HEAD` must equal its target commit;
-- no tracked file may be modified. Untracked files are ignored, so the workbook and the manifest itself may sit in the working tree.
+- no tracked file may be modified. The tool does not rely on `git status` alone: it rejects `assume-unchanged` and `skip-worktree` index flags, which hide edits from status, and names the `git update-index` command that clears each one. It then re-hashes every file tracked at `HEAD` through git's own attribute filters, including end-of-line conversion, and compares it with the committed blob. A tracked entry it cannot verify, such as a submodule, fails the run. Untracked files are ignored, so the workbook and the manifest itself may sit in the working tree.
 
 Exit codes:
 

@@ -26,6 +26,7 @@ SOURCES = [
     "demo/M_DEMO_BUILDER.bas",
 ]
 ASSET = "PERFORMANCE MANAGER.xlsm"
+NOTES = "NOTES.txt"
 
 VALID = {
     "--version": "1.4.0",
@@ -64,6 +65,9 @@ def make_repo(
         path.write_text(f"' fixture content for {rel}\n", encoding="utf-8")
     if include_version:
         (repo / "VERSION").write_text(version + "\n", encoding="utf-8")
+    # A tracked file outside the hashed source set, which only the complete
+    # tracked-content check covers.
+    (repo / NOTES).write_text("tracked, not hashed\n", encoding="utf-8")
 
     _git(repo, "init", "-q", "-b", "main")
     _git(repo, "config", "user.email", "fixture@example.invalid")
@@ -118,7 +122,7 @@ class Matrix:
 
     def rejects(
         self, name: str, repo: Path, args: list[str], *,
-        out_name: str = "release-manifest.json", expected: str | None = None,
+        out_name: str = "release-manifest.json", expected: str | tuple[str, ...] | None = None,
     ) -> None:
         out = repo / out_name
         sentinel = "PREVIOUS MANIFEST - MUST NOT BE TOUCHED\n"
@@ -136,8 +140,9 @@ class Matrix:
             problems.append("the existing --out file was overwritten")
         if out.stat().st_mtime_ns != before:
             problems.append("the existing --out file was touched")
-        if expected and expected not in proc.stderr:
-            problems.append(f"stderr does not contain {expected!r}")
+        for text in (expected,) if isinstance(expected, str) else expected or ():
+            if text not in proc.stderr:
+                problems.append(f"stderr does not contain {text!r}")
         self.case(name, not problems, "; ".join(problems))
 
 
@@ -211,6 +216,46 @@ def main() -> int:
         _git(content, "update-index", "--assume-unchanged", SOURCES[1])
         (content / SOURCES[1]).write_text("' drifted from the tag\n", encoding="utf-8")
         m.rejects("source content differs from the tag", content, valid_args())
+
+        # #71: git status trusts the index, so index flags can hide an edited
+        # tracked file that is outside the hashed source set.
+        hidden = make_repo(tmp / "o")
+        _git(hidden, "update-index", "--assume-unchanged", NOTES)
+        (hidden / NOTES).write_text("edited behind assume-unchanged\n", encoding="utf-8")
+        m.rejects("assume-unchanged hides a modified non-hashed file", hidden, valid_args(),
+                  expected=("assume-unchanged", f"differs: {NOTES}"))
+
+        skipped = make_repo(tmp / "p")
+        _git(skipped, "update-index", "--skip-worktree", NOTES)
+        (skipped / NOTES).write_text("edited behind skip-worktree\n", encoding="utf-8")
+        m.rejects("skip-worktree hides a modified non-hashed file", skipped, valid_args(),
+                  expected=("skip-worktree", f"differs: {NOTES}"))
+
+        deleted = make_repo(tmp / "q")
+        _git(deleted, "update-index", "--skip-worktree", NOTES)
+        (deleted / NOTES).unlink()
+        m.rejects("skip-worktree hides a deleted file", deleted, valid_args(),
+                  expected=("skip-worktree", f"missing: {NOTES}"))
+
+        flag_only = make_repo(tmp / "r")
+        _git(flag_only, "update-index", "--assume-unchanged", NOTES)
+        m.rejects("an index flag is rejected even without an edit", flag_only, valid_args(),
+                  expected=f"git update-index --no-assume-unchanged -- {NOTES}")
+
+        both_flags = make_repo(tmp / "s")
+        _git(both_flags, "update-index", "--assume-unchanged", NOTES)
+        _git(both_flags, "update-index", "--skip-worktree", NOTES)
+        m.rejects("both index flags on one entry are reported", both_flags, valid_args(),
+                  expected=("assume-unchanged", "skip-worktree"))
+
+        gitlink = make_repo(tmp / "t", tag="")
+        base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=gitlink, capture_output=True,
+                              text=True, encoding="utf-8").stdout.strip()
+        _git(gitlink, "update-index", "--add", "--cacheinfo", f"160000,{base},vendor/module")
+        _git(gitlink, "commit", "-q", "-m", "track a gitlink")
+        _git(gitlink, "tag", "-a", "v1.4.0", "-m", "fixture")
+        m.rejects("an unverifiable tracked entry fails closed", gitlink, valid_args(),
+                  expected="vendor/module: tracked commit 160000 cannot be verified")
 
         wrong_version = make_repo(tmp / "h", tag="v9.9.9", version="1.4.0")
         m.rejects("requested version disagrees with tagged VERSION", wrong_version,
@@ -347,6 +392,25 @@ def main() -> int:
             if "TODO" in manifest_path.read_text(encoding="utf-8"):
                 problems.append("the manifest contains TODO")
         m.case("successful manifest is complete and identity-consistent", not problems, "; ".join(problems))
+
+        # The content check hashes through git's attribute filters, so a CRLF
+        # checkout of eol=crlf sources, as this repository ships, is clean.
+        crlf = make_repo(tmp / "u", tag="")
+        (crlf / ".gitattributes").write_text("*.bas text eol=crlf\n*.cls text eol=crlf\n",
+                                             encoding="utf-8")
+        _git(crlf, "add", "-A")
+        _git(crlf, "commit", "-q", "-m", "declare CRLF sources")
+        _git(crlf, "tag", "-a", "v1.4.0", "-m", "fixture")
+        for rel in SOURCES:
+            (crlf / rel).unlink()
+        _git(crlf, "checkout", "--", ".")
+        crlf_on_disk = all(b"\r\n" in (crlf / rel).read_bytes() for rel in SOURCES)
+        proc = run(crlf, *valid_args(), "--out", "release-manifest.json")
+        m.case(
+            "CRLF checkout of eol=crlf sources succeeds",
+            crlf_on_disk and proc.returncode == 0 and PROVENANCE_MARKER in proc.stdout,
+            f"crlf_on_disk={crlf_on_disk}; exit={proc.returncode}; stderr={proc.stderr[:200]!r}",
+        )
 
         proc = run(good, *valid_args())
         m.case(

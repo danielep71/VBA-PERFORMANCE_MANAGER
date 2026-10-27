@@ -129,6 +129,11 @@ Use only the categories needed by a release.
   `{"uses":"owner/action@main"}` (#69), and references that follow a quoted
   scalar spanning several lines and containing an escaped quote (#70).
   Regression fixtures cover both, in workflows and local action metadata.
+- Release provenance no longer trusts `git status` alone to prove that tracked
+  files are unmodified. It rejects `assume-unchanged` and `skip-worktree`
+  index flags, naming the command that clears each, and re-hashes every file
+  tracked at `HEAD` through git's attribute filters against its committed
+  blob. Entries it cannot verify fail closed. Provenance tool 2.2.0 (#71).
 - Hardened release provenance against residual identity/output edge cases: requested JSON is committed before publishable Markdown, documented SemVer pre-releases are accepted, release tags must be annotated, manifest output cannot alias protected inputs, and the requested version must match the tagged repository `VERSION` (#63).
 - Hardened compile-safety assignment analysis for object modules: Property Let/Set names are module-scoped assignable symbols and UserForm `.frm` exports no longer leak public members into standard-module scope. The deterministic compile-safety matrix is now 47 fixtures without adding a top-level static check (#64).
 - Pinned all workflow actions to immutable commits and upgraded

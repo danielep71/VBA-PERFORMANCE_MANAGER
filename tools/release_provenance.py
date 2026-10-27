@@ -50,7 +50,7 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
-TOOL_VERSION = "2.1.0"
+TOOL_VERSION = "2.2.0"
 ROOT = Path(__file__).resolve().parent.parent
 
 REQUIRED = [
@@ -92,6 +92,18 @@ def git_raw(*args: str) -> str | None:
         out = subprocess.run(
             ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True,
             encoding="utf-8", errors="replace",
+        )
+        return out.stdout
+    except Exception:
+        return None
+
+
+def git_input(stdin: str, *args: str) -> str | None:
+    """Run a git command with text on stdin, returning stdout or None on failure."""
+    try:
+        out = subprocess.run(
+            ["git", *args], cwd=ROOT, input=stdin, capture_output=True, text=True,
+            check=True, encoding="utf-8", errors="replace",
         )
         return out.stdout
     except Exception:
@@ -140,6 +152,69 @@ def verify_against_tag(tag: str, paths: list[str]) -> list[str]:
         on_disk = p.read_text(encoding="utf-8", errors="replace")
         if on_disk.replace("\r\n", "\n") != blob.replace("\r\n", "\n"):
             problems.append(f"{rel}: differs from {tag}")
+    return problems
+
+
+def tracked_content_problems() -> list[str]:
+    """Verify every file tracked at HEAD against the working tree.
+
+    git status trusts the index, so an assume-unchanged or skip-worktree entry
+    hides an edited file from it. Those flags are rejected outright, and each
+    tracked file is then re-hashed from disk through git's own attribute
+    filters (including end-of-line conversion) and compared with its blob at
+    HEAD, without consulting the index. Anything that cannot be verified fails.
+    """
+    problems: list[str] = []
+
+    entries = git_raw("ls-files", "-v", "-z")
+    if entries is None:
+        return ["git ls-files -v failed, so index flags could not be checked"]
+    flagged = []
+    for entry in entries.split("\0"):
+        if len(entry) < 3:
+            continue
+        tag, rel = entry[0], entry[2:]
+        if tag in "Ss":
+            flagged.append((rel, "skip-worktree"))
+        if tag.islower():
+            flagged.append((rel, "assume-unchanged"))
+    if flagged:
+        problems.append("index flags hide tracked files from git status; clear them before provenance")
+        problems.extend(f"  {rel}: {flag} (git update-index --no-{flag} -- {rel})"
+                        for rel, flag in flagged[:20])
+
+    tree = git_raw("ls-tree", "-r", "-z", "--full-tree", "HEAD")
+    if tree is None:
+        return problems + ["git ls-tree failed, so tracked content could not be verified"]
+    expected: dict[str, str] = {}
+    unverifiable: list[str] = []
+    for entry in tree.split("\0"):
+        if not entry:
+            continue
+        meta, rel = entry.split("\t", 1)
+        mode, kind, oid = meta.split()
+        if kind != "blob" or mode not in ("100644", "100755") or "\n" in rel:
+            unverifiable.append(f"  {rel}: tracked {kind} {mode} cannot be verified")
+            continue
+        expected[rel] = oid
+
+    missing = [rel for rel in expected if not (ROOT / rel).is_file()]
+    present = [rel for rel in expected if rel not in missing]
+    actual: list[str] = []
+    if present:
+        hashed = git_input("\n".join(present) + "\n", "hash-object", "--stdin-paths")
+        actual = hashed.split() if hashed is not None else []
+        if len(actual) != len(present):
+            return problems + ["git hash-object failed, so tracked content could not be verified"]
+    differing = [rel for rel, oid in zip(present, actual) if oid != expected[rel]]
+
+    if unverifiable:
+        problems.append("tracked entries the content check does not support")
+        problems.extend(unverifiable[:20])
+    if missing or differing:
+        problems.append("tracked files differ from HEAD on disk; hashing them would not match the commit claimed")
+        problems.extend(f"  missing: {rel}" for rel in missing[:20])
+        problems.extend(f"  differs: {rel}" for rel in differing[:20])
     return problems
 
 
@@ -283,6 +358,7 @@ def validate(args: argparse.Namespace) -> list[str]:
         paths = [line[3:] for line in dirty.splitlines()][:20]
         problems.append("tracked files are modified; hashing them would not match the commit claimed")
         problems.extend(f"  modified: {path}" for path in paths)
+    problems.extend(tracked_content_problems())
 
     head = git("rev-parse", "HEAD")
     if head is None:
