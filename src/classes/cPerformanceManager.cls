@@ -7737,10 +7737,8 @@ Public Property Get TW_CalculationExempted() As Boolean
 '   would apply a baseline the scope never observed.
 '
 '   In strict mode an unhonourable Calculation request raises from TW_Turn_OFF
-'   instead, and this instance's session is not started. The exemption is
-'   sticky for the whole shared scope, so this property reports FALSE after
-'   that raise only when the rollback left the scope idle and cleared shared
-'   state. While other sessions remain active it still reports TRUE.
+'   instead, so this property reports FALSE on that path - the session was
+'   never started.
 '
 ' UPDATED
 '   2026-10-21
