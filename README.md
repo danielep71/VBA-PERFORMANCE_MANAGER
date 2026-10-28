@@ -733,11 +733,17 @@ the tag being installed.
 |---|---|---|
 | Invalid `StartTimer` method | Raises | Falls back to QPC |
 | QPC unavailable or unreadable at start | Raises | Attempts backend 2 before committing |
-| Elapsed read before `StartTimer` | Raises | Returns `0` |
+| Elapsed read before the first `StartTimer` | Raises | Returns `0` with `LastReadStatus = cPM_ReadOK`; check `HasActiveSession` (known v1.4.x limitation, [#66](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/66)) |
 | Requested elapsed method differs from session | Raises | Uses the session backend |
-| Timing source moves backwards after correction | Raises | Returns `0`; status is invalid |
+| Naturally negative elapsed delta after correction: backend 2 on Win64, or backend 6 | Raises | Returns `0`; status is invalid |
 | QPC or system-time endpoint read fails | Raises | Returns `0`; cache remains unchanged |
 | Tick alignment exceeds its spin guard | Raises | Returns the current timestamp path |
+
+For backend 1, negative raw deltas receive one-day rollover correction. For
+backend 2 on Win32/pre-VBA7 and backends 3 and 4, they receive one 32-bit counter
+wrap correction. These paths cannot distinguish a backward step from rollover;
+the negative-value helper tests do not establish natural rejection on every
+backend. QPC (backend 5) bypasses this validation. See [#65](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/65).
 
 `StartTimer` is transactional: a strict-mode failure does not replace a
 previously valid session with a partial one.
@@ -745,7 +751,10 @@ previously valid session with a partial one.
 ## `LastReadStatus`
 
 A numeric zero is not self-describing. Check the status when using non-strict
-mode.
+mode. Before the first successful `StartTimer`, also check `HasActiveSession`:
+in v1.4.x the no-session path returns zero with `cPM_ReadOK`. That is a known
+limitation, not evidence of a valid zero-duration read. A dedicated no-session
+status is tracked in [#66](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/66) for v1.5.0.
 
 | Value | Meaning |
 |---|---|
