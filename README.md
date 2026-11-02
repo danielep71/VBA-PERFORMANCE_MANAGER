@@ -921,7 +921,7 @@ python3 tools/vba_lint.py --json vba-lint-results.json
 on every push and pull request. It publishes the machine-readable result even
 when a check fails.
 
-The current v1.4.1 development linter performs **16 checks**. The published v1.4.0
+The current v1.4.1 development linter performs **17 checks**. The published v1.4.0
 certification above remains **12/12**, and is not recertified by these additions:
 
 1. no merge-conflict markers;
@@ -937,9 +937,17 @@ certification above remains **12/12**, and is not recertified by these additions
 11. native APIs have a single call site;
 12. released CHANGELOG sections remain frozen against their tags;
 13. strict release-provenance fixtures;
-14. error-handler labels resolve within their procedure;
-15. assigned identifiers are declared;
-16. workflow actions use immutable pins.
+14. tracked VBA components are inventoried;
+15. error-handler labels resolve within their procedure;
+16. assigned identifiers are declared;
+17. workflow actions use immutable pins.
+
+The checks cover every tracked `.bas`, `.cls` and `.frm` export under `src/`,
+`test/` and `demo/`, read from `git ls-files`, so a new component is checked
+as soon as it is committed. Check 14 fails when a tracked export lies outside
+those directories, when a role file (class, time-waster module, regression
+module) is missing, or when release provenance does not hash exactly the
+tracked components.
 
 The two compile-safety checks scan production, regression and demo exports with
 separate Windows conditional-compilation profiles and fixture-backed grammar.

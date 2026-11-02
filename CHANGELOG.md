@@ -136,6 +136,12 @@ Use only the categories needed by a release.
   name, ZIP integrity, exact contents and byte-identical `LICENSE`/`NOTICE`
   before emitting anything, and records each member's SHA-256. Releases up to
   v1.4.0 keep their published bare-workbook assets (#72).
+- The static checks now cover every tracked VBA export under `src/`, `test/`
+  and `demo/`, read from `git ls-files`, instead of a hand-kept file list, so
+  a new component cannot escape them. A 17th check, "tracked VBA components
+  are inventoried", fails on an export outside those directories, a missing
+  role file, or a release-provenance hash list that differs from the tracked
+  components. The error-source check reads each component's `VB_Name` (#82).
 - The Python tooling is held to Ruff and strict mypy (`pyproject.toml`), and
   the workflows to a checksum-verified actionlint. Ruff, mypy and their
   dependencies are installed from the hash-locked

@@ -93,9 +93,14 @@ def integration_problems() -> list[str]:
     with tempfile.TemporaryDirectory(prefix="cpm-compile-fixtures-") as temp:
         dest = Path(temp) / "repo"
         shutil.copytree(root, dest, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        # The copied tree deliberately has no Git identity: this verifies CLI
-        # wiring, not release-history or exact-SHA evidence.
-        path = dest / "demo" / "CompileSafetyFixture.bas"
+        # The copied tree deliberately has no history: this verifies CLI
+        # wiring, not release-history or exact-SHA evidence. It does get a
+        # git index, because the checked components are read from git (#82).
+        # Each scenario overwrites a tracked demo module, so the component
+        # inventory stays complete and only the expected check can fail.
+        for command in (["git", "init", "-q"], ["git", "add", "-A"]):
+            subprocess.run(command, cwd=dest, check=True, capture_output=True)
+        path = dest / "demo" / "M_cPM_USAGE_EXAMPLES.bas"
         for name, body, expected in (
             ("valid", "Dim A As Long\nA=1", None),
             ("handler", "On Error GoTo Missing", LABEL_CHECK),

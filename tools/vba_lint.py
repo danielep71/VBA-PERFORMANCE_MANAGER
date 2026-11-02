@@ -24,9 +24,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from release_provenance import OPTIONAL as PROVENANCE_OPTIONAL
+from release_provenance import REQUIRED as PROVENANCE_REQUIRED
 from test_vba_compile_safety import fixture_problems
 from test_workflow_pins import fixture_problems as pin_fixture_problems
 from vba_compile_safety import ASSIGN_CHECK, LABEL_CHECK, analyse
+from vba_inventory import ROLES, ROOTS, inventory_problems, module_name, tracked_vba, under
 from workflow_pins import CHECK as PIN_CHECK
 from workflow_pins import analyse as analyse_pins
 from workflow_pins import repository_files
@@ -37,18 +40,25 @@ from workflow_pins import repository_files
 
 ROOT = Path(__file__).resolve().parent.parent
 
-CLASS_FILE = ROOT / "src" / "classes" / "cPerformanceManager.cls"
-MODULE_FILE = ROOT / "src" / "modules" / "M_cPM_TIMEWASTERS.bas"
-TEST_FILE = ROOT / "test" / "M_cPM_Test.bas"
+# Role files, for the checks that inspect one specific component (#82).
+CLASS_FILE = ROOT / ROLES["class"]
+MODULE_FILE = ROOT / ROLES["module"]
+TEST_FILE = ROOT / ROLES["test"]
 README_FILE = ROOT / "README.md"
 CHANGELOG_FILE = ROOT / "CHANGELOG.md"
+INVENTORY_CHECK = "tracked VBA components are inventoried"
 
-VBA_SOURCES = [CLASS_FILE, MODULE_FILE, TEST_FILE]
-ALL_SOURCES = VBA_SOURCES + [
-    ROOT / "demo" / "M_cPM_DEMO.bas",
-    ROOT / "demo" / "M_cPM_USAGE_EXAMPLES.bas",
-    ROOT / "demo" / "M_DEMO_BUILDER.bas",
-]
+# Every other check covers the tracked components, read from git, so a new
+# component is checked as soon as it is committed. If git cannot list them,
+# main() fails instead of checking an empty set.
+try:
+    TRACKED_VBA = tracked_vba(ROOT)
+    INVENTORY_ERROR: str | None = None
+except RuntimeError as exc:
+    TRACKED_VBA = []
+    INVENTORY_ERROR = str(exc)
+VBA_SOURCES = [ROOT / path for path in under(TRACKED_VBA, "src", "test")]
+ALL_SOURCES = [ROOT / path for path in under(TRACKED_VBA, *ROOTS)]
 
 # Names VBA reserves. Using one as a variable produces a bare "Syntax error"
 # with no indication of the cause, which is how Dim Empty() reached the repo.
@@ -210,18 +220,17 @@ def check_reserved_words(rep: Report) -> None:
 
 def check_error_sources(rep: Report) -> None:
     """Error sources named M_cPM_ReportHelpers and M_cPM_RegressionTests,
-    neither of which has ever existed."""
-    module_names = {
-        CLASS_FILE.name: "cPerformanceManager",
-        MODULE_FILE.name: "M_cPM_TimeWasters",
-        TEST_FILE.name: "M_cPM_Test",
-    }
+    neither of which has ever existed.
+
+    The expected module is each component's own Attribute VB_Name, so the
+    check covers every tracked component, not a hand-kept name table.
+    """
     src_re = re.compile(r'"([A-Za-z_]\w*)\.([A-Za-z_]\w*)"')
     problems = []
     for path in VBA_SOURCES:
         if not path.exists():
             continue
-        expected_module = module_names[path.name]
+        expected_module = module_name(read(path)) or path.stem
         current = None
         for i, line in enumerate(read(path).split("\n"), 1):
             m = PROC_START.match(line)
@@ -612,7 +621,10 @@ def main() -> int:
                     help="Also write a machine-readable result document to PATH.")
     args = ap.parse_args()
 
-    missing = [p for p in VBA_SOURCES if not p.exists()]
+    if INVENTORY_ERROR:
+        print(f"FAIL  {INVENTORY_ERROR}")
+        return 1
+    missing = [p for p in (CLASS_FILE, MODULE_FILE, TEST_FILE) if not p.exists()]
     if missing:
         for p in missing:
             print(f"FAIL  source not found: {p}")
@@ -635,11 +647,10 @@ def main() -> int:
     check_api_declarations(rep)
     check_changelog_released_sections_frozen(rep)
     check_release_provenance_fixtures(rep)
-    # Discover all shipped, demo and regression exports, including future ones.
-    sources = {str(p.relative_to(ROOT)): read(p)
-               for directory in ("src", "test", "demo")
-               for p in sorted((ROOT / directory).rglob("*"))
-               if p.suffix.lower() in (".bas", ".cls", ".frm")}
+    rep.check(INVENTORY_CHECK, inventory_problems(
+        TRACKED_VBA, PROVENANCE_REQUIRED + PROVENANCE_OPTIONAL))
+    # All tracked shipped, demo and regression exports, including future ones.
+    sources = {path: read(ROOT / path) for path in under(TRACKED_VBA, *ROOTS)}
     label_problems, assignment_problems = analyse(sources)
     label_fixtures, assignment_fixtures = fixture_problems()
     rep.check(LABEL_CHECK, label_problems + label_fixtures)
