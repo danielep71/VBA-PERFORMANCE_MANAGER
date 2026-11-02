@@ -136,6 +136,14 @@ Use only the categories needed by a release.
   name, ZIP integrity, exact contents and byte-identical `LICENSE`/`NOTICE`
   before emitting anything, and records each member's SHA-256. Releases up to
   v1.4.0 keep their published bare-workbook assets (#72).
+- The Python tooling is held to Ruff and strict mypy (`pyproject.toml`), and
+  the workflows to a checksum-verified actionlint. Ruff, mypy and their
+  dependencies are installed from the hash-locked
+  `tools/requirements-quality.txt` with `--require-hashes
+  --only-binary=:all:`. Every `tools/test_*.py` module now runs through
+  `python -m unittest discover`, so a new test file runs without wiring;
+  `tools/test_discovery.py` proves it. The provenance fixture matrix is
+  split into themed sections with the same 69 cases (#81).
 - Hardened the workflows. Actions are pinned to their current releases
   (checkout v7.0.1, setup-python v7.1.0, upload-artifact v7.0.2), Python is
   pinned once in `.python-version`, and every job runs on a fixed

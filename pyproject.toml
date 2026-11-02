@@ -1,0 +1,26 @@
+# Quality settings for the Python tooling in tools/. The tools need only the
+# standard library, plus PyYAML for the workflow hardening tests
+# (tools/requirements-ci.txt). Ruff and mypy are installed from the hash-locked
+# tools/requirements-quality.txt. The minimum supported Python is 3.11
+# (README.md); CI runs the version in .python-version.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = []
+
+[tool.ruff.lint]
+# Errors, pyflakes, import order and a complexity ceiling. E501 (line length)
+# is not selected: long fixture literals are kept readable on one line.
+select = ["E4", "E7", "E9", "F", "I001", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.mypy]
+python_version = "3.11"
+files = ["tools"]
+pretty = true
+show_error_codes = true
+warn_unused_configs = true
+strict = true

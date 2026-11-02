@@ -1,6 +1,8 @@
 """Deterministic fixtures for the #46 workflow pin policy; also enforced by the gate."""
 from __future__ import annotations
 
+import unittest
+
 from workflow_pins import analyse
 
 SHA = "11d5960a326750d5838078e36cf38b85af677262"
@@ -206,6 +208,14 @@ def fixture_problems() -> list[str]:
             failures.append(f"fixture {name!r}: expected kinds {kinds!r}, "
                             f"got {[r.kind for r in inventory]!r}")
     return failures
+
+
+class WorkflowPinFixtures(unittest.TestCase):
+    """Runs the pin-policy fixtures under unittest discovery."""
+
+    def test_fixtures(self) -> None:
+        self.assertGreater(len(CASES), 0)
+        self.assertEqual(fixture_problems(), [])
 
 
 if __name__ == "__main__":

@@ -953,6 +953,21 @@ rules (fixed runner images, job timeouts, read-only tokens by default,
 `tools/test_workflow_controls.py`, which needs PyYAML from the hash-locked
 `tools/requirements-ci.txt`.
 
+Every tool test runs through unittest discovery, so a new `tools/test_*.py`
+file runs without further wiring:
+
+```bash
+python -m pip install --only-binary=:all: --require-hashes \
+    -r tools/requirements-ci.txt -r tools/requirements-quality.txt
+python -m unittest discover -s tools -p "test_*.py"
+ruff check tools
+mypy
+```
+
+CI also runs Ruff, strict mypy (configured in `pyproject.toml`) and a
+checksum-verified actionlint over the workflows. Ruff and mypy come from the
+hash-locked `tools/requirements-quality.txt`.
+
 The pin check follows every `uses:` reference reachable from
 `.github/workflows/`, including steps inside local composite actions. External
 actions and reusable workflows must name a full 40-hex commit SHA and Docker

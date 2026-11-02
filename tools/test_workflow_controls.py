@@ -17,9 +17,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
-    import yaml
-
     import workflow_controls as wc
+    import yaml
 except ImportError:  # pragma: no cover - exercised only without the parser
     yaml = None  # type: ignore[assignment]
 
