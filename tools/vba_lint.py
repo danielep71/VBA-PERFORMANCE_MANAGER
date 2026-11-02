@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from binary_review import CHECK as BINARY_CHECK
+from binary_review import repository_problems as binary_problems
 from release_provenance import OPTIONAL as PROVENANCE_OPTIONAL
 from release_provenance import REQUIRED as PROVENANCE_REQUIRED
 from test_vba_compile_safety import fixture_problems
@@ -659,6 +661,8 @@ def main() -> int:
     # actions, must be pinned to a full commit SHA or image digest (#46).
     pin_problems, _ = analyse_pins(repository_files(ROOT))
     rep.check(PIN_CHECK, pin_problems + pin_fixture_problems())
+    # A tracked binary needs an approved path or an allowlist digest (#84).
+    rep.check(BINARY_CHECK, binary_problems(ROOT))
 
     print("-" * 60)
 
