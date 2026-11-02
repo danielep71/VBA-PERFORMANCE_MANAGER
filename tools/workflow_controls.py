@@ -78,12 +78,53 @@ def _writes(permissions: Any) -> set[str]:
     return set()
 
 
-def _steps(job: dict) -> list[dict]:
+def _steps(job: dict[str, Any]) -> list[dict[str, Any]]:
     return [step for step in job.get("steps") or [] if isinstance(step, dict)]
 
 
-def _action(step: dict) -> str:
+def _action(step: dict[str, Any]) -> str:
     return str(step.get("uses", "")).split("@", 1)[0]
+
+
+def _job_problems(name: str, job_id: str, job: Any) -> tuple[list[str], str | None]:
+    """Check one job; also return the exact minimum Python it pins, if any."""
+    where = f"{name}: job {job_id}"
+    if not isinstance(job, dict):
+        return [f"{where}: not a mapping"], None
+    problems: list[str] = []
+    minimum: str | None = None
+    allowed = WRITE_PERMISSIONS.get((name, job_id), set())
+    extra = _writes(job.get("permissions")) - allowed
+    if extra:
+        problems.append(f"{where}: may write {sorted(extra)}, which is not allowed")
+
+    timeout = job.get("timeout-minutes")
+    if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
+        problems.append(f"{where}: timeout-minutes must be a positive integer")
+
+    runner = job.get("runs-on")
+    if not isinstance(runner, str) or not FIXED_RUNNER.fullmatch(runner):
+        problems.append(f"{where}: runs-on must be a fixed runner image such as "
+                        f"ubuntu-24.04, got {runner!r}")
+
+    for step in _steps(job):
+        options = step.get("with") or {}
+        if _action(step) == "actions/checkout" and options.get("persist-credentials") is not False:
+            problems.append(f"{where}: actions/checkout must set persist-credentials: false")
+        if _action(step) != "actions/setup-python":
+            continue
+        if (name, job_id) == MINIMUM_JOB:
+            version = str(options.get("python-version", ""))
+            if not EXACT_VERSION.fullmatch(version) or "python-version-file" in options:
+                problems.append(f"{where}: must pin the minimum Python as an exact "
+                                f"python-version, got {version!r}")
+            else:
+                minimum = version
+        elif options.get("python-version-file") != PYTHON_VERSION_FILE \
+                or "python-version" in options:
+            problems.append(f"{where}: actions/setup-python must read "
+                            f"python-version-file: {PYTHON_VERSION_FILE}")
+    return problems, minimum
 
 
 def check(workflows: dict[str, str], python_version: str | None,
@@ -118,41 +159,9 @@ def check(workflows: dict[str, str], python_version: str | None,
                             f"{sorted(_writes(document['permissions']))}; grant writes per job")
 
         for job_id, job in document["jobs"].items():
-            where = f"{name}: job {job_id}"
-            if not isinstance(job, dict):
-                problems.append(f"{where}: not a mapping")
-                continue
-            allowed = WRITE_PERMISSIONS.get((name, job_id), set())
-            extra = _writes(job.get("permissions")) - allowed
-            if extra:
-                problems.append(f"{where}: may write {sorted(extra)}, which is not allowed")
-
-            timeout = job.get("timeout-minutes")
-            if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
-                problems.append(f"{where}: timeout-minutes must be a positive integer")
-
-            runner = job.get("runs-on")
-            if not isinstance(runner, str) or not FIXED_RUNNER.fullmatch(runner):
-                problems.append(f"{where}: runs-on must be a fixed runner image such as "
-                                f"ubuntu-24.04, got {runner!r}")
-
-            for step in _steps(job):
-                options = step.get("with") or {}
-                if _action(step) == "actions/checkout" and options.get("persist-credentials") is not False:
-                    problems.append(f"{where}: actions/checkout must set persist-credentials: false")
-                if _action(step) != "actions/setup-python":
-                    continue
-                if (name, job_id) == MINIMUM_JOB:
-                    version = str(options.get("python-version", ""))
-                    if not EXACT_VERSION.fullmatch(version) or "python-version-file" in options:
-                        problems.append(f"{where}: must pin the minimum Python as an exact "
-                                        f"python-version, got {version!r}")
-                    else:
-                        minimum = version
-                elif options.get("python-version-file") != PYTHON_VERSION_FILE \
-                        or "python-version" in options:
-                    problems.append(f"{where}: actions/setup-python must read "
-                                    f"python-version-file: {PYTHON_VERSION_FILE}")
+            job_problems, job_minimum = _job_problems(name, job_id, job)
+            problems += job_problems
+            minimum = job_minimum or minimum
 
     if MINIMUM_JOB[0] in workflows and minimum is None:
         problems.append(f"{MINIMUM_JOB[0]}: no {MINIMUM_JOB[1]} job pins the minimum Python")

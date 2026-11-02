@@ -26,6 +26,7 @@ from __future__ import annotations
 import posixpath
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 CHECK = "workflow actions use immutable pins"
 WORKFLOW_DIR = ".github/workflows"
@@ -101,7 +102,7 @@ def _closing_quote(line: str, quote: str) -> int:
     return -1
 
 
-def scan(path: str, text: str, keys: tuple[str, ...] = ("uses",)) -> tuple[list[Reference], list[str]]:
+def scan(path: str, text: str, keys: tuple[str, ...] = ("uses",)) -> tuple[list[Reference], list[str]]:  # noqa: C901 - single-pass YAML scanner, fixture-proven (95 cases); splitting would thread its state through helpers
     """Find every mapping key in ``keys`` and return its same-line scalar."""
     refs: list[Reference] = []
     problems: list[str] = []
@@ -324,7 +325,7 @@ def analyse(files: dict[str, str]) -> tuple[list[str], list[Reference]]:
     return problems, inventory
 
 
-def repository_files(root) -> dict[str, str]:
+def repository_files(root: Path) -> dict[str, str]:
     """Collect workflows and every action metadata file under ``root``."""
     files: dict[str, str] = {}
     for p in sorted(root.rglob("*")):

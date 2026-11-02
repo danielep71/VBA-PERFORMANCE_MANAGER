@@ -20,14 +20,16 @@ import re
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
-from vba_compile_safety import analyse, LABEL_CHECK, ASSIGN_CHECK
 from test_vba_compile_safety import fixture_problems
-from workflow_pins import CHECK as PIN_CHECK, analyse as analyse_pins, repository_files
 from test_workflow_pins import fixture_problems as pin_fixture_problems
+from vba_compile_safety import ASSIGN_CHECK, LABEL_CHECK, analyse
+from workflow_pins import CHECK as PIN_CHECK
+from workflow_pins import analyse as analyse_pins
+from workflow_pins import repository_files
 
 # --------------------------------------------------------------------------- #
 # Configuration
@@ -77,7 +79,7 @@ PROC_END = re.compile(r"^End\s+(?:Sub|Function|Property)\s*$")
 class Report:
     failures: list[str] = field(default_factory=list)
     checks_run: int = 0
-    results: list[dict] = field(default_factory=list)
+    results: list[dict[str, object]] = field(default_factory=list)
 
     def check(self, name: str, problems: list[str]) -> None:
         self.checks_run += 1
@@ -172,7 +174,7 @@ def check_block_pairs(rep: Report) -> None:
     for path in ALL_SOURCES:
         if not path.exists():
             continue
-        text = "\n".join(l for _, l in code_lines(read(path)))
+        text = "\n".join(code for _, code in code_lines(read(path)))
         for open_re, close_re, label in pairs:
             o = len(re.findall(open_re, text, re.M))
             c = len(re.findall(close_re, text, re.M))
@@ -283,7 +285,7 @@ def check_undefined_callees(rep: Report) -> None:
         if not path.exists():
             continue
         raw = read(path)
-        code = strip_strings("\n".join(l for _, l in code_lines(raw)))
+        code = strip_strings("\n".join(code for _, code in code_lines(raw)))
 
         defined = {m.group(1) for m in PROC_START.finditer(raw)}
         defined |= {m.group(1) for m in
@@ -371,7 +373,8 @@ def _changelog_sections(text: str) -> dict[str, str]:
     """
     text = text.replace("\r\n", "\n")
     out: dict[str, str] = {}
-    current, buf = None, []
+    current: str | None = None
+    buf: list[str] = []
     for line in text.split("\n"):
         m = re.match(r"^## \[([^\]]+)\]", line)
         if m:
@@ -428,7 +431,7 @@ def _git_show(ref: str, path: str) -> str | None:
         return None
 
 
-def check_changelog_released_sections_frozen(rep: Report) -> None:
+def check_changelog_released_sections_frozen(rep: Report) -> None:  # noqa: C901 - executable compatibility rules for released sections, fixture-proven
     """A released changelog section describes a tag and must never change.
 
     Entries have twice been appended to a released section instead of
@@ -530,7 +533,7 @@ def check_api_declarations(rep: Report) -> None:
     if not CLASS_FILE.exists():
         rep.check("native APIs have a single call site", [f"{CLASS_FILE} not found"])
         return
-    text = "\n".join(l for _, l in code_lines(read(CLASS_FILE)))
+    text = "\n".join(code for _, code in code_lines(read(CLASS_FILE)))
     problems = []
     for api in ("QueryPerformanceCounter", "timeGetSystemTime"):
         # Declarations read "Name Lib \"kernel32\" (...)", so "Name(" only ever

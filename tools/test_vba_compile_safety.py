@@ -1,6 +1,8 @@
 """Local deterministic fixtures for #45 and #64; also enforced by the ordinary gate."""
 from __future__ import annotations
 
+import unittest
+
 from vba_compile_safety import analyse
 
 
@@ -65,7 +67,7 @@ CASES = [
 
 
 def fixture_problems() -> tuple[list[str], list[str]]:
-    failures = ([], [])
+    failures: tuple[list[str], list[str]] = ([], [])
     for name, sources, expected_h, expected_a in CASES:
         actual = analyse(sources)
         for index, expected in enumerate((expected_h, expected_a)):
@@ -83,7 +85,8 @@ def integration_problems() -> list[str]:
     import sys
     import tempfile
     from pathlib import Path
-    from vba_compile_safety import LABEL_CHECK, ASSIGN_CHECK
+
+    from vba_compile_safety import ASSIGN_CHECK, LABEL_CHECK
 
     failures = []
     root = Path(__file__).resolve().parent.parent
@@ -116,6 +119,17 @@ def integration_problems() -> list[str]:
             if result["checks_run"] != len(names):
                 failures.append(f"CLI {name}: reported check count disagrees with results")
     return failures
+
+
+class CompileSafetyFixtures(unittest.TestCase):
+    """Runs the compile-safety fixtures and CLI scenarios under unittest discovery."""
+
+    def test_fixtures(self) -> None:
+        self.assertGreater(len(CASES), 0)
+        self.assertEqual(fixture_problems(), ([], []))
+
+    def test_cli_integration(self) -> None:
+        self.assertEqual(integration_problems(), [])
 
 
 if __name__ == "__main__":

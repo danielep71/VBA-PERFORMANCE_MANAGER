@@ -57,6 +57,7 @@ import tempfile
 import zipfile
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 TOOL_VERSION = "3.0.0"
 ROOT = Path(__file__).resolve().parent.parent
@@ -243,6 +244,31 @@ def tracked_content_problems() -> list[str]:
     return problems
 
 
+def _package_inventory_problems(names: list[str], members: dict[str, bytes]) -> list[str]:
+    """Check that the package holds exactly LICENSE, NOTICE and one workbook."""
+    problems: list[str] = []
+    for name in sorted({n for n in names if names.count(n) > 1}):
+        problems.append(f"package lists {name!r} more than once")
+    unsafe = [n for n in names if n.endswith("/") or "/" in n or "\\" in n or ":" in n]
+    for name in unsafe:
+        problems.append(f"package entry {name!r} is not a plain file at the package root")
+    root = [n for n in dict.fromkeys(names) if n not in unsafe]
+    workbooks = [n for n in root if n.lower().endswith(WORKBOOK_SUFFIX)]
+    for required in LICENSE_FILES:
+        if required not in root:
+            problems.append(f"package is missing {required}")
+    if not workbooks:
+        problems.append(f"package has no {WORKBOOK_SUFFIX} workbook")
+    elif len(workbooks) > 1:
+        problems.append(f"package has {len(workbooks)} workbooks; exactly one is allowed")
+    elif not members[workbooks[0]]:
+        problems.append(f"package workbook {workbooks[0]!r} is empty")
+    for name in root:
+        if name not in LICENSE_FILES and name not in workbooks:
+            problems.append(f"package contains unexpected file {name!r}")
+    return problems
+
+
 def package_problems(asset: Path, version: str | None, tag: str | None) -> list[str]:
     """Verify the Release package before it is described as published.
 
@@ -269,25 +295,7 @@ def package_problems(asset: Path, version: str | None, tag: str | None) -> list[
     except (zipfile.BadZipFile, OSError, RuntimeError, ValueError) as exc:
         return problems + [f"--asset is not a readable ZIP package: {exc}"]
 
-    for name in sorted({n for n in names if names.count(n) > 1}):
-        problems.append(f"package lists {name!r} more than once")
-    unsafe = [n for n in names if n.endswith("/") or "/" in n or "\\" in n or ":" in n]
-    for name in unsafe:
-        problems.append(f"package entry {name!r} is not a plain file at the package root")
-    root = [n for n in dict.fromkeys(names) if n not in unsafe]
-    workbooks = [n for n in root if n.lower().endswith(WORKBOOK_SUFFIX)]
-    for required in LICENSE_FILES:
-        if required not in root:
-            problems.append(f"package is missing {required}")
-    if not workbooks:
-        problems.append(f"package has no {WORKBOOK_SUFFIX} workbook")
-    elif len(workbooks) > 1:
-        problems.append(f"package has {len(workbooks)} workbooks; exactly one is allowed")
-    elif not members[workbooks[0]]:
-        problems.append(f"package workbook {workbooks[0]!r} is empty")
-    for name in root:
-        if name not in LICENSE_FILES and name not in workbooks:
-            problems.append(f"package contains unexpected file {name!r}")
+    problems += _package_inventory_problems(names, members)
 
     if tag is not None:
         for required in LICENSE_FILES:
@@ -372,7 +380,7 @@ def protected_paths(asset: Path) -> set[Path]:
     return paths
 
 
-def validate(args: argparse.Namespace) -> list[str]:
+def validate(args: argparse.Namespace) -> list[str]:  # noqa: C901 - one pass over every release-contract rule, each fixture-proven; splitting would scatter the contract
     """Collect every release-contract violation in one pass."""
     problems: list[str] = []
 
@@ -565,7 +573,7 @@ def build_markdown(args: argparse.Namespace, commit: str) -> str:
     out.append(f"`HEAD` is the target of annotated tag `{args.tag}`, `{VERSION_FILE}` agrees with")
     out.append("the requested release identity, no tracked file is modified, and every")
     out.append(f"hashed source file matches its blob at `{args.tag}`. The package holds")
-    out.append(f"exactly the workbook, `LICENSE` and `NOTICE`, and the latter two are")
+    out.append("exactly the workbook, `LICENSE` and `NOTICE`, and the latter two are")
     out.append(f"byte-identical to their blobs at `{args.tag}`.")
     out.append("")
     out.append("### What this establishes")
@@ -616,7 +624,7 @@ def build_markdown(args: argparse.Namespace, commit: str) -> str:
     return "\n".join(out)
 
 
-def build_manifest(args: argparse.Namespace, commit: str, tag_target: str) -> dict:
+def build_manifest(args: argparse.Namespace, commit: str, tag_target: str) -> dict[str, Any]:
     manifest = {
         "tool": "release_provenance.py",
         "tool_version": TOOL_VERSION,
@@ -707,6 +715,12 @@ def main() -> int:
 
     commit = git("rev-parse", "HEAD")
     tag_target = resolve_tag_commit(args.tag)
+    if commit is None or tag_target is None:
+        # validate() resolved both; failing here means the repository changed
+        # under the run, so nothing publishable is emitted.
+        print("HEAD or the release tag could not be resolved after validation; "
+              "no provenance was generated.", file=sys.stderr)
+        return EXIT_CONTRACT
     markdown = build_markdown(args, commit)
 
     if args.out:
