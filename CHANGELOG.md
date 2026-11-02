@@ -136,6 +136,14 @@ Use only the categories needed by a release.
   name, ZIP integrity, exact contents and byte-identical `LICENSE`/`NOTICE`
   before emitting anything, and records each member's SHA-256. Releases up to
   v1.4.0 keep their published bare-workbook assets (#72).
+- Hardened the workflows. Actions are pinned to their current releases
+  (checkout v7.0.1, setup-python v7.1.0, upload-artifact v7.0.2), Python is
+  pinned once in `.python-version`, and every job runs on a fixed
+  `ubuntu-24.04` image with a timeout. Checkouts drop credentials, and only
+  the label job may write. A non-required job reruns the tools on the
+  documented Python 3.11 floor. `tools/test_workflow_controls.py` enforces
+  these rules, with PyYAML installed from the hash-locked
+  `tools/requirements-ci.txt` (#80).
 - Release provenance no longer trusts `git status` alone to prove that tracked
   files are unmodified. It rejects `assume-unchanged` and `skip-worktree`
   index flags, naming the command that clears each, and re-hashes every file

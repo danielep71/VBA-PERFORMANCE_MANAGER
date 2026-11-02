@@ -945,6 +945,14 @@ The two compile-safety checks scan production, regression and demo exports with
 separate Windows conditional-compilation profiles and fixture-backed grammar.
 See [scope, limitations and verification](docs/COMPILE_SAFETY_CHECKS.md).
 
+The tools need Python 3.11 or later; the static gate itself uses only the
+standard library. CI runs the exact version in `.python-version`, and a
+non-required job reruns the tools on the 3.11 floor. The workflow hardening
+rules (fixed runner images, job timeouts, read-only tokens by default,
+`persist-credentials: false`, the single Python pin) are checked by
+`tools/test_workflow_controls.py`, which needs PyYAML from the hash-locked
+`tools/requirements-ci.txt`.
+
 The pin check follows every `uses:` reference reachable from
 `.github/workflows/`, including steps inside local composite actions. External
 actions and reusable workflows must name a full 40-hex commit SHA and Docker

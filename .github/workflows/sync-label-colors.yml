@@ -6,14 +6,18 @@ on:
     paths:
       - .github/workflows/sync-label-colors.yml
 
+# The workflow-level token is read-only; only this job may write issues.
 permissions:
   contents: read
-  issues: write
 
 jobs:
   sync:
     name: Apply label color policy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Update label colors
