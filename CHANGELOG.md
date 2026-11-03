@@ -136,6 +136,12 @@ Use only the categories needed by a release.
   name, ZIP integrity, exact contents and byte-identical `LICENSE`/`NOTICE`
   before emitting anything, and records each member's SHA-256. Releases up to
   v1.4.0 keep their published bare-workbook assets (#72).
+- Tracked binary files must be reviewed: an 18th static check accepts a
+  binary (`text` unset in `.gitattributes`, or a NUL byte) only as a UserForm
+  `.frx` beside its `.frm` or through an entry in `tools/binary-allowlist.json`
+  with its SHA-256 and a reason. A committed workbook or a changed image fails
+  until its entry is updated, and stale entries fail too. The four README
+  images are allowlisted (#84).
 - The static checks now cover every tracked VBA export under `src/`, `test/`
   and `demo/`, read from `git ls-files`, instead of a hand-kept file list, so
   a new component cannot escape them. A 17th check, "tracked VBA components

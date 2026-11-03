@@ -921,7 +921,7 @@ python3 tools/vba_lint.py --json vba-lint-results.json
 on every push and pull request. It publishes the machine-readable result even
 when a check fails.
 
-The current v1.4.1 development linter performs **17 checks**. The published v1.4.0
+The current v1.4.1 development linter performs **18 checks**. The published v1.4.0
 certification above remains **12/12**, and is not recertified by these additions:
 
 1. no merge-conflict markers;
@@ -940,7 +940,8 @@ certification above remains **12/12**, and is not recertified by these additions
 14. tracked VBA components are inventoried;
 15. error-handler labels resolve within their procedure;
 16. assigned identifiers are declared;
-17. workflow actions use immutable pins.
+17. workflow actions use immutable pins;
+18. tracked binaries are reviewed.
 
 The checks cover every tracked `.bas`, `.cls` and `.frm` export under `src/`,
 `test/` and `demo/`, read from `git ls-files`, so a new component is checked
@@ -948,6 +949,12 @@ as soon as it is committed. Check 14 fails when a tracked export lies outside
 those directories, when a role file (class, time-waster module, regression
 module) is missing, or when release provenance does not hash exactly the
 tracked components.
+
+Check 18 treats a tracked file as binary when `.gitattributes` unsets `text`
+for it or it contains a NUL byte. Such a file passes only as a UserForm `.frx`
+beside its `.frm`, or through an entry in `tools/binary-allowlist.json` that
+records its SHA-256 and a reason. A committed workbook or a changed image
+therefore fails until its entry is reviewed and updated.
 
 The two compile-safety checks scan production, regression and demo exports with
 separate Windows conditional-compilation profiles and fixture-backed grammar.
