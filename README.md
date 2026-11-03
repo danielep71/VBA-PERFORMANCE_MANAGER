@@ -837,6 +837,24 @@ Compile, then run:
 Run_cPerformanceManager_RegressionSuite
 ```
 
+On Windows with desktop Excel, `tools/Invoke-ExcelRegression.ps1` runs the same
+steps from an exact, clean checkout. It imports the four files into a new
+workbook, compiles, runs the suite, reads every case from the log worksheet,
+and closes Excel without saving:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\Invoke-ExcelRegression.ps1 `
+    -ExpectedSha <full commit SHA> -AllowVbomAccess -OutDir ..\excel-evidence
+```
+
+It writes a JSON record whose `result` follows the v1.4.0 execution-result
+schema. `-RedFile` and `-RedExpectedCase` repeat the run with one component
+replaced, to show that a regression case fails without its fix. Importing
+modules needs Excel's *Trust access to the VBA project object model*.
+`-AllowVbomAccess` enables it for the current user only for the run, and
+restores the previous value afterwards. The runner is local and maintainer-run;
+the automated CI gate is tracked in #11.
+
 <!-- facts:source-cases -->
 The regression module in the current source invokes **81 cases**, and
 `TotalSteps` must equal that count. Assertion counts are not derived from the
