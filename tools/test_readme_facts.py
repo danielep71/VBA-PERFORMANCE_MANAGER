@@ -82,6 +82,7 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(self.copy.text("README.md"), (rf.ROOT / "README.md").read_text("utf-8"))
 
     def test_derived_facts_follow_the_source(self) -> None:
+        cases = rf.load_facts(rf.ROOT)[0].cases   # type: ignore[union-attr]
         self.copy.edit("VERSION", "1.4.0", "1.4.1")
         self.copy.edit(rf.TEST_MODULE, "        Test_DefaultState\r\n", "")
         stale = [p.split("facts:")[1].split()[0] for p in self.copy.problems()]
@@ -89,7 +90,7 @@ class RepositoryTests(unittest.TestCase):
         rf.write(self.copy.root)
         readme = self.copy.text("README.md")
         self.assertIn("Version-1.4.1-", readme)
-        self.assertIn("invokes **80 cases**", readme)
+        self.assertIn(f"invokes **{cases - 1} cases**", readme)
 
     def test_certified_facts_ignore_the_source(self) -> None:
         before = self.copy.text("README.md")
