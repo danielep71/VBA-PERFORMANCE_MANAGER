@@ -5,6 +5,7 @@ PyYAML the tests are skipped locally and fail in GitHub Actions.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import unittest
@@ -37,7 +38,8 @@ class DependabotTests(unittest.TestCase):
             self.assertIn("--hash=sha256:", (ROOT / "tools" / name).read_text(encoding="utf-8"))
 
     def test_updates_are_grouped_scheduled_and_triaged(self) -> None:
-        colors = (ROOT / ".github/workflows/sync-label-colors.yml").read_text(encoding="utf-8")
+        declared = {label["name"] for label in
+                    json.loads((ROOT / "tools/labels.json").read_text(encoding="utf-8"))["labels"]}
         for update in load(".github/dependabot.yml")["updates"]:
             with self.subTest(ecosystem=update["package-ecosystem"]):
                 self.assertEqual(update["schedule"]["interval"], "weekly")
@@ -47,7 +49,7 @@ class DependabotTests(unittest.TestCase):
                 priorities = [label for label in update["labels"] if re.fullmatch(r"P[123]", label)]
                 self.assertEqual(len(priorities), 1)
                 for label in update["labels"]:
-                    self.assertIn(f'"{label}"', colors, f"unknown label {label}")
+                    self.assertIn(label, declared, f"label {label} is not in tools/labels.json")
 
 
 @unittest.skipIf(wc is None and not os.environ.get("GITHUB_ACTIONS"),

@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "labels": [
+    {
+      "name": "api",
+      "color": "0052cc",
+      "description": "Public API surface, enums, errors, compatibility, and caller contracts."
+    },
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Confirmed defect in runtime behavior, correctness, or documented contract."
+    },
+    {
+      "name": "CI",
+      "color": "24292f",
+      "description": "Continuous integration, automated checks, regression gates, and build/test automation."
+    },
+    {
+      "name": "documentation",
+      "color": "0075ca",
+      "description": "Documentation, examples, wording, or user guidance."
+    },
+    {
+      "name": "enhancement",
+      "color": "a2eeef",
+      "description": "New capability or meaningful improvement to existing behavior."
+    },
+    {
+      "name": "good first issue",
+      "color": "7057ff",
+      "description": "Suitable for a first contribution; scoped and approachable."
+    },
+    {
+      "name": "help wanted",
+      "color": "008672",
+      "description": "Extra attention or an outside contributor is welcome"
+    },
+    {
+      "name": "measurement",
+      "color": "1d76db",
+      "description": "Benchmark harness, sample collection, baseline, dispatch, and measurement methodology."
+    },
+    {
+      "name": "P1",
+      "color": "b60205",
+      "description": "Critical: release-blocking correctness or data-integrity defect; fix immediately."
+    },
+    {
+      "name": "P2",
+      "color": "d93f0b",
+      "description": "High: material defect or engineering risk; fix in the next planned milestone."
+    },
+    {
+      "name": "P3",
+      "color": "fbca04",
+      "description": "Normal: non-blocking improvement, hardening, refactor, or cleanup."
+    },
+    {
+      "name": "refactor",
+      "color": "6f42c1",
+      "description": "Internal restructuring or maintainability work with no intended behavior change."
+    },
+    {
+      "name": "release",
+      "color": "b60276",
+      "description": "Release process, packaging, provenance, tagging, signing, or artifact governance."
+    },
+    {
+      "name": "state-management",
+      "color": "0e8a16",
+      "description": "Excel Application-state suppression, TW lifecycle, restoration, and shared state."
+    },
+    {
+      "name": "statistics",
+      "color": "c5def5",
+      "description": "Timing statistics, sample validity, numerical methods, and contamination analysis."
+    },
+    {
+      "name": "testing",
+      "color": "006b75",
+      "description": "Regression tests, fault injection, coverage, and test infrastructure."
+    },
+    {
+      "name": "timing",
+      "color": "5319e7",
+      "description": "Timing backends, clock reads, elapsed/session semantics, rollover, and pause behavior."
+    }
+  ]
+}

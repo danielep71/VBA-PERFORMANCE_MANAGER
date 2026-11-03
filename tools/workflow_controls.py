@@ -33,7 +33,8 @@ README = "README.md"
 
 # The only jobs that may write, and what each may write.
 WRITE_PERMISSIONS = {
-    ("sync-label-colors.yml", "sync"): {"issues"},
+    ("labels-sync.yml", "sync"): {"issues"},
+    ("pr-milestones.yml", "clear"): {"pull-requests"},
     ("scorecard.yml", "analysis"): {"id-token", "security-events"},
 }
 MINIMUM_JOB = ("static-checks.yml", "minimum-python")

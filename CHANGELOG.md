@@ -136,6 +136,12 @@ Use only the categories needed by a release.
   name, ZIP integrity, exact contents and byte-identical `LICENSE`/`NOTICE`
   before emitting anything, and records each member's SHA-256. Releases up to
   v1.4.0 keep their published bare-workbook assets (#72).
+- Issues are now filed through issue forms: the bug report and feature
+  request templates are forms like the documentation one. Each form sets one
+  priority label, assigns the maintainer, and records dependencies and an
+  optional target end date. Labels are kept as data in `tools/labels.json`,
+  with a sync workflow that creates and updates them (never deletes) and a
+  weekly drift check. A workflow removes milestones from pull requests (#86).
 - Added Dependabot for the pinned actions and the hash-locked Python
   requirements, an OpenSSF Scorecard workflow for the default branch, and a
   Markdown link check. A 19th static check resolves relative links and
