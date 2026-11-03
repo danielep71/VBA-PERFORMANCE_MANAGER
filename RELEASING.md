@@ -141,6 +141,9 @@ Capture commands, tool versions, timestamps, and complete results. Rerun affecte
 
 - Run **Debug → Compile VBAProject** on the exact candidate.
 - Run `Run_cPerformanceManager_RegressionSuite`.
+- On Windows, `tools/Invoke-ExcelRegression.ps1 -ExpectedSha <candidate SHA>`
+  performs the import, compile and regression run from the clean candidate
+  checkout, and writes the v1.4.0-schema `result` record to keep as evidence.
 - Exercise timing backends, nested scopes, error recovery, and Excel-state restoration.
 - Record each Excel environment actually run, including Office bitness.
 - A release may claim execution certification only for environments actually run.
@@ -314,6 +317,13 @@ Retain at least:
 - known deviations and approving reviewer
 
 A release note summarizes evidence; it does not replace it.
+
+Each release keeps this record in `docs/releases/vX.Y.Z/EVIDENCE.md`, started
+while the release is in development and completed from the frozen candidate.
+It links to the issues, pull requests and runs that hold the detail instead of
+repeating their state. v1.4.0's record is its archived
+[implementation and release plan](docs/releases/v1.4.0/IMPLEMENTATION_AND_RELEASE_PLAN.md);
+v1.4.1's is [docs/releases/v1.4.1/EVIDENCE.md](docs/releases/v1.4.1/EVIDENCE.md).
 
 ## 10. Publish the GitHub Release
 

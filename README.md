@@ -67,11 +67,12 @@
 > tagged source remains the authoritative implementation.
 
 > [!NOTE]
-> The latest tagged release is **v1.4.0**. Development for **v1.4.1** is tracked
-> on the `release/v1.4.1` branch and squash-merged to `main` on request; its
-> [implementation plan](docs/V1.4.1_IMPLEMENTATION_PLAN.md) on that branch is
-> canonical during the milestone. Unreleased changes do not alter the exact-tag v1.4.0 certification
-> record below.
+> The latest tagged release is **v1.4.0**. Development for **v1.4.1** happens on
+> the `release/v1.4.1` branch and is squash-merged to `main` on request. Its work
+> is tracked in the
+> [v1.4.1 milestone](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/milestone/4),
+> and its evidence in [docs/releases/v1.4.1/EVIDENCE.md](docs/releases/v1.4.1/EVIDENCE.md).
+> Unreleased changes do not alter the exact-tag v1.4.0 certification record below.
 
 ## ✨ What this project is
 
@@ -580,6 +581,9 @@ xlCalculationAutomatic
 The documented invariant is that the open-workbook set remains stable while
 Calculation suppression is active. If Calculation control cannot be honored,
 `TW_CalculationExempted` exposes that outcome rather than inventing a baseline.
+On the v1.4.1 development line the exemption lasts for the rest of the shared
+scope: a workbook that opens later does not reactivate Calculation control, and
+final teardown leaves Calculation as the host has it (#33).
 
 ### Cleanup contract
 
@@ -833,8 +837,26 @@ Compile, then run:
 Run_cPerformanceManager_RegressionSuite
 ```
 
+On Windows with desktop Excel, `tools/Invoke-ExcelRegression.ps1` runs the same
+steps from an exact, clean checkout. It imports the four files into a new
+workbook, compiles, runs the suite, reads every case from the log worksheet,
+and closes Excel without saving:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\Invoke-ExcelRegression.ps1 `
+    -ExpectedSha <full commit SHA> -AllowVbomAccess -OutDir ..\excel-evidence
+```
+
+It writes a JSON record whose `result` follows the v1.4.0 execution-result
+schema. `-RedFile` and `-RedExpectedCase` repeat the run with one component
+replaced, to show that a regression case fails without its fix. Importing
+modules needs Excel's *Trust access to the VBA project object model*.
+`-AllowVbomAccess` enables it for the current user only for the run, and
+restores the previous value afterwards. The runner is local and maintainer-run;
+the automated CI gate is tracked in #11.
+
 <!-- facts:source-cases -->
-The regression module in the current source invokes **80 cases**, and
+The regression module in the current source invokes **81 cases**, and
 `TotalSteps` must equal that count. Assertion counts are not derived from the
 source: they come from an Excel run, recorded below for each published tag.
 <!-- /facts:source-cases -->
@@ -906,7 +928,7 @@ The suite covers, among other areas:
 - unsigned 32-bit conversion boundaries and backend rollover constants;
 - checkpoint growth, cache preservation, delta/cumulative semantics, and exports;
 - overlapping TW scopes, termination cleanup, and 75 instance create/destroy cycles;
-- Calculation baseline validity, exemptions, overlapping scopes, and no synthetic baseline;
+- Calculation baseline validity, exemptions, overlapping scopes, no synthetic baseline, and sticky exemption across the workbook lifecycle;
 - known-vector statistics, order independence, domain validation, and CV policy;
 - measurement harness, workbook qualification, dispatch baseline, and failed-read exclusion.
 
@@ -1039,7 +1061,9 @@ general options and merge methods, the security features, and the rulesets
 with their required checks. `python tools/repository_settings.py` previews the
 differences, `--apply` applies them through the maintainer's authenticated
 GitHub CLI, `--verify` fails on any difference, and `--evidence DIR` writes a
-dated JSON record of the run.
+dated JSON record of the run. GitHub enables Dependabot security updates
+asynchronously, through their own endpoint, so `--apply` re-reads the settings
+up to five times, three seconds apart, before it reports a difference.
 
 The two compile-safety checks scan production, regression and demo exports with
 separate Windows conditional-compilation profiles and fixture-backed grammar.

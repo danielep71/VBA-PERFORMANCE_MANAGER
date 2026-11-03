@@ -297,6 +297,22 @@ Workflow code and configuration are security-sensitive.
 Automation that writes repository content or publishes releases must have
 explicit, least-privilege authorization.
 
+`tools/Invoke-ExcelRegression.ps1` is a local, maintainer-run Excel runner, not a
+CI runner.
+
+- It refuses to start while Excel is open, so it controls only the instance it
+  starts.
+- It never saves a workbook and changes nothing in the repository.
+- It writes its evidence only outside the repository.
+- It changes one setting, Excel's *Trust access to the VBA project object
+  model* (`AccessVBOM`), and only when called with `-AllowVbomAccess`. The
+  change is for the current Windows user only, lasts for the run, and the
+  previous value is restored on every path.
+- Run it only on a checkout you trust: the imported VBA runs with your user's
+  rights.
+
+The isolated runner and trust model for an automated gate remain #11's scope.
+
 ---
 
 <a id="safe-use"></a>

@@ -148,6 +148,32 @@ Use only the categories needed by a release.
   security updates, and private vulnerability reporting. Labels are kept as data in `tools/labels.json`,
   with a sync workflow that creates and updates them (never deletes) and a
   weekly drift check. A workflow removes milestones from pull requests (#86).
+- `tools/Invoke-ExcelRegression.ps1` runs the regression suite in desktop Excel
+  from an exact, clean checkout: it imports the components into a new
+  workbook, compiles, runs the suite, reads each case from the log worksheet
+  and closes Excel without saving. Its JSON record carries a `result` in the
+  v1.4.0 execution-result schema. An optional red check replaces one component
+  and expects exactly one named case to fail. `AccessVBOM` is enabled only with
+  `-AllowVbomAccess`, for the current user and the run, and restored on every
+  path. `tools/test_excel_runner.py` keeps the runner in step with the
+  regression module, the README import order and the frozen schema. This is a
+  local, maintainer-run first step towards the automated gate (#11).
+- `tools/repository_settings.py` now manages Dependabot security updates
+  through their own endpoint (`/automated-security-fixes`), after
+  vulnerability alerts, and reads them from it. It falls back to
+  `security_and_analysis` when that endpoint is unreadable. After `--apply`
+  the script re-reads the settings up to five times, three seconds apart,
+  before it reports a difference; GitHub enables security updates
+  asynchronously, so a read straight after the apply could report a false
+  difference. `--verify` still reads once (#103).
+- Planning now lives in GitHub issues and the milestone. The 2,362-line v1.4.1
+  implementation plan is retired: every open item already had an issue, and
+  its final certification and publication became #101. Its text stays
+  readable at its last commit. The branch, merge, Excel-boundary and evidence
+  rules move to the new "Maintainer workflow" section of `CONTRIBUTING.md`.
+  Each release keeps a short `docs/releases/vX.Y.Z/EVIDENCE.md`, described in
+  `RELEASING.md`. The archived v1.4.0 plan and its redirect notice are
+  unchanged (#90).
 - Five static checks (20–24) apply per-component VBA source rules in every
   modelled compilation profile:
   - `VB_Name` matches the file name, the source is ASCII, `Option Explicit`
@@ -223,6 +249,15 @@ Use only the categories needed by a release.
   references outside code fences so they work in submitted pull requests.
 
 - Standardized the pull-request review contract around exact-candidate evidence, compatibility, risk and recovery, security and provenance, and project-specific validation gates.
+
+### Fixed
+
+- A Calculation exemption now lasts for the rest of the shared time-waster
+  scope. Previously, once a workbook reappeared, a later begin, update or end
+  could force Calculation back to Manual and final teardown could restore a
+  stale baseline. An exempt scope no longer reads, writes or restores
+  Calculation; final teardown clears the exemption. Public API is unchanged;
+  regression case 81 covers it (#33).
 
 ---
 
