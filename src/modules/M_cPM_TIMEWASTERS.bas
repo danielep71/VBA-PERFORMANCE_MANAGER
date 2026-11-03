@@ -1648,7 +1648,3 @@ Public Sub PM_TW_Test_SimulateNoWorkbook( _
         g_TW_TestNoWorkbook = Simulate
 
 End Sub
-
-
-
-

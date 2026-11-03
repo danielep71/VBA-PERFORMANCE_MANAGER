@@ -37,7 +37,12 @@ from release_provenance import REQUIRED as PROVENANCE_REQUIRED
 from test_vba_compile_safety import fixture_problems
 from test_workflow_pins import fixture_problems as pin_fixture_problems
 from vba_compile_safety import ASSIGN_CHECK, LABEL_CHECK, analyse
+from vba_format import CHECK as FORMAT_CHECK
+from vba_format import fixture_problems as format_fixture_problems
+from vba_format import problems as format_problems
 from vba_inventory import ROLES, ROOTS, inventory_problems, module_name, tracked_vba, under
+from vba_source_rules import fixture_problems as rule_fixture_problems
+from vba_source_rules import repository_problems as rule_problems
 from workflow_pins import CHECK as PIN_CHECK
 from workflow_pins import analyse as analyse_pins
 from workflow_pins import repository_files
@@ -688,6 +693,13 @@ def main() -> int:
     rep.check(BINARY_CHECK, binary_problems(ROOT))
     # Relative links and anchors in tracked Markdown resolve (#85).
     rep.check(LINK_CHECK, link_problems(ROOT))
+    # Per-component source rules and layout over every tracked export (#83).
+    exports = under(TRACKED_VBA, *ROOTS)
+    rules = rule_problems({path: (ROOT / path).read_bytes() for path in exports})
+    fixtures = rule_fixture_problems()
+    for name, found in rules.items():
+        rep.check(name, found + fixtures[name])
+    rep.check(FORMAT_CHECK, format_problems(ROOT, exports) + format_fixture_problems())
     check_readme_facts(rep)
 
     print("-" * 60)

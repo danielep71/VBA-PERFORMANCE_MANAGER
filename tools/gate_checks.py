@@ -30,6 +30,18 @@ CHECKS: tuple[tuple[str, str], ...] = (
     ("workflow actions use immutable pins", "workflow actions use immutable pins"),
     ("tracked binaries are reviewed", "tracked binaries are reviewed"),
     ("Markdown links and anchors resolve", "Markdown links and anchors resolve"),
+    ("VBA components follow the source rules",
+     "VBA components follow the source rules: `VB_Name` matches the file name, ASCII "
+     "only, `Option Explicit` and no `Option Base`, no tab or trailing white space, "
+     "closed string literals"),
+    ("Declare statements follow each profile's PtrSafe rule",
+     "`Declare` statements carry `PtrSafe` under VBA7, and only there, in every "
+     "compilation profile"),
+    ("procedures and module declarations state their visibility",
+     "procedures and module-level declarations state Public, Private or Friend"),
+    ("public names are unique across standard modules",
+     "no public name is defined in two standard modules"),
+    ("VBA source layout is formatted", "VBA source layout matches `tools/vba_format.py`"),
     ("README facts match their sources", "README facts match their sources"),
 )
 

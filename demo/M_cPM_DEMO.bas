@@ -252,6 +252,7 @@ Clean_Fail:
         Resume Clean_Exit
 
 End Sub
+
 Private Sub cPM_BuildDemoSheet( _
     ByVal WB As Workbook, _
     ByVal WS As Worksheet)
@@ -466,14 +467,14 @@ Private Sub cPM_BuildDemoSheet( _
     '--------------------------------------------------------------------------
         'Apply a border around the full action-button area
             DEMO_Set_RangeBorder WS.Range("J4:L12")
-    
+
     '--------------------------------------------------------------------------
     ' CREATE REGRESSION TEST BUTTON
     '--------------------------------------------------------------------------
         DEMO_Add_DemoButton WS, "Btn_cPM_Regression", "Run Regression Tests", _
             WS.Range("M8").Left + 40, WS.Range("I8").Top + 10, _
             135, 25, "Run_cPerformanceManager_RegressionSuite"
-    
+
 '------------------------------------------------------------------------------
 ' BUILD RESULTS LOG
 '------------------------------------------------------------------------------
@@ -1015,6 +1016,7 @@ CleanFail:
         Resume CleanExit
 
 End Sub
+
 Public Sub cPM_RunAllMethods()
 '
 '==============================================================================
@@ -1225,6 +1227,7 @@ CleanFail:
         Resume CleanExit
 
 End Sub
+
 Public Sub cPM_RunAlignedDemo()
 '
 '==============================================================================
@@ -1294,7 +1297,7 @@ Public Sub cPM_RunAlignedDemo()
     Dim SavedErrNumber      As Long                  'Captured error number
     Dim SavedErrSource      As String                'Captured error source
     Dim SavedErrDescription As String                'Captured error description
-    
+
     Dim MethodID            As Integer               'Selected timing method
     Dim Target              As Range                 'Worksheet target range
     Dim FillValue           As Variant               'Configured fill value
@@ -1462,6 +1465,7 @@ CleanFail:
         Resume CleanExit
 
 End Sub
+
 Public Sub cPM_RunDiagnostics()
 '
 '==============================================================================
@@ -1626,7 +1630,7 @@ Public Sub cPM_RunOverheadDemo()
     Dim SavedErrNumber      As Long                  'Captured error number
     Dim SavedErrSource      As String                'Captured error source
     Dim SavedErrDescription As String                'Captured error description
-    
+
     Dim MethodID            As Integer               'Selected timing method
     Dim Iterations          As Long                  'Selected iteration count
     Dim OverheadS           As Double                'Numeric overhead measurement
@@ -1727,6 +1731,7 @@ CleanFail:
         Resume CleanExit
 
 End Sub
+
 Public Sub cPM_RunPauseDemo()
 '
 '==============================================================================
@@ -1782,7 +1787,7 @@ Public Sub cPM_RunPauseDemo()
     Dim SavedErrNumber      As Long                  'Captured error number
     Dim SavedErrSource      As String                'Captured error source
     Dim SavedErrDescription As String                'Captured error description
-    
+
     Dim PauseS              As Double                'Requested pause seconds
     Dim PauseMethod         As Integer               'Requested pause method
     Dim ElapsedS            As Double                'Measured elapsed seconds
@@ -3110,4 +3115,3 @@ Private Sub cPM_Demo_AppendLog( _
         LR.Range(1, 10).NumberFormat = "0.000000000"
 
 End Sub
-

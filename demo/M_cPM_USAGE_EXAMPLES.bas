@@ -1543,7 +1543,7 @@ Public Sub Example_CheckpointReport()
     '
     'Setting the label BEFORE StartTimer does not work: starting a session
     'clears the run label, so the report would come out unlabelled.
-        cPM.StartTimer cPM_MethodQPC, False, "ImportWorkflow" 
+        cPM.StartTimer cPM_MethodQPC, False, "ImportWorkflow"
 
 '------------------------------------------------------------------------------
 ' CHECKPOINTED WORKLOAD

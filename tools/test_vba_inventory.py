@@ -88,8 +88,9 @@ class StaticGateTests(unittest.TestCase):
             shutil.copytree(ROOT, dest, ignore=shutil.ignore_patterns(".git", "__pycache__"))
             git(dest, "init", "-q")
             new = dest / "demo" / "M_cPM_NewDemo.bas"
-            new.write_text('Attribute VB_Name = "M_cPM_NewDemo"\nOption Explicit\n'
-                           "Public Sub Demo()\n    Dim Empty As Long\nEnd Sub\n", encoding="utf-8")
+            # A well-formed CRLF component, so only the two expected checks fail.
+            new.write_bytes(b'Attribute VB_Name = "M_cPM_NewDemo"\r\nOption Explicit\r\n'
+                            b"Public Sub Demo()\r\n    Dim Empty As Long\r\nEnd Sub\r\n")
             git(dest, "add", "-A")
             result = dest / "result.json"
             proc = subprocess.run([sys.executable, str(dest / "tools" / "vba_lint.py"),

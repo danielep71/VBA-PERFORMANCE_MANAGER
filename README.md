@@ -13,7 +13,7 @@
 [![Windows](https://img.shields.io/badge/Platform-Windows_desktop-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#requirements)
 [![Version](https://img.shields.io/badge/Version-1.4.0-6f42c1?style=for-the-badge)](#release-status)
 [![Regression v1.4.0](https://img.shields.io/badge/Regression_v1.4.0-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
-[![Static checks](https://img.shields.io/badge/Static_checks-20_%2F_20-0969da?style=for-the-badge)](#static-source-analysis)
+[![Static checks](https://img.shields.io/badge/Static_checks-25_%2F_25-0969da?style=for-the-badge)](#static-source-analysis)
 [![License](https://img.shields.io/badge/License-Apache_2.0-2ea44f?style=for-the-badge)](LICENSE)
 <!-- /facts:badges -->
 
@@ -937,7 +937,7 @@ The published certifications above record the checks of their own tags and
 are not recertified by later additions.
 
 <!-- facts:static-checks -->
-The current development linter performs **20 checks**:
+The current development linter performs **25 checks**:
 
 1. no merge-conflict markers;
 2. balanced procedure blocks;
@@ -958,7 +958,12 @@ The current development linter performs **20 checks**:
 17. workflow actions use immutable pins;
 18. tracked binaries are reviewed;
 19. Markdown links and anchors resolve;
-20. README facts match their sources.
+20. VBA components follow the source rules: `VB_Name` matches the file name, ASCII only, `Option Explicit` and no `Option Base`, no tab or trailing white space, closed string literals;
+21. `Declare` statements carry `PtrSafe` under VBA7, and only there, in every compilation profile;
+22. procedures and module-level declarations state Public, Private or Friend;
+23. no public name is defined in two standard modules;
+24. VBA source layout matches `tools/vba_format.py`;
+25. README facts match their sources.
 <!-- /facts:static-checks -->
 
 The checks cover every tracked `.bas`, `.cls` and `.frm` export under `src/`,
@@ -982,7 +987,31 @@ Dependabot proposes updates to the pinned actions and the hash-locked Python
 requirements, and an OpenSSF Scorecard workflow reports the default branch's
 supply-chain posture to code scanning.
 
-Check 20 keeps this README's facts in rendered blocks, marked
+Checks 20–24 apply per-component source rules to every tracked export, in
+each conditional-compilation profile that checks 15 and 16 model (pre-VBA7,
+VBA7-Win32, VBA7-Win64):
+
+- `VB_Name` matches the file name (case is not compared, as in VBA and on
+  Windows), and the source is ASCII, declares `Option Explicit` before its
+  first procedure, never uses `Option Base`, and has no tab, no trailing white
+  space and no unclosed string literal;
+- every reachable `Declare` carries `PtrSafe` under VBA7, and none carries it
+  before VBA7, where it does not compile;
+- every procedure and module-level declaration states Public, Private or
+  Friend (`Dim` and `Global` at module level fail);
+- no public name (procedure, variable, constant, `Declare`, `Type`, `Enum` or
+  `Enum` member) is defined in two standard modules, which Excel reports as an
+  ambiguous name;
+- the layout matches `tools/vba_format.py`.
+
+The formatter changes whitespace only. It produces CRLF line ends with one
+final line end, removes trailing white space, expands indentation tabs, keeps
+procedure declarations, their End statements and labels in column 0, and puts
+one or two blank lines after each End. `python3 tools/vba_format.py --check`
+fails without writing; `--write` rewrites the files that differ, which are then
+re-imported into the VBE.
+
+Check 25 keeps this README's facts in rendered blocks, marked
 `<!-- facts:NAME -->`. Derived facts come from the source: the version in
 `VERSION`, the regression module's case count, and the check list in
 `tools/gate_checks.py`, which the gate must run exactly and in order.

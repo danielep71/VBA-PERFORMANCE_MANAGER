@@ -148,8 +148,22 @@ Use only the categories needed by a release.
   security updates, and private vulnerability reporting. Labels are kept as data in `tools/labels.json`,
   with a sync workflow that creates and updates them (never deletes) and a
   weekly drift check. A workflow removes milestones from pull requests (#86).
+- Five static checks (20–24) apply per-component VBA source rules in every
+  modelled compilation profile:
+  - `VB_Name` matches the file name, the source is ASCII, `Option Explicit`
+    precedes the first procedure, there is no `Option Base`, tab, trailing
+    white space or unclosed literal;
+  - `PtrSafe` is on every `Declare` under VBA7, and only there;
+  - procedures and module-level declarations state their visibility;
+  - no public name is defined in two standard modules;
+  - the layout matches the new `tools/vba_format.py`, whose `--check` fails
+    without writing.
+  The formatter normalised the six tracked exports: trailing white space on 30
+  lines, blank lines at the end of two files, and blank lines after `End`
+  statements. The change is whitespace only; every string literal and comment
+  is unchanged (#83).
 - The README's version, regression and static-check facts are rendered into
-  marked blocks by `tools/readme_facts.py`, and a 20th static check fails when
+  marked blocks by `tools/readme_facts.py`, and a static check (now the 25th) fails when
   a block is stale. Source-derived facts (`VERSION`, the regression case
   count, the gate's check list in `tools/gate_checks.py`) are kept apart from
   certified, tag-bound evidence, which lives in `tools/certified-evidence.json`

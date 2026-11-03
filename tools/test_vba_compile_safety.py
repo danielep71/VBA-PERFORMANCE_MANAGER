@@ -97,7 +97,9 @@ def integration_problems() -> list[str]:
         # wiring, not release-history or exact-SHA evidence. It does get a
         # git index, because the checked components are read from git (#82).
         # Each scenario overwrites a tracked demo module, so the component
-        # inventory stays complete and only the expected check can fail.
+        # inventory stays complete and only the expected check can fail. The
+        # module keeps its VB_Name, Option Explicit and CRLF layout so that
+        # the per-component source rules pass (#83).
         for command in (["git", "init", "-q"], ["git", "add", "-A"]):
             subprocess.run(command, cwd=dest, check=True, capture_output=True)
         path = dest / "demo" / "M_cPM_USAGE_EXAMPLES.bas"
@@ -106,7 +108,9 @@ def integration_problems() -> list[str]:
             ("handler", "On Error GoTo Missing", LABEL_CHECK),
             ("assignment", "Missing=1", ASSIGN_CHECK),
         ):
-            path.write_text(procedure(body), encoding="utf-8")
+            component = ('Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"\n    Option Explicit\n'
+                         + procedure(body))
+            path.write_bytes(component.replace("\n", "\r\n").encode("ascii"))
             output = dest / "result.json"
             run = subprocess.run([sys.executable, str(dest / "tools/vba_lint.py"),
                                   "--json", str(output)], capture_output=True,

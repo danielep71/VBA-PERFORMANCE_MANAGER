@@ -2257,6 +2257,7 @@ Public Sub Pause( _
 
     End Select
 End Sub
+
 Public Sub ResetEnvironment()
 '
 '==============================================================================
@@ -7753,8 +7754,3 @@ Public Property Get TW_CalculationExempted() As Boolean
         TW_CalculationExempted = PM_TW_CalculationExempted()
 
 End Property
-
-
-
-
-
