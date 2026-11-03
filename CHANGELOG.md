@@ -148,6 +148,14 @@ Use only the categories needed by a release.
   security updates, and private vulnerability reporting. Labels are kept as data in `tools/labels.json`,
   with a sync workflow that creates and updates them (never deletes) and a
   weekly drift check. A workflow removes milestones from pull requests (#86).
+- `tools/repository_settings.py` now manages Dependabot security updates
+  through their own endpoint (`/automated-security-fixes`), after
+  vulnerability alerts, and reads them from it. It falls back to
+  `security_and_analysis` when that endpoint is unreadable. After `--apply`
+  the script re-reads the settings up to five times, three seconds apart,
+  before it reports a difference; GitHub enables security updates
+  asynchronously, so a read straight after the apply could report a false
+  difference. `--verify` still reads once (#103).
 - Planning now lives in GitHub issues and the milestone. The 2,362-line v1.4.1
   implementation plan is retired: every open item already had an issue, and
   its final certification and publication became #101. Its text stays
