@@ -1,0 +1,50 @@
+name: Issue triage
+
+# Audits every open issue for the metadata issue forms cannot enforce:
+# assignee, exactly one priority label, an open milestone, a target date on
+# or before the milestone's due date (and not before the start date), and a
+# Dependencies section whose references exist (#86). Read-only: it never changes an issue. A failed run
+# is the triage signal; each finding is resolved by hand. Issue and milestone
+# events always run this workflow from the default branch.
+
+on:
+  issues:
+    types: [opened, edited, reopened, labeled, unlabeled, assigned, unassigned,
+            milestoned, demilestoned]
+  milestone:
+    types: [created, edited, opened, closed, deleted]
+  schedule:
+    # Weekly, off the hour.
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-triage
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Audit open issues
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+
+      - name: Audit open issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python tools/issue_triage.py

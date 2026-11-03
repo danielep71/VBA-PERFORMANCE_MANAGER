@@ -139,7 +139,13 @@ Use only the categories needed by a release.
 - Issues are now filed through issue forms: the bug report and feature
   request templates are forms like the documentation one. Each form sets one
   priority label, assigns the maintainer, and records dependencies and an
-  optional target end date. Labels are kept as data in `tools/labels.json`,
+  optional target date. An issue-triage workflow audits every open issue,
+  read-only, for assignee, one priority, an open milestone, a target date
+  within the milestone, and a Dependencies section. A settings baseline
+  (`tools/repository-settings.json`) and `tools/repository_settings.py`
+  preview, apply and verify the repository settings and write dated evidence;
+  the baseline enables secret scanning, push protection, Dependabot alerts and
+  security updates, and private vulnerability reporting. Labels are kept as data in `tools/labels.json`,
   with a sync workflow that creates and updates them (never deletes) and a
   weekly drift check. A workflow removes milestones from pull requests (#86).
 - Added Dependabot for the pinned actions and the hash-locked Python

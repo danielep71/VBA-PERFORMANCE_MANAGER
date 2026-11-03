@@ -967,11 +967,27 @@ supply-chain posture to code scanning.
 
 Issues are filed through issue forms (bug, feature, documentation). Each form
 sets one priority label, assigns the maintainer, and asks for the issue's
-dependencies and an optional target end date. Labels are kept as data in
+dependencies and an optional target date. Labels are kept as data in
 `tools/labels.json`: the labels-sync workflow creates and updates them on the
 default branch, and a weekly drift check fails when the live labels differ.
 Milestones plan issues, not pull requests, so a workflow removes any milestone
 set on a pull request.
+
+The issue-triage workflow audits every open issue, read-only, on issue and
+milestone events and weekly. Each issue needs:
+
+- the maintainer as assignee;
+- exactly one priority label;
+- an open milestone;
+- a Schedule target date on or before the milestone's due date;
+- a Dependencies section whose `#` references exist.
+
+`tools/repository-settings.json` records the repository settings baseline:
+general options and merge methods, the security features, and the rulesets
+with their required checks. `python tools/repository_settings.py` previews the
+differences, `--apply` applies them through the maintainer's authenticated
+GitHub CLI, `--verify` fails on any difference, and `--evidence DIR` writes a
+dated JSON record of the run.
 
 The two compile-safety checks scan production, regression and demo exports with
 separate Windows conditional-compilation profiles and fixture-backed grammar.
