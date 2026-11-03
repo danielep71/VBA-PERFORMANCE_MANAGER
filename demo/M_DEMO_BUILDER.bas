@@ -109,20 +109,20 @@ Attribute VB_Name = "M_DEMO_BUILDER"
     Private Type tButtonAppearance
         FillVisible         As MsoTriState      'Original fill visibility
         FillColor           As Long             'Original fill color
-        
+
         LineVisible         As MsoTriState      'Original line visibility
         LineColor           As Long             'Original line color
         LineWeight          As Single           'Original line weight
-        
+
         TextColor           As Long             'Original text color
         TextBold            As MsoTriState      'Original text bold flag
         TextSize            As Single           'Original text size
-        
+
         ShadowVisible       As MsoTriState      'Original shadow visibility
         ShadowBlur          As Single           'Original shadow blur
         ShadowOffsetX       As Single           'Original shadow X offset
         ShadowOffsetY       As Single           'Original shadow Y offset
-        
+
         TopPos              As Double           'Original top position
         LeftPos             As Double           'Original left position
     End Type
@@ -136,7 +136,7 @@ Attribute VB_Name = "M_DEMO_BUILDER"
         DemoInputValidationNumeric = 2
         DemoInputValidationBoolean = 3
     End Enum
-    
+
 
 
 
@@ -686,6 +686,7 @@ Private Function DEMO_ColumnLetter( _
         DEMO_ColumnLetter = S
 
 End Function
+
 Public Sub DEMO_Begin_FastMode( _
     ByRef StateOut As tDemoFastModeState)
 '
@@ -1346,6 +1347,7 @@ CleanFail:
         Resume CleanExit
 
 End Sub
+
 Public Sub DEMO_Format_Labels( _
     ByVal TargetRange As Range)
 '
@@ -2193,7 +2195,7 @@ Public Sub DEMO_Add_DemoButton( _
         Else
             Shp.OnAction = "'" & ThisWorkbook.Name & "'!" & ActionMacro
         End If
-        
+
 '------------------------------------------------------------------------------
 ' FORMAT SHAPE
 '------------------------------------------------------------------------------
@@ -2497,7 +2499,6 @@ Public Sub DEMO_Append_TableRow( _
 End Sub
 
 
-
 Public Sub DEMO_Prepare_LabeledInputSection( _
     ByVal WS As Worksheet, _
     ByVal SectionHeaderRange As Range, _
@@ -2554,7 +2555,7 @@ Public Sub DEMO_Prepare_LabeledInputSection( _
 ' UPDATED
 '   2026-04-12
 '==============================================================================
-    
+
 '------------------------------------------------------------------------------
 ' APPLY STANDARD SECTION FORMATTING
 '------------------------------------------------------------------------------
@@ -2660,7 +2661,7 @@ Public Sub DEMO_Write_NamedInputRow( _
 ' UPDATED
 '   2026-04-12
 '==============================================================================
-    
+
 '------------------------------------------------------------------------------
 ' WRITE LABEL AND DEFAULT VALUE
 '------------------------------------------------------------------------------
@@ -2785,6 +2786,7 @@ Public Sub DEMO_Add_ButtonGrid( _
     Next i
 
 End Sub
+
 Public Function DEMO_Create_TableSection( _
     ByVal WS As Worksheet, _
     ByVal SectionHeaderRange As Range, _
@@ -2848,7 +2850,7 @@ Public Function DEMO_Create_TableSection( _
 ' UPDATED
 '   2026-04-12
 '==============================================================================
-    
+
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
@@ -2975,13 +2977,13 @@ Public Sub Btn_ApplyState( _
     Select Case UCase$(Trim$(StateName))
         Case "NORMAL"
             Col = BTN_PRIMARY_N
-        
+
         Case "HOVER"
             Col = BTN_PRIMARY_H
-        
+
         Case "PRESSED"
             Col = BTN_PRIMARY_P
-        
+
         Case Else
             Col = BTN_PRIMARY_N
     End Select
@@ -3045,10 +3047,10 @@ Private Function Btn_CaptureAppearance( _
         'Capture fill appearance
             S.FillVisible = .Fill.Visible
             S.FillColor = .Fill.ForeColor.RGB
-       
+
         'Capture line appearance
            S.LineVisible = .Line.Visible
-           
+
            If S.LineVisible = msoTrue Then
                S.LineColor = .Line.ForeColor.RGB
                S.LineWeight = .Line.Weight
@@ -3056,20 +3058,20 @@ Private Function Btn_CaptureAppearance( _
                S.LineColor = 0
                S.LineWeight = 0!
            End If
-    
+
         'Capture text appearance when text is present
             If .TextFrame2.HasText Then
                 S.TextColor = .TextFrame2.TextRange.Font.Fill.ForeColor.RGB
                 S.TextBold = .TextFrame2.TextRange.Font.Bold
                 S.TextSize = .TextFrame2.TextRange.Font.Size
             End If
-        
+
         'Capture shadow appearance
             S.ShadowVisible = .Shadow.Visible
             S.ShadowBlur = .Shadow.Blur
             S.ShadowOffsetX = .Shadow.OffsetX
             S.ShadowOffsetY = .Shadow.OffsetY
-        
+
         'Capture position
             S.TopPos = .Top
             S.LeftPos = .Left
@@ -3124,32 +3126,31 @@ Private Sub Btn_RestoreAppearance( _
         'Restore fill appearance
             .Fill.Visible = SavedState.FillVisible
             .Fill.ForeColor.RGB = SavedState.FillColor
-        
+
         'Restore line appearance
             .Line.Visible = SavedState.LineVisible
             .Line.ForeColor.RGB = SavedState.LineColor
             .Line.Weight = SavedState.LineWeight
-        
+
         'Restore text appearance when text is present
             If .TextFrame2.HasText Then
                 .TextFrame2.TextRange.Font.Fill.ForeColor.RGB = SavedState.TextColor
                 .TextFrame2.TextRange.Font.Bold = SavedState.TextBold
                 .TextFrame2.TextRange.Font.Size = SavedState.TextSize
             End If
-        
+
         'Restore shadow appearance
             .Shadow.Visible = SavedState.ShadowVisible
             .Shadow.Blur = SavedState.ShadowBlur
             .Shadow.OffsetX = SavedState.ShadowOffsetX
             .Shadow.OffsetY = SavedState.ShadowOffsetY
-        
+
         'Restore position
             .Top = SavedState.TopPos
             .Left = SavedState.LeftPos
     End With
 
 End Sub
-
 
 
 Public Sub Btn_Click()
@@ -3322,5 +3323,3 @@ Public Sub Demo_SB_SetProgress( _
             PercentText & " | " & StepText
 
 End Sub
-
-

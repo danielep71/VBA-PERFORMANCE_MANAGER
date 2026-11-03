@@ -71,7 +71,8 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(rf.repository_problems(rf.ROOT, recorded), ([], []))
 
     def test_a_stale_block_fails_and_write_repairs_it(self) -> None:
-        self.copy.edit("README.md", "**20 checks**", "**19 checks**")
+        count = len(gate_checks.CHECKS)
+        self.copy.edit("README.md", f"**{count} checks**", f"**{count - 1} checks**")
         self.assertEqual(self.copy.problems(), [
             "README.md: facts:static-checks is stale; run python3 tools/readme_facts.py --write"])
         evidence = self.copy.text(rf.EVIDENCE)
