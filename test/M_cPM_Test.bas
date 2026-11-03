@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
     Private Const TotalSteps        As Long = 80    'Total number of executed regression cases
-    
+
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
 '------------------------------------------------------------------------------
@@ -274,7 +274,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Raw/cached accessors after QPC"
         Test_Accessors_QPC
-    
+
     'Validate method 4 timeGetSystemTime low-level timestamp behavior
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Method 4 timeGetSystemTime"
@@ -731,6 +731,7 @@ Clean_Fail:
         Resume Clean_Exit
 
 End Sub
+
 '
 '==============================================================================
 '
@@ -986,6 +987,7 @@ Private Sub Suite_InitLogSheet()
         m_DetailNextRow = 6
 
 End Sub
+
 Private Function Suite_GetOrCreateLogSheet() As Worksheet
 '
 '==============================================================================
@@ -1773,7 +1775,7 @@ Private Sub RecordUnexpectedError( _
                              Err.Number, _
                              Err.Description
         End If
-        
+
 End Sub
 
 Private Sub CaptureAppState( _
@@ -2386,6 +2388,7 @@ CleanFail:
         Resume CleanExit
 
 End Sub
+
 Private Sub Test_ElapsedTime_FormatExistingSeconds()
 '
 '==============================================================================
@@ -2592,6 +2595,7 @@ CleanFail:
         Resume CleanExit
 
 End Sub
+
 Private Sub Test_Accessors_QPC()
 '
 '==============================================================================
@@ -3883,8 +3887,6 @@ Err_Handler:
         Case_Finalize
 
 End Sub
-
-
 
 
 Private Sub Test_TW_BlankKeyValidation()
@@ -5423,6 +5425,7 @@ CleanFail:
         Resume CleanExit
 
 End Sub
+
 Private Sub Test_ReportAsArray_Empty_Direct()
 '
 '==============================================================================

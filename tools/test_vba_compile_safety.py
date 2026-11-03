@@ -1,6 +1,8 @@
 """Local deterministic fixtures for #45 and #64; also enforced by the ordinary gate."""
 from __future__ import annotations
 
+import unittest
+
 from vba_compile_safety import analyse
 
 
@@ -65,7 +67,7 @@ CASES = [
 
 
 def fixture_problems() -> tuple[list[str], list[str]]:
-    failures = ([], [])
+    failures: tuple[list[str], list[str]] = ([], [])
     for name, sources, expected_h, expected_a in CASES:
         actual = analyse(sources)
         for index, expected in enumerate((expected_h, expected_a)):
@@ -83,22 +85,32 @@ def integration_problems() -> list[str]:
     import sys
     import tempfile
     from pathlib import Path
-    from vba_compile_safety import LABEL_CHECK, ASSIGN_CHECK
+
+    from vba_compile_safety import ASSIGN_CHECK, LABEL_CHECK
 
     failures = []
     root = Path(__file__).resolve().parent.parent
     with tempfile.TemporaryDirectory(prefix="cpm-compile-fixtures-") as temp:
         dest = Path(temp) / "repo"
         shutil.copytree(root, dest, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        # The copied tree deliberately has no Git identity: this verifies CLI
-        # wiring, not release-history or exact-SHA evidence.
-        path = dest / "demo" / "CompileSafetyFixture.bas"
+        # The copied tree deliberately has no history: this verifies CLI
+        # wiring, not release-history or exact-SHA evidence. It does get a
+        # git index, because the checked components are read from git (#82).
+        # Each scenario overwrites a tracked demo module, so the component
+        # inventory stays complete and only the expected check can fail. The
+        # module keeps its VB_Name, Option Explicit and CRLF layout so that
+        # the per-component source rules pass (#83).
+        for command in (["git", "init", "-q"], ["git", "add", "-A"]):
+            subprocess.run(command, cwd=dest, check=True, capture_output=True)
+        path = dest / "demo" / "M_cPM_USAGE_EXAMPLES.bas"
         for name, body, expected in (
             ("valid", "Dim A As Long\nA=1", None),
             ("handler", "On Error GoTo Missing", LABEL_CHECK),
             ("assignment", "Missing=1", ASSIGN_CHECK),
         ):
-            path.write_text(procedure(body), encoding="utf-8")
+            component = ('Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"\n    Option Explicit\n'
+                         + procedure(body))
+            path.write_bytes(component.replace("\n", "\r\n").encode("ascii"))
             output = dest / "result.json"
             run = subprocess.run([sys.executable, str(dest / "tools/vba_lint.py"),
                                   "--json", str(output)], capture_output=True,
@@ -116,6 +128,17 @@ def integration_problems() -> list[str]:
             if result["checks_run"] != len(names):
                 failures.append(f"CLI {name}: reported check count disagrees with results")
     return failures
+
+
+class CompileSafetyFixtures(unittest.TestCase):
+    """Runs the compile-safety fixtures and CLI scenarios under unittest discovery."""
+
+    def test_fixtures(self) -> None:
+        self.assertGreater(len(CASES), 0)
+        self.assertEqual(fixture_problems(), ([], []))
+
+    def test_cli_integration(self) -> None:
+        self.assertEqual(integration_problems(), [])
 
 
 if __name__ == "__main__":

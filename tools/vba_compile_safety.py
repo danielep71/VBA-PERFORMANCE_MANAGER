@@ -7,6 +7,7 @@ Unknown conditional syntax fails closed instead of silently skipping a branch.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 LABEL_CHECK = "error-handler labels resolve within their procedure"
@@ -52,7 +53,7 @@ def conditional(expr: str, env: dict[str, bool]) -> bool:
     tokens = re.findall(r"\w+|\S", expr.lower())
     pos = 0
 
-    def atom():
+    def atom() -> bool:
         nonlocal pos
         if pos >= len(tokens):
             raise ValueError("incomplete conditional expression")
@@ -70,7 +71,7 @@ def conditional(expr: str, env: dict[str, bool]) -> bool:
             return env[t]
         raise ValueError(f"unsupported conditional token {t!r}")
 
-    def conjunction():
+    def conjunction() -> bool:
         nonlocal pos
         value = atom()
         while pos < len(tokens) and tokens[pos] == "and":
@@ -79,7 +80,7 @@ def conditional(expr: str, env: dict[str, bool]) -> bool:
             value = value and right
         return value
 
-    def disjunction():
+    def disjunction() -> bool:
         nonlocal pos
         value = conjunction()
         while pos < len(tokens) and tokens[pos] in ("or", "xor"):
@@ -95,10 +96,11 @@ def conditional(expr: str, env: dict[str, bool]) -> bool:
     return result
 
 
-def lines(text: str, vba7: bool, win64: bool):
+def lines(text: str, vba7: bool, win64: bool) -> Iterator[tuple[int, str]]:
     env = dict(vba7=vba7, win64=win64, win32=True, mac=False,
                true=True, false=False)
-    stack, active, pending, first = [], True, "", 0
+    stack: list[list[bool]] = []
+    active, pending, first = True, "", 0
     for number, raw in enumerate(text.splitlines(), 1):
         code = mask(raw).strip()
         if code.startswith("#"):
@@ -136,7 +138,7 @@ def lines(text: str, vba7: bool, win64: bool):
         raise ValueError("unterminated continuation or conditional block")
 
 
-def comma_parts(text: str):
+def comma_parts(text: str) -> Iterator[str]:
     depth, start = 0, 0
     for i, c in enumerate(text):
         depth += (c == "(") - (c == ")")
@@ -166,9 +168,13 @@ class Procedure:
     targets: list[tuple[int, str]] = field(default_factory=list)
 
 
-def parse(text: str, vba7: bool, win64: bool, *, object_module: bool = False):
-    module, exported, procedures = set(), set(), []
-    current, block = None, None
+def parse(text: str, vba7: bool, win64: bool, *,  # noqa: C901 - single-pass VBA statement parser, fixture-proven; splitting would thread its state through helpers
+          object_module: bool = False) -> tuple[set[str], set[str], list[Procedure]]:
+    module: set[str] = set()
+    exported: set[str] = set()
+    procedures: list[Procedure] = []
+    current: Procedure | None = None
+    block: tuple[str, str] | None = None
     for number, logical in lines(text, vba7, win64):
         # := is a named argument, never a statement separator.
         parts = re.split(r":(?!=)", logical)

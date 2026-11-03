@@ -8,12 +8,14 @@
 
 <br>
 
+<!-- facts:badges -->
 [![Excel VBA](https://img.shields.io/badge/Excel_VBA-source_support_32_%2F_64--bit-217346?style=for-the-badge&logo=microsoft-excel&logoColor=white)](#requirements)
 [![Windows](https://img.shields.io/badge/Platform-Windows_desktop-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#requirements)
 [![Version](https://img.shields.io/badge/Version-1.4.0-6f42c1?style=for-the-badge)](#release-status)
-[![Regression](https://img.shields.io/badge/Regression-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
-[![Static checks](https://img.shields.io/badge/Static_checks-16_%2F_16-0969da?style=for-the-badge)](#static-source-analysis)
+[![Regression v1.4.0](https://img.shields.io/badge/Regression_v1.4.0-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
+[![Static checks](https://img.shields.io/badge/Static_checks-25_%2F_25-0969da?style=for-the-badge)](#static-source-analysis)
 [![License](https://img.shields.io/badge/License-Apache_2.0-2ea44f?style=for-the-badge)](LICENSE)
+<!-- /facts:badges -->
 
 <br>
 
@@ -147,7 +149,7 @@ benchmark repetition, statistics, and Excel-state cleanup.
 | Diagnostics | Timing environment | QPC frequency, system tick interval, backend overhead, active method and read status |
 | Failure policy | Strict by default | Raise on invalid measurement; optional non-strict fallback/zero with explicit status |
 | Deployment | Source-first | Two required production files; no official `.xlam` distribution |
-| Assurance | Static plus real Excel evidence | v1.4.0 exact-tag certification: 12 hosted source checks and 80 cases / 643 assertions / 0 failures on 64-bit Excel; Office 32-bit remains unverified |
+| Assurance | Static plus real Excel evidence | v1.4.0 exact-tag certification on 64-bit Excel, recorded under [Execution evidence](#execution-evidence); Office 32-bit remains unverified |
 
 ---
 
@@ -730,11 +732,17 @@ the tag being installed.
 |---|---|---|
 | Invalid `StartTimer` method | Raises | Falls back to QPC |
 | QPC unavailable or unreadable at start | Raises | Attempts backend 2 before committing |
-| Elapsed read before `StartTimer` | Raises | Returns `0` |
+| Elapsed read before the first `StartTimer` | Raises | Returns `0` with `LastReadStatus = cPM_ReadOK`; check `HasActiveSession` (known v1.4.x limitation, [#66](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/66)) |
 | Requested elapsed method differs from session | Raises | Uses the session backend |
-| Timing source moves backwards after correction | Raises | Returns `0`; status is invalid |
+| Naturally negative elapsed delta after correction: backend 2 on Win64, or backend 6 | Raises | Returns `0`; status is invalid |
 | QPC or system-time endpoint read fails | Raises | Returns `0`; cache remains unchanged |
 | Tick alignment exceeds its spin guard | Raises | Returns the current timestamp path |
+
+For backend 1, negative raw deltas receive one-day rollover correction. For
+backend 2 on Win32/pre-VBA7 and backends 3 and 4, they receive one 32-bit counter
+wrap correction. These paths cannot distinguish a backward step from rollover;
+the negative-value helper tests do not establish natural rejection on every
+backend. QPC (backend 5) bypasses this validation. See [#65](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/65).
 
 `StartTimer` is transactional: a strict-mode failure does not replace a
 previously valid session with a partial one.
@@ -742,7 +750,10 @@ previously valid session with a partial one.
 ## `LastReadStatus`
 
 A numeric zero is not self-describing. Check the status when using non-strict
-mode.
+mode. Before the first successful `StartTimer`, also check `HasActiveSession`:
+in v1.4.x the no-session path returns zero with `cPM_ReadOK`. That is a known
+limitation, not evidence of a valid zero-duration read. A dedicated no-session
+status is tracked in [#66](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/66) for v1.5.0.
 
 | Value | Meaning |
 |---|---|
@@ -822,6 +833,12 @@ Compile, then run:
 Run_cPerformanceManager_RegressionSuite
 ```
 
+<!-- facts:source-cases -->
+The regression module in the current source invokes **80 cases**, and
+`TotalSteps` must equal that count. Assertion counts are not derived from the
+source: they come from an Excel run, recorded below for each published tag.
+<!-- /facts:source-cases -->
+
 The current interactive harness writes detailed case/assertion evidence to a
 dedicated worksheet and summarizes the run in the Immediate Window.
 
@@ -833,6 +850,7 @@ actually executed rather than inferring it from the source.
 
 ### Latest published tagged evidence
 
+<!-- facts:evidence:v1.4.0 -->
 | Evidence | v1.4.0 result |
 |---|---|
 | Tag target | [`a5390b4c6ca56ebbd87eca121b5167ee5dc09963`](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/commit/a5390b4c6ca56ebbd87eca121b5167ee5dc09963) |
@@ -844,6 +862,7 @@ actually executed rather than inferring it from the source.
 | Release workbook | `PERFORMANCE.MANAGER.xlsm` |
 | Workbook SHA-256 | `5eddd6473e43a5c9fb12a97f3d00c07117843368165082c947c953003ed7b4a2` |
 | Manifest SHA-256 | `d13567b416c39dd0b62f2eaf4767f25d21a9daa300d8e7e8b2dc81db3fa8119f` |
+<!-- /facts:evidence:v1.4.0 -->
 
 Both published assets were downloaded from the release and re-hashed: the
 workbook and manifest match the values above, so the upload preserved bytes and
@@ -856,6 +875,7 @@ a downloader can verify what they received.
 
 ### Previous published tagged evidence
 
+<!-- facts:evidence:v1.3.0 -->
 | Evidence | v1.3.0 result |
 |---|---|
 | Tag target | [`cbc7ccd8b9ea4988ad325b0dd4019d423c640798`](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/commit/cbc7ccd8b9ea4988ad325b0dd4019d423c640798) |
@@ -866,6 +886,7 @@ a downloader can verify what they received.
 | Release workbook | `PERFORMANCE.MANAGER.xlsm` |
 | Workbook SHA-256 | `05cb9d79986144d0498d599ccf070447b5fe8720ee23a5c81bf68a99a5aa66a0` |
 | Manifest SHA-256 | `56c3a1996184e65b541a958619e199b7000ee9a9b92e2266ed0c886a7d81310f` |
+<!-- /facts:evidence:v1.3.0 -->
 
 ### Architecture scope
 
@@ -909,8 +930,11 @@ python3 tools/vba_lint.py --json vba-lint-results.json
 on every push and pull request. It publishes the machine-readable result even
 when a check fails.
 
-The current v1.4.1 development linter performs **16 checks**. The published v1.4.0
-certification above remains **12/12**, and is not recertified by these additions:
+The published certifications above record the checks of their own tags and
+are not recertified by later additions.
+
+<!-- facts:static-checks -->
+The current development linter performs **25 checks**:
 
 1. no merge-conflict markers;
 2. balanced procedure blocks;
@@ -925,13 +949,124 @@ certification above remains **12/12**, and is not recertified by these additions
 11. native APIs have a single call site;
 12. released CHANGELOG sections remain frozen against their tags;
 13. strict release-provenance fixtures;
-14. error-handler labels resolve within their procedure;
-15. assigned identifiers are declared;
-16. workflow actions use immutable pins.
+14. tracked VBA components are inventoried;
+15. error-handler labels resolve within their procedure;
+16. assigned identifiers are declared;
+17. workflow actions use immutable pins;
+18. tracked binaries are reviewed;
+19. Markdown links and anchors resolve;
+20. VBA components follow the source rules: `VB_Name` matches the file name, ASCII only, `Option Explicit` and no `Option Base`, no tab or trailing white space, closed string literals;
+21. `Declare` statements carry `PtrSafe` under VBA7, and only there, in every compilation profile;
+22. procedures and module-level declarations state Public, Private or Friend;
+23. no public name is defined in two standard modules;
+24. VBA source layout matches `tools/vba_format.py`;
+25. README facts match their sources.
+<!-- /facts:static-checks -->
+
+The checks cover every tracked `.bas`, `.cls` and `.frm` export under `src/`,
+`test/` and `demo/`, read from `git ls-files`, so a new component is checked
+as soon as it is committed. Check 14 fails when a tracked export lies outside
+those directories, when a role file (class, time-waster module, regression
+module) is missing, or when release provenance does not hash exactly the
+tracked components.
+
+Check 18 treats a tracked file as binary when `.gitattributes` unsets `text`
+for it or it contains a NUL byte. Such a file passes only as a UserForm `.frx`
+beside its `.frm`, or through an entry in `tools/binary-allowlist.json` that
+records its SHA-256 and a reason. A committed workbook or a changed image
+therefore fails until its entry is reviewed and updated.
+
+Check 19 resolves every relative link in the tracked Markdown files, and every
+`#anchor` against the target file's headings (GitHub's slug rules) and explicit
+`<a id>` anchors. External links are requested weekly by the link-check
+workflow (`python tools/markdown_links.py --external`), and never block a merge.
+Dependabot proposes updates to the pinned actions and the hash-locked Python
+requirements, and an OpenSSF Scorecard workflow reports the default branch's
+supply-chain posture to code scanning.
+
+Checks 20–24 apply per-component source rules to every tracked export, in
+each conditional-compilation profile that checks 15 and 16 model (pre-VBA7,
+VBA7-Win32, VBA7-Win64):
+
+- `VB_Name` matches the file name (case is not compared, as in VBA and on
+  Windows), and the source is ASCII, declares `Option Explicit` before its
+  first procedure, never uses `Option Base`, and has no tab, no trailing white
+  space and no unclosed string literal;
+- every reachable `Declare` carries `PtrSafe` under VBA7, and none carries it
+  before VBA7, where it does not compile;
+- every procedure and module-level declaration states Public, Private or
+  Friend (`Dim` and `Global` at module level fail);
+- no public name (procedure, variable, constant, `Declare`, `Type`, `Enum` or
+  `Enum` member) is defined in two standard modules, which Excel reports as an
+  ambiguous name;
+- the layout matches `tools/vba_format.py`.
+
+The formatter changes whitespace only. It produces CRLF line ends with one
+final line end, removes trailing white space, expands indentation tabs, keeps
+procedure declarations, their End statements and labels in column 0, and puts
+one or two blank lines after each End. `python3 tools/vba_format.py --check`
+fails without writing; `--write` rewrites the files that differ, which are then
+re-imported into the VBE.
+
+Check 25 keeps this README's facts in rendered blocks, marked
+`<!-- facts:NAME -->`. Derived facts come from the source: the version in
+`VERSION`, the regression module's case count, and the check list in
+`tools/gate_checks.py`, which the gate must run exactly and in order.
+Certified facts come only from `tools/certified-evidence.json`, one record per
+published tag, bound to the tag's commit. The tool never writes that file, so
+a source change cannot rewrite historical evidence. A stale block fails; run
+`python3 tools/readme_facts.py --write` to render it.
+
+Issues are filed through issue forms (bug, feature, documentation). Each form
+sets one priority label, assigns the maintainer, and asks for the issue's
+dependencies and an optional target date. Labels are kept as data in
+`tools/labels.json`: the labels-sync workflow creates and updates them on the
+default branch, and a weekly drift check fails when the live labels differ.
+Milestones plan issues, not pull requests, so a workflow removes any milestone
+set on a pull request.
+
+The issue-triage workflow audits every open issue, read-only, on issue and
+milestone events and weekly. Each issue needs:
+
+- the maintainer as assignee;
+- exactly one priority label;
+- an open milestone;
+- a Schedule target date on or before the milestone's due date;
+- a Dependencies section whose `#` references exist.
+
+`tools/repository-settings.json` records the repository settings baseline:
+general options and merge methods, the security features, and the rulesets
+with their required checks. `python tools/repository_settings.py` previews the
+differences, `--apply` applies them through the maintainer's authenticated
+GitHub CLI, `--verify` fails on any difference, and `--evidence DIR` writes a
+dated JSON record of the run.
 
 The two compile-safety checks scan production, regression and demo exports with
 separate Windows conditional-compilation profiles and fixture-backed grammar.
 See [scope, limitations and verification](docs/COMPILE_SAFETY_CHECKS.md).
+
+The tools need Python 3.11 or later; the static gate itself uses only the
+standard library. CI runs the exact version in `.python-version`, and a
+non-required job reruns the tools on the 3.11 floor. The workflow hardening
+rules (fixed runner images, job timeouts, read-only tokens by default,
+`persist-credentials: false`, the single Python pin) are checked by
+`tools/test_workflow_controls.py`, which needs PyYAML from the hash-locked
+`tools/requirements-ci.txt`.
+
+Every tool test runs through unittest discovery, so a new `tools/test_*.py`
+file runs without further wiring:
+
+```bash
+python -m pip install --only-binary=:all: --require-hashes \
+    -r tools/requirements-ci.txt -r tools/requirements-quality.txt
+python -m unittest discover -s tools -p "test_*.py"
+ruff check tools
+mypy
+```
+
+CI also runs Ruff, strict mypy (configured in `pyproject.toml`) and a
+checksum-verified actionlint over the workflows. Ruff and mypy come from the
+hash-locked `tools/requirements-quality.txt`.
 
 The pin check follows every `uses:` reference reachable from
 `.github/workflows/`, including steps inside local composite actions. External
@@ -983,10 +1118,11 @@ Its SHA-256 proves the identity of the downloaded file, not how it was assembled
 ```text
 VBA-PERFORMANCE_MANAGER/
 ├─ .github/
-│  ├─ ISSUE_TEMPLATE/
-│  ├─ pull_request_template.md
-│  └─ workflows/
-│     └─ static-checks.yml
+│  ├─ ISSUE_TEMPLATE/         # issue forms: bug, feature, documentation
+│  ├─ PULL_REQUEST_TEMPLATE.md
+│  ├─ dependabot.yml
+│  └─ workflows/              # static checks, labels sync and drift,
+│                             # pull-request milestones, link check, Scorecard
 ├─ demo/
 │  ├─ M_DEMO_BUILDER.bas
 │  ├─ M_cPM_DEMO.bas
@@ -1000,8 +1136,14 @@ VBA-PERFORMANCE_MANAGER/
 ├─ test/
 │  └─ M_cPM_Test.bas
 ├─ tools/
-│  ├─ release_provenance.py
-│  └─ vba_lint.py
+│  ├─ vba_lint.py             # the static gate
+│  ├─ release_provenance.py   # release package and manifest verifier
+│  ├─ labels.json             # issue labels: names, colours, descriptions
+│  ├─ binary-allowlist.json   # reviewed tracked binaries
+│  ├─ requirements-*.txt      # hash-locked CI dependencies
+│  └─ test_*.py               # tool tests, run by unittest discovery
+├─ .python-version
+├─ pyproject.toml
 ├─ CHANGELOG.md
 ├─ CODE_OF_CONDUCT.md
 ├─ INSTALLATION.md
@@ -1175,9 +1317,13 @@ Published on **2026-08-31**, v1.4.0 delivered backend-homogeneous measurement,
 complete failure/rejection evidence across all three measurement APIs, validated
 legacy overhead calculation, and robust workbook-name qualification.
 
+<!-- facts:summary:v1.4.0 -->
 The release is bound to tag target `a5390b4c6ca56ebbd87eca121b5167ee5dc09963`
-and certified on Microsoft 365 Excel 64-bit with **80 cases, 643 assertions and
-0 failures**, plus **12/12** static checks. See [CHANGELOG.md](CHANGELOG.md) and
+and certified on 64-bit Excel with **80 cases, 643 assertions and 0 failures**,
+plus **12/12** static checks.
+<!-- /facts:summary:v1.4.0 -->
+
+See [CHANGELOG.md](CHANGELOG.md) and
 the [v1.4.0 Release](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0).
 
 Real Office 32-bit execution remains unverified and is tracked in

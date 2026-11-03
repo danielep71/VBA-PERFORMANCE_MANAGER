@@ -1,7 +1,8 @@
 name: 📄 Documentation
 description: Something in the README, wiki or procedure headers is wrong, unclear or missing.
 title: "[Docs] "
-labels: ["documentation"]
+labels: ["documentation", "P3"]
+assignees: ["danielep71"]
 
 body:
   - type: markdown
@@ -69,3 +70,22 @@ body:
         - "Broken link or formatting"
     validations:
       required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: >
+        Issues or external conditions this depends on, one per line (for example
+        "#11" or "External condition: ..."). Write None if there are none.
+      value: None
+    validations:
+      required: true
+
+  - type: input
+    id: target-date
+    attributes:
+      label: Target date
+      description: >
+        Optional, as YYYY-MM-DD. The maintainer sets or confirms it during triage;
+        it must fall on or before the milestone's due date.

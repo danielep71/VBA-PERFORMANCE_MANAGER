@@ -1532,7 +1532,3 @@ Public Function PM_TW_CalculationExempted() As Boolean
         PM_TW_CalculationExempted = g_TW_CalcExempted
 
 End Function
-
-
-
-

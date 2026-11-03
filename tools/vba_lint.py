@@ -20,14 +20,32 @@ import re
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
-from vba_compile_safety import analyse, LABEL_CHECK, ASSIGN_CHECK
+from binary_review import CHECK as BINARY_CHECK
+from binary_review import repository_problems as binary_problems
+from gate_checks import NAMES as GATE_CHECKS
+from markdown_links import CHECK as LINK_CHECK
+from markdown_links import repository_problems as link_problems
+from readme_facts import CHECK as FACTS_CHECK
+from readme_facts import fixture_problems as facts_fixture_problems
+from readme_facts import repository_problems as facts_problems
+from release_provenance import OPTIONAL as PROVENANCE_OPTIONAL
+from release_provenance import REQUIRED as PROVENANCE_REQUIRED
 from test_vba_compile_safety import fixture_problems
-from workflow_pins import CHECK as PIN_CHECK, analyse as analyse_pins, repository_files
 from test_workflow_pins import fixture_problems as pin_fixture_problems
+from vba_compile_safety import ASSIGN_CHECK, LABEL_CHECK, analyse
+from vba_format import CHECK as FORMAT_CHECK
+from vba_format import fixture_problems as format_fixture_problems
+from vba_format import problems as format_problems
+from vba_inventory import ROLES, ROOTS, inventory_problems, module_name, tracked_vba, under
+from vba_source_rules import fixture_problems as rule_fixture_problems
+from vba_source_rules import repository_problems as rule_problems
+from workflow_pins import CHECK as PIN_CHECK
+from workflow_pins import analyse as analyse_pins
+from workflow_pins import repository_files
 
 # --------------------------------------------------------------------------- #
 # Configuration
@@ -35,18 +53,25 @@ from test_workflow_pins import fixture_problems as pin_fixture_problems
 
 ROOT = Path(__file__).resolve().parent.parent
 
-CLASS_FILE = ROOT / "src" / "classes" / "cPerformanceManager.cls"
-MODULE_FILE = ROOT / "src" / "modules" / "M_cPM_TIMEWASTERS.bas"
-TEST_FILE = ROOT / "test" / "M_cPM_Test.bas"
+# Role files, for the checks that inspect one specific component (#82).
+CLASS_FILE = ROOT / ROLES["class"]
+MODULE_FILE = ROOT / ROLES["module"]
+TEST_FILE = ROOT / ROLES["test"]
 README_FILE = ROOT / "README.md"
 CHANGELOG_FILE = ROOT / "CHANGELOG.md"
+INVENTORY_CHECK = "tracked VBA components are inventoried"
 
-VBA_SOURCES = [CLASS_FILE, MODULE_FILE, TEST_FILE]
-ALL_SOURCES = VBA_SOURCES + [
-    ROOT / "demo" / "M_cPM_DEMO.bas",
-    ROOT / "demo" / "M_cPM_USAGE_EXAMPLES.bas",
-    ROOT / "demo" / "M_DEMO_BUILDER.bas",
-]
+# Every other check covers the tracked components, read from git, so a new
+# component is checked as soon as it is committed. If git cannot list them,
+# main() fails instead of checking an empty set.
+try:
+    TRACKED_VBA = tracked_vba(ROOT)
+    INVENTORY_ERROR: str | None = None
+except RuntimeError as exc:
+    TRACKED_VBA = []
+    INVENTORY_ERROR = str(exc)
+VBA_SOURCES = [ROOT / path for path in under(TRACKED_VBA, "src", "test")]
+ALL_SOURCES = [ROOT / path for path in under(TRACKED_VBA, *ROOTS)]
 
 # Names VBA reserves. Using one as a variable produces a bare "Syntax error"
 # with no indication of the cause, which is how Dim Empty() reached the repo.
@@ -77,7 +102,7 @@ PROC_END = re.compile(r"^End\s+(?:Sub|Function|Property)\s*$")
 class Report:
     failures: list[str] = field(default_factory=list)
     checks_run: int = 0
-    results: list[dict] = field(default_factory=list)
+    results: list[dict[str, object]] = field(default_factory=list)
 
     def check(self, name: str, problems: list[str]) -> None:
         self.checks_run += 1
@@ -172,7 +197,7 @@ def check_block_pairs(rep: Report) -> None:
     for path in ALL_SOURCES:
         if not path.exists():
             continue
-        text = "\n".join(l for _, l in code_lines(read(path)))
+        text = "\n".join(code for _, code in code_lines(read(path)))
         for open_re, close_re, label in pairs:
             o = len(re.findall(open_re, text, re.M))
             c = len(re.findall(close_re, text, re.M))
@@ -208,18 +233,17 @@ def check_reserved_words(rep: Report) -> None:
 
 def check_error_sources(rep: Report) -> None:
     """Error sources named M_cPM_ReportHelpers and M_cPM_RegressionTests,
-    neither of which has ever existed."""
-    module_names = {
-        CLASS_FILE.name: "cPerformanceManager",
-        MODULE_FILE.name: "M_cPM_TimeWasters",
-        TEST_FILE.name: "M_cPM_Test",
-    }
+    neither of which has ever existed.
+
+    The expected module is each component's own Attribute VB_Name, so the
+    check covers every tracked component, not a hand-kept name table.
+    """
     src_re = re.compile(r'"([A-Za-z_]\w*)\.([A-Za-z_]\w*)"')
     problems = []
     for path in VBA_SOURCES:
         if not path.exists():
             continue
-        expected_module = module_names[path.name]
+        expected_module = module_name(read(path)) or path.stem
         current = None
         for i, line in enumerate(read(path).split("\n"), 1):
             m = PROC_START.match(line)
@@ -283,7 +307,7 @@ def check_undefined_callees(rep: Report) -> None:
         if not path.exists():
             continue
         raw = read(path)
-        code = strip_strings("\n".join(l for _, l in code_lines(raw)))
+        code = strip_strings("\n".join(code for _, code in code_lines(raw)))
 
         defined = {m.group(1) for m in PROC_START.finditer(raw)}
         defined |= {m.group(1) for m in
@@ -371,7 +395,8 @@ def _changelog_sections(text: str) -> dict[str, str]:
     """
     text = text.replace("\r\n", "\n")
     out: dict[str, str] = {}
-    current, buf = None, []
+    current: str | None = None
+    buf: list[str] = []
     for line in text.split("\n"):
         m = re.match(r"^## \[([^\]]+)\]", line)
         if m:
@@ -428,7 +453,7 @@ def _git_show(ref: str, path: str) -> str | None:
         return None
 
 
-def check_changelog_released_sections_frozen(rep: Report) -> None:
+def check_changelog_released_sections_frozen(rep: Report) -> None:  # noqa: C901 - executable compatibility rules for released sections, fixture-proven
     """A released changelog section describes a tag and must never change.
 
     Entries have twice been appended to a released section instead of
@@ -530,7 +555,7 @@ def check_api_declarations(rep: Report) -> None:
     if not CLASS_FILE.exists():
         rep.check("native APIs have a single call site", [f"{CLASS_FILE} not found"])
         return
-    text = "\n".join(l for _, l in code_lines(read(CLASS_FILE)))
+    text = "\n".join(code for _, code in code_lines(read(CLASS_FILE)))
     problems = []
     for api in ("QueryPerformanceCounter", "timeGetSystemTime"):
         # Declarations read "Name Lib \"kernel32\" (...)", so "Name(" only ever
@@ -575,6 +600,23 @@ def check_release_provenance_fixtures(rep: Report) -> None:
     rep.check("release provenance strict fixtures", problems)
 
 
+def check_readme_facts(rep: Report) -> None:
+    """The README's version, regression and check facts drifted by hand (#89).
+
+    The README renders them from the source and the certified evidence. Its
+    check list comes from tools/gate_checks.py, so the gate must run exactly
+    those checks, in that order, with this one last.
+    """
+    problems, notes = facts_problems(ROOT)
+    for note in notes:
+        print(f"note  {note}")
+    ran = tuple(str(result["check"]) for result in rep.results) + (FACTS_CHECK,)
+    if ran != GATE_CHECKS:
+        problems.append("the checks run differ from tools/gate_checks.py: "
+                        f"ran {list(ran)}, listed {list(GATE_CHECKS)}")
+    rep.check(FACTS_CHECK, problems + facts_fixture_problems())
+
+
 # --------------------------------------------------------------------------- #
 # Result output and entry point
 # --------------------------------------------------------------------------- #
@@ -609,7 +651,10 @@ def main() -> int:
                     help="Also write a machine-readable result document to PATH.")
     args = ap.parse_args()
 
-    missing = [p for p in VBA_SOURCES if not p.exists()]
+    if INVENTORY_ERROR:
+        print(f"FAIL  {INVENTORY_ERROR}")
+        return 1
+    missing = [p for p in (CLASS_FILE, MODULE_FILE, TEST_FILE) if not p.exists()]
     if missing:
         for p in missing:
             print(f"FAIL  source not found: {p}")
@@ -632,11 +677,10 @@ def main() -> int:
     check_api_declarations(rep)
     check_changelog_released_sections_frozen(rep)
     check_release_provenance_fixtures(rep)
-    # Discover all shipped, demo and regression exports, including future ones.
-    sources = {str(p.relative_to(ROOT)): read(p)
-               for directory in ("src", "test", "demo")
-               for p in sorted((ROOT / directory).rglob("*"))
-               if p.suffix.lower() in (".bas", ".cls", ".frm")}
+    rep.check(INVENTORY_CHECK, inventory_problems(
+        TRACKED_VBA, PROVENANCE_REQUIRED + PROVENANCE_OPTIONAL))
+    # All tracked shipped, demo and regression exports, including future ones.
+    sources = {path: read(ROOT / path) for path in under(TRACKED_VBA, *ROOTS)}
     label_problems, assignment_problems = analyse(sources)
     label_fixtures, assignment_fixtures = fixture_problems()
     rep.check(LABEL_CHECK, label_problems + label_fixtures)
@@ -645,6 +689,18 @@ def main() -> int:
     # actions, must be pinned to a full commit SHA or image digest (#46).
     pin_problems, _ = analyse_pins(repository_files(ROOT))
     rep.check(PIN_CHECK, pin_problems + pin_fixture_problems())
+    # A tracked binary needs an approved path or an allowlist digest (#84).
+    rep.check(BINARY_CHECK, binary_problems(ROOT))
+    # Relative links and anchors in tracked Markdown resolve (#85).
+    rep.check(LINK_CHECK, link_problems(ROOT))
+    # Per-component source rules and layout over every tracked export (#83).
+    exports = under(TRACKED_VBA, *ROOTS)
+    rules = rule_problems({path: (ROOT / path).read_bytes() for path in exports})
+    fixtures = rule_fixture_problems()
+    for name, found in rules.items():
+        rep.check(name, found + fixtures[name])
+    rep.check(FORMAT_CHECK, format_problems(ROOT, exports) + format_fixture_problems())
+    check_readme_facts(rep)
 
     print("-" * 60)
 

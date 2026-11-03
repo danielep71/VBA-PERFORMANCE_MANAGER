@@ -1,0 +1,198 @@
+name: ✨ Feature request
+description: Propose a capability or a change to the public surface.
+title: "[Feature] "
+labels: ["enhancement", "P3"]
+assignees: ["danielep71"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for proposing an improvement to VBA Performance Manager.
+
+        Start with the user problem and observable outcome. A clear problem can
+        have several valid designs, and the maintainer may choose a different
+        implementation. Search open and closed issues, the README and the wiki
+        first, keep one request to one user outcome, and remove client data and
+        credentials.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 🎯 Problem and user story
+      description: >
+        The limitation in today's behavior: who meets it, under what conditions,
+        and at what cost. Suggested form: As a <user>, I need <capability>, so
+        that <outcome>.
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 🧭 Desired outcome
+      description: >
+        What success looks like from the caller's side, without requiring one
+        implementation. Include concrete examples or observable results.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: ✅ Acceptance criteria
+      description: >
+        Verifiable outcomes covering the normal path, important boundary cases,
+        and failure and cleanup behavior. Avoid implementation tasks.
+      value: |
+        - [ ] Observable success criterion
+        - [ ] Boundary or failure-path criterion
+        - [ ] Compatibility or cleanup criterion
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 🔧 Current workaround and cost
+      description: >
+        What users do today: extra code, reliability risk, performance cost,
+        maintenance burden or missing evidence. Write "No known workaround" if true.
+
+  - type: textarea
+    id: design
+    attributes:
+      label: 🧩 Candidate API or design
+      description: >
+        Optional. How the capability might feel to a VBA caller: proposed names,
+        defaults, return values, error behavior and diagnostic outputs. Public
+        members become compatibility commitments, so prefer the smallest surface.
+      render: vb
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 📐 Scope and affected boundaries
+      description: Check every area that may be affected, and explain why below.
+      options:
+        - label: Core timing and elapsed reads
+        - label: Procedure measurement, baseline or overhead samples
+        - label: Statistics or sample-vector semantics
+        - label: Checkpoints, laps, splits or reporting
+        - label: TimeWasters and shared Excel application state
+        - label: Pause/resume or timer resolution
+        - label: Application.Run target handling or trust boundary
+        - label: Native Windows APIs, VBA7 declarations or Office bitness
+        - label: Public class API or error/status contract
+        - label: Source files, import order or dependency graph
+        - label: Documentation, demos, tests, lint or release tooling only
+
+  - type: textarea
+    id: scope-why
+    attributes:
+      label: Why these areas are affected
+
+  - type: dropdown
+    id: compatibility
+    attributes:
+      label: ⚖️ Public behavior impact
+      description: >
+        Patch is a backward-compatible fix, minor is backward-compatible
+        functionality, major is an incompatible change. The maintainer assigns the
+        final release and milestone.
+      options:
+        - Internal or documentation-only; no public behavior change
+        - Backward-compatible additive functionality
+        - Backward-compatible bug fix to documented or intended behavior
+        - Changes an existing default, result, error or status semantic
+        - Removes or renames a public API, or otherwise requires caller changes
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - label: Adds or changes required runtime files or import order
+        - label: Adds a dependency or host prerequisite
+        - label: Must support both 32-bit and 64-bit Office
+        - label: Intentionally targets a narrower Office/Windows environment
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: 🏗️ Design constraints and invariants
+      description: >
+        How the proposal keeps or deliberately changes the contracts:
+        cPerformanceManager stays the public facade; a timer session binds to
+        its active backend; a measurement vector never silently mixes
+        incomparable samples; strict and non-strict behavior stays explicit;
+        nested TimeWasters sessions restore Excel state exactly once; error paths
+        restore timer resolution and Excel state; Application.Run names stay
+        trusted input; deployment stays source-first. Write "Not applicable" only
+        for documentation or tooling with no runtime effect.
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: 🧪 Verification plan
+      description: >
+        Evidence that would make the change reviewable. Static CI does not run
+        Excel, so runtime changes normally need focused Excel checks and the
+        regression suite.
+      value: |
+        - Normal path:
+        - Boundary cases:
+        - Failure and fallback paths:
+        - Cleanup:
+        - Regression suite:
+        - 32/64-bit coverage:
+        - Documentation and release evidence:
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 🔀 Alternatives and non-goals
+      description: >
+        Smaller API, documentation-only or caller-side alternatives and why they
+        fall short, and the adjacent work this request does not include.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 📚 Examples, prior art and additional context
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: >
+        Issues or external conditions this depends on, one per line (for example
+        "#11" or "External condition: ..."). Write None if there are none.
+      value: None
+    validations:
+      required: true
+
+  - type: input
+    id: target-date
+    attributes:
+      label: Target date
+      description: >
+        Optional, as YYYY-MM-DD. The maintainer sets or confirms it during triage;
+        it must fall on or before the milestone's due date.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: ✅ Requester checklist
+      options:
+        - label: I searched open and closed issues, the README and the wiki.
+          required: true
+        - label: I described a user problem and observable outcome, not only an implementation.
+          required: true
+        - label: I supplied testable acceptance criteria.
+        - label: I considered compatibility, cleanup and deployment impact.
+        - label: I removed credentials, client data and other sensitive information.
+          required: true
+        - label: I understand the maintainer may solve the problem differently and assign the release.

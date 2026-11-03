@@ -136,6 +136,73 @@ Use only the categories needed by a release.
   name, ZIP integrity, exact contents and byte-identical `LICENSE`/`NOTICE`
   before emitting anything, and records each member's SHA-256. Releases up to
   v1.4.0 keep their published bare-workbook assets (#72).
+- Issues are now filed through issue forms: the bug report and feature
+  request templates are forms like the documentation one. Each form sets one
+  priority label, assigns the maintainer, and records dependencies and an
+  optional target date. An issue-triage workflow audits every open issue,
+  read-only, for assignee, one priority, an open milestone, a target date
+  within the milestone, and a Dependencies section. A settings baseline
+  (`tools/repository-settings.json`) and `tools/repository_settings.py`
+  preview, apply and verify the repository settings and write dated evidence;
+  the baseline enables secret scanning, push protection, Dependabot alerts and
+  security updates, and private vulnerability reporting. Labels are kept as data in `tools/labels.json`,
+  with a sync workflow that creates and updates them (never deletes) and a
+  weekly drift check. A workflow removes milestones from pull requests (#86).
+- Five static checks (20–24) apply per-component VBA source rules in every
+  modelled compilation profile:
+  - `VB_Name` matches the file name, the source is ASCII, `Option Explicit`
+    precedes the first procedure, there is no `Option Base`, tab, trailing
+    white space or unclosed literal;
+  - `PtrSafe` is on every `Declare` under VBA7, and only there;
+  - procedures and module-level declarations state their visibility;
+  - no public name is defined in two standard modules;
+  - the layout matches the new `tools/vba_format.py`, whose `--check` fails
+    without writing.
+  The formatter normalised the six tracked exports: trailing white space on 30
+  lines, blank lines at the end of two files, and blank lines after `End`
+  statements. The change is whitespace only; every string literal and comment
+  is unchanged (#83).
+- The README's version, regression and static-check facts are rendered into
+  marked blocks by `tools/readme_facts.py`, and a static check (now the 25th) fails when
+  a block is stale. Source-derived facts (`VERSION`, the regression case
+  count, the gate's check list in `tools/gate_checks.py`) are kept apart from
+  certified, tag-bound evidence, which lives in `tools/certified-evidence.json`
+  and is never rewritten by the renderer. The regression badge now names the
+  tag it certifies, and the static-check badge, which still said 16, is
+  derived (#89).
+- Added Dependabot for the pinned actions and the hash-locked Python
+  requirements, an OpenSSF Scorecard workflow for the default branch, and a
+  Markdown link check. A 19th static check resolves relative links and
+  anchors on every change, and a weekly workflow requests the external links
+  (#85).
+- Tracked binary files must be reviewed: an 18th static check accepts a
+  binary (`text` unset in `.gitattributes`, or a NUL byte) only as a UserForm
+  `.frx` beside its `.frm` or through an entry in `tools/binary-allowlist.json`
+  with its SHA-256 and a reason. A committed workbook or a changed image fails
+  until its entry is updated, and stale entries fail too. The four README
+  images are allowlisted (#84).
+- The static checks now cover every tracked VBA export under `src/`, `test/`
+  and `demo/`, read from `git ls-files`, instead of a hand-kept file list, so
+  a new component cannot escape them. A 17th check, "tracked VBA components
+  are inventoried", fails on an export outside those directories, a missing
+  role file, or a release-provenance hash list that differs from the tracked
+  components. The error-source check reads each component's `VB_Name` (#82).
+- The Python tooling is held to Ruff and strict mypy (`pyproject.toml`), and
+  the workflows to a checksum-verified actionlint. Ruff, mypy and their
+  dependencies are installed from the hash-locked
+  `tools/requirements-quality.txt` with `--require-hashes
+  --only-binary=:all:`. Every `tools/test_*.py` module now runs through
+  `python -m unittest discover`, so a new test file runs without wiring;
+  `tools/test_discovery.py` proves it. The provenance fixture matrix is
+  split into themed sections with the same 69 cases (#81).
+- Hardened the workflows. Actions are pinned to their current releases
+  (checkout v7.0.1, setup-python v7.1.0, upload-artifact v7.0.2), Python is
+  pinned once in `.python-version`, and every job runs on a fixed
+  `ubuntu-24.04` image with a timeout. Checkouts drop credentials, and only
+  the label job may write. A non-required job reruns the tools on the
+  documented Python 3.11 floor. `tools/test_workflow_controls.py` enforces
+  these rules, with PyYAML installed from the hash-locked
+  `tools/requirements-ci.txt` (#80).
 - Release provenance no longer trusts `git status` alone to prove that tracked
   files are unmodified. It rejects `assume-unchanged` and `skip-worktree`
   index flags, naming the command that clears each, and re-hashes every file

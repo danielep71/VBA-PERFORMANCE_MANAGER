@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "files": {
+    "images/cPM Demo Control Panel.png": {
+      "sha256": "40ee94efc016acb8d0552cb650581102264e3f804d4dd478292dddcb90b065c2",
+      "reason": "Demo control-panel screenshot. Not referenced by the README or the wiki as of 2 November 2026; kept pending a maintainer decision."
+    },
+    "images/cPM Test Results.png": {
+      "sha256": "9034514013edb8cd5426b97cfb47db93b73160c9aa969f2eeb74928a9acc8d3c",
+      "reason": "README screenshot of the regression results worksheet."
+    },
+    "images/cPM_Home.png": {
+      "sha256": "c4de822051aeeea6463606c2aaa1f2509d5a0685cba71c3185eca28a71e008a2",
+      "reason": "README screenshot of the demo home sheet."
+    },
+    "images/performance_manager_banner2.png": {
+      "sha256": "23b9740c9c1bc7d11aa981e7bb908177899c5ff72deed16b4110398a0e98352d",
+      "reason": "README banner image."
+    }
+  }
+}
