@@ -921,7 +921,7 @@ python3 tools/vba_lint.py --json vba-lint-results.json
 on every push and pull request. It publishes the machine-readable result even
 when a check fails.
 
-The current v1.4.1 development linter performs **18 checks**. The published v1.4.0
+The current v1.4.1 development linter performs **19 checks**. The published v1.4.0
 certification above remains **12/12**, and is not recertified by these additions:
 
 1. no merge-conflict markers;
@@ -941,7 +941,8 @@ certification above remains **12/12**, and is not recertified by these additions
 15. error-handler labels resolve within their procedure;
 16. assigned identifiers are declared;
 17. workflow actions use immutable pins;
-18. tracked binaries are reviewed.
+18. tracked binaries are reviewed;
+19. Markdown links and anchors resolve.
 
 The checks cover every tracked `.bas`, `.cls` and `.frm` export under `src/`,
 `test/` and `demo/`, read from `git ls-files`, so a new component is checked
@@ -955,6 +956,14 @@ for it or it contains a NUL byte. Such a file passes only as a UserForm `.frx`
 beside its `.frm`, or through an entry in `tools/binary-allowlist.json` that
 records its SHA-256 and a reason. A committed workbook or a changed image
 therefore fails until its entry is reviewed and updated.
+
+Check 19 resolves every relative link in the tracked Markdown files, and every
+`#anchor` against the target file's headings (GitHub's slug rules) and explicit
+`<a id>` anchors. External links are requested weekly by the link-check
+workflow (`python tools/markdown_links.py --external`), and never block a merge.
+Dependabot proposes updates to the pinned actions and the hash-locked Python
+requirements, and an OpenSSF Scorecard workflow reports the default branch's
+supply-chain posture to code scanning.
 
 The two compile-safety checks scan production, regression and demo exports with
 separate Windows conditional-compilation profiles and fixture-backed grammar.
