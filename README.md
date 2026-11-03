@@ -8,12 +8,14 @@
 
 <br>
 
+<!-- facts:badges -->
 [![Excel VBA](https://img.shields.io/badge/Excel_VBA-source_support_32_%2F_64--bit-217346?style=for-the-badge&logo=microsoft-excel&logoColor=white)](#requirements)
 [![Windows](https://img.shields.io/badge/Platform-Windows_desktop-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#requirements)
 [![Version](https://img.shields.io/badge/Version-1.4.0-6f42c1?style=for-the-badge)](#release-status)
-[![Regression](https://img.shields.io/badge/Regression-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
-[![Static checks](https://img.shields.io/badge/Static_checks-16_%2F_16-0969da?style=for-the-badge)](#static-source-analysis)
+[![Regression v1.4.0](https://img.shields.io/badge/Regression_v1.4.0-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
+[![Static checks](https://img.shields.io/badge/Static_checks-20_%2F_20-0969da?style=for-the-badge)](#static-source-analysis)
 [![License](https://img.shields.io/badge/License-Apache_2.0-2ea44f?style=for-the-badge)](LICENSE)
+<!-- /facts:badges -->
 
 <br>
 
@@ -147,7 +149,7 @@ benchmark repetition, statistics, and Excel-state cleanup.
 | Diagnostics | Timing environment | QPC frequency, system tick interval, backend overhead, active method and read status |
 | Failure policy | Strict by default | Raise on invalid measurement; optional non-strict fallback/zero with explicit status |
 | Deployment | Source-first | Two required production files; no official `.xlam` distribution |
-| Assurance | Static plus real Excel evidence | v1.4.0 exact-tag certification: 12 hosted source checks and 80 cases / 643 assertions / 0 failures on 64-bit Excel; Office 32-bit remains unverified |
+| Assurance | Static plus real Excel evidence | v1.4.0 exact-tag certification on 64-bit Excel, recorded under [Execution evidence](#execution-evidence); Office 32-bit remains unverified |
 
 ---
 
@@ -834,6 +836,12 @@ Compile, then run:
 Run_cPerformanceManager_RegressionSuite
 ```
 
+<!-- facts:source-cases -->
+The regression module in the current source invokes **81 cases**, and
+`TotalSteps` must equal that count. Assertion counts are not derived from the
+source: they come from an Excel run, recorded below for each published tag.
+<!-- /facts:source-cases -->
+
 The current interactive harness writes detailed case/assertion evidence to a
 dedicated worksheet and summarizes the run in the Immediate Window.
 
@@ -845,6 +853,7 @@ actually executed rather than inferring it from the source.
 
 ### Latest published tagged evidence
 
+<!-- facts:evidence:v1.4.0 -->
 | Evidence | v1.4.0 result |
 |---|---|
 | Tag target | [`a5390b4c6ca56ebbd87eca121b5167ee5dc09963`](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/commit/a5390b4c6ca56ebbd87eca121b5167ee5dc09963) |
@@ -856,6 +865,7 @@ actually executed rather than inferring it from the source.
 | Release workbook | `PERFORMANCE.MANAGER.xlsm` |
 | Workbook SHA-256 | `5eddd6473e43a5c9fb12a97f3d00c07117843368165082c947c953003ed7b4a2` |
 | Manifest SHA-256 | `d13567b416c39dd0b62f2eaf4767f25d21a9daa300d8e7e8b2dc81db3fa8119f` |
+<!-- /facts:evidence:v1.4.0 -->
 
 Both published assets were downloaded from the release and re-hashed: the
 workbook and manifest match the values above, so the upload preserved bytes and
@@ -868,6 +878,7 @@ a downloader can verify what they received.
 
 ### Previous published tagged evidence
 
+<!-- facts:evidence:v1.3.0 -->
 | Evidence | v1.3.0 result |
 |---|---|
 | Tag target | [`cbc7ccd8b9ea4988ad325b0dd4019d423c640798`](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/commit/cbc7ccd8b9ea4988ad325b0dd4019d423c640798) |
@@ -878,6 +889,7 @@ a downloader can verify what they received.
 | Release workbook | `PERFORMANCE.MANAGER.xlsm` |
 | Workbook SHA-256 | `05cb9d79986144d0498d599ccf070447b5fe8720ee23a5c81bf68a99a5aa66a0` |
 | Manifest SHA-256 | `56c3a1996184e65b541a958619e199b7000ee9a9b92e2266ed0c886a7d81310f` |
+<!-- /facts:evidence:v1.3.0 -->
 
 ### Architecture scope
 
@@ -921,8 +933,11 @@ python3 tools/vba_lint.py --json vba-lint-results.json
 on every push and pull request. It publishes the machine-readable result even
 when a check fails.
 
-The current v1.4.1 development linter performs **19 checks**. The published v1.4.0
-certification above remains **12/12**, and is not recertified by these additions:
+The published certifications above record the checks of their own tags and
+are not recertified by later additions.
+
+<!-- facts:static-checks -->
+The current development linter performs **20 checks**:
 
 1. no merge-conflict markers;
 2. balanced procedure blocks;
@@ -942,7 +957,9 @@ certification above remains **12/12**, and is not recertified by these additions
 16. assigned identifiers are declared;
 17. workflow actions use immutable pins;
 18. tracked binaries are reviewed;
-19. Markdown links and anchors resolve.
+19. Markdown links and anchors resolve;
+20. README facts match their sources.
+<!-- /facts:static-checks -->
 
 The checks cover every tracked `.bas`, `.cls` and `.frm` export under `src/`,
 `test/` and `demo/`, read from `git ls-files`, so a new component is checked
@@ -964,6 +981,15 @@ workflow (`python tools/markdown_links.py --external`), and never block a merge.
 Dependabot proposes updates to the pinned actions and the hash-locked Python
 requirements, and an OpenSSF Scorecard workflow reports the default branch's
 supply-chain posture to code scanning.
+
+Check 20 keeps this README's facts in rendered blocks, marked
+`<!-- facts:NAME -->`. Derived facts come from the source: the version in
+`VERSION`, the regression module's case count, and the check list in
+`tools/gate_checks.py`, which the gate must run exactly and in order.
+Certified facts come only from `tools/certified-evidence.json`, one record per
+published tag, bound to the tag's commit. The tool never writes that file, so
+a source change cannot rewrite historical evidence. A stale block fails; run
+`python3 tools/readme_facts.py --write` to render it.
 
 Issues are filed through issue forms (bug, feature, documentation). Each form
 sets one priority label, assigns the maintainer, and asks for the issue's
@@ -1265,9 +1291,13 @@ Published on **2026-08-31**, v1.4.0 delivered backend-homogeneous measurement,
 complete failure/rejection evidence across all three measurement APIs, validated
 legacy overhead calculation, and robust workbook-name qualification.
 
+<!-- facts:summary:v1.4.0 -->
 The release is bound to tag target `a5390b4c6ca56ebbd87eca121b5167ee5dc09963`
-and certified on Microsoft 365 Excel 64-bit with **80 cases, 643 assertions and
-0 failures**, plus **12/12** static checks. See [CHANGELOG.md](CHANGELOG.md) and
+and certified on 64-bit Excel with **80 cases, 643 assertions and 0 failures**,
+plus **12/12** static checks.
+<!-- /facts:summary:v1.4.0 -->
+
+See [CHANGELOG.md](CHANGELOG.md) and
 the [v1.4.0 Release](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0).
 
 Real Office 32-bit execution remains unverified and is tracked in

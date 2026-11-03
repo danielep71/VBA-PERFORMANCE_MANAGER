@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "releases": [
+    {
+      "tag": "v1.4.0",
+      "commit": "a5390b4c6ca56ebbd87eca121b5167ee5dc09963",
+      "certified": "2026-08-31",
+      "excel": "Microsoft 365 MSO Version 2607, Build 16.0.20228.20188",
+      "bitness": "64-bit",
+      "cases": 80,
+      "assertions": 643,
+      "failures": 0,
+      "static_checks": 12,
+      "workbook": "PERFORMANCE.MANAGER.xlsm",
+      "workbook_sha256": "5eddd6473e43a5c9fb12a97f3d00c07117843368165082c947c953003ed7b4a2",
+      "manifest_sha256": "d13567b416c39dd0b62f2eaf4767f25d21a9daa300d8e7e8b2dc81db3fa8119f"
+    },
+    {
+      "tag": "v1.3.0",
+      "commit": "cbc7ccd8b9ea4988ad325b0dd4019d423c640798",
+      "certified": "2026-08-16",
+      "excel": "Microsoft 365 MSO Version 2606, Build 16.0.20131.20152",
+      "bitness": "64-bit",
+      "cases": 72,
+      "assertions": 511,
+      "failures": 0,
+      "static_checks": null,
+      "workbook": "PERFORMANCE.MANAGER.xlsm",
+      "workbook_sha256": "05cb9d79986144d0498d599ccf070447b5fe8720ee23a5c81bf68a99a5aa66a0",
+      "manifest_sha256": "56c3a1996184e65b541a958619e199b7000ee9a9b92e2266ed0c886a7d81310f"
+    }
+  ]
+}

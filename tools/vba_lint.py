@@ -26,8 +26,12 @@ from pathlib import Path
 
 from binary_review import CHECK as BINARY_CHECK
 from binary_review import repository_problems as binary_problems
+from gate_checks import NAMES as GATE_CHECKS
 from markdown_links import CHECK as LINK_CHECK
 from markdown_links import repository_problems as link_problems
+from readme_facts import CHECK as FACTS_CHECK
+from readme_facts import fixture_problems as facts_fixture_problems
+from readme_facts import repository_problems as facts_problems
 from release_provenance import OPTIONAL as PROVENANCE_OPTIONAL
 from release_provenance import REQUIRED as PROVENANCE_REQUIRED
 from test_vba_compile_safety import fixture_problems
@@ -591,6 +595,23 @@ def check_release_provenance_fixtures(rep: Report) -> None:
     rep.check("release provenance strict fixtures", problems)
 
 
+def check_readme_facts(rep: Report) -> None:
+    """The README's version, regression and check facts drifted by hand (#89).
+
+    The README renders them from the source and the certified evidence. Its
+    check list comes from tools/gate_checks.py, so the gate must run exactly
+    those checks, in that order, with this one last.
+    """
+    problems, notes = facts_problems(ROOT)
+    for note in notes:
+        print(f"note  {note}")
+    ran = tuple(str(result["check"]) for result in rep.results) + (FACTS_CHECK,)
+    if ran != GATE_CHECKS:
+        problems.append("the checks run differ from tools/gate_checks.py: "
+                        f"ran {list(ran)}, listed {list(GATE_CHECKS)}")
+    rep.check(FACTS_CHECK, problems + facts_fixture_problems())
+
+
 # --------------------------------------------------------------------------- #
 # Result output and entry point
 # --------------------------------------------------------------------------- #
@@ -667,6 +688,7 @@ def main() -> int:
     rep.check(BINARY_CHECK, binary_problems(ROOT))
     # Relative links and anchors in tracked Markdown resolve (#85).
     rep.check(LINK_CHECK, link_problems(ROOT))
+    check_readme_facts(rep)
 
     print("-" * 60)
 

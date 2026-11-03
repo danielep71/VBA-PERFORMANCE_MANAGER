@@ -148,6 +148,14 @@ Use only the categories needed by a release.
   security updates, and private vulnerability reporting. Labels are kept as data in `tools/labels.json`,
   with a sync workflow that creates and updates them (never deletes) and a
   weekly drift check. A workflow removes milestones from pull requests (#86).
+- The README's version, regression and static-check facts are rendered into
+  marked blocks by `tools/readme_facts.py`, and a 20th static check fails when
+  a block is stale. Source-derived facts (`VERSION`, the regression case
+  count, the gate's check list in `tools/gate_checks.py`) are kept apart from
+  certified, tag-bound evidence, which lives in `tools/certified-evidence.json`
+  and is never rewritten by the renderer. The regression badge now names the
+  tag it certifies, and the static-check badge, which still said 16, is
+  derived (#89).
 - Added Dependabot for the pinned actions and the hash-locked Python
   requirements, an OpenSSF Scorecard workflow for the default branch, and a
   Markdown link check. A 19th static check resolves relative links and
