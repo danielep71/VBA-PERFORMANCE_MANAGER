@@ -136,6 +136,11 @@ Use only the categories needed by a release.
   name, ZIP integrity, exact contents and byte-identical `LICENSE`/`NOTICE`
   before emitting anything, and records each member's SHA-256. Releases up to
   v1.4.0 keep their published bare-workbook assets (#72).
+- Added Dependabot for the pinned actions and the hash-locked Python
+  requirements, an OpenSSF Scorecard workflow for the default branch, and a
+  Markdown link check. A 19th static check resolves relative links and
+  anchors on every change, and a weekly workflow requests the external links
+  (#85).
 - Tracked binary files must be reviewed: an 18th static check accepts a
   binary (`text` unset in `.gitattributes`, or a NUL byte) only as a UserForm
   `.frx` beside its `.frm` or through an entry in `tools/binary-allowlist.json`

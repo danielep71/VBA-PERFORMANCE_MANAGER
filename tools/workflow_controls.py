@@ -34,6 +34,7 @@ README = "README.md"
 # The only jobs that may write, and what each may write.
 WRITE_PERMISSIONS = {
     ("sync-label-colors.yml", "sync"): {"issues"},
+    ("scorecard.yml", "analysis"): {"id-token", "security-events"},
 }
 MINIMUM_JOB = ("static-checks.yml", "minimum-python")
 FIXED_RUNNER = re.compile(r"(ubuntu|windows|macos)-\d+(\.\d+)?(-arm)?")

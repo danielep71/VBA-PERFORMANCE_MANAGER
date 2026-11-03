@@ -1,0 +1,47 @@
+# Proposes updates to the SHA-pinned GitHub Actions and to the hash-locked
+# Python requirements in tools/ (requirements-ci.txt, requirements-quality.txt).
+# Every update arrives as a pull request for the maintainer's review; nothing
+# merges automatically. Pull requests target the active release branch: change
+# target-branch when the next release branch opens.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: release/v1.4.1
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:17"
+      timezone: Europe/Rome
+    open-pull-requests-limit: 5
+    labels:
+      - CI
+      - P3
+    assignees:
+      - danielep71
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+  - package-ecosystem: pip
+    directory: /tools
+    target-branch: release/v1.4.1
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:17"
+      timezone: Europe/Rome
+    open-pull-requests-limit: 5
+    labels:
+      - CI
+      - P3
+    assignees:
+      - danielep71
+    commit-message:
+      prefix: ci
+    groups:
+      python-tools:
+        patterns:
+          - "*"

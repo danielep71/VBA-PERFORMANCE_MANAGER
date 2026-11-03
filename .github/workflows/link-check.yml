@@ -1,0 +1,39 @@
+name: Link check
+
+# Requests every external link in the tracked Markdown files once a week and on
+# demand. Relative links and anchors are checked offline on every change by
+# the static checks (tools/vba_lint.py, "Markdown links and anchors resolve").
+# External sites change without a commit, so this check runs on a schedule and
+# never blocks a merge (#85).
+
+on:
+  schedule:
+    # Weekly, off the hour.
+    - cron: "43 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: link-check
+  cancel-in-progress: true
+
+jobs:
+  external:
+    name: External links
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+
+      - name: Check relative links, anchors and external links
+        run: python tools/markdown_links.py --external

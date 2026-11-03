@@ -26,6 +26,8 @@ from pathlib import Path
 
 from binary_review import CHECK as BINARY_CHECK
 from binary_review import repository_problems as binary_problems
+from markdown_links import CHECK as LINK_CHECK
+from markdown_links import repository_problems as link_problems
 from release_provenance import OPTIONAL as PROVENANCE_OPTIONAL
 from release_provenance import REQUIRED as PROVENANCE_REQUIRED
 from test_vba_compile_safety import fixture_problems
@@ -663,6 +665,8 @@ def main() -> int:
     rep.check(PIN_CHECK, pin_problems + pin_fixture_problems())
     # A tracked binary needs an approved path or an allowlist digest (#84).
     rep.check(BINARY_CHECK, binary_problems(ROOT))
+    # Relative links and anchors in tracked Markdown resolve (#85).
+    rep.check(LINK_CHECK, link_problems(ROOT))
 
     print("-" * 60)
 
