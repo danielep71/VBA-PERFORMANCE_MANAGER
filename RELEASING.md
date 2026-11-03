@@ -141,6 +141,9 @@ Capture commands, tool versions, timestamps, and complete results. Rerun affecte
 
 - Run **Debug → Compile VBAProject** on the exact candidate.
 - Run `Run_cPerformanceManager_RegressionSuite`.
+- On Windows, `tools/Invoke-ExcelRegression.ps1 -ExpectedSha <candidate SHA>`
+  performs the import, compile and regression run from the clean candidate
+  checkout, and writes the v1.4.0-schema `result` record to keep as evidence.
 - Exercise timing backends, nested scopes, error recovery, and Excel-state restoration.
 - Record each Excel environment actually run, including Office bitness.
 - A release may claim execution certification only for environments actually run.

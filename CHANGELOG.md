@@ -148,6 +148,16 @@ Use only the categories needed by a release.
   security updates, and private vulnerability reporting. Labels are kept as data in `tools/labels.json`,
   with a sync workflow that creates and updates them (never deletes) and a
   weekly drift check. A workflow removes milestones from pull requests (#86).
+- `tools/Invoke-ExcelRegression.ps1` runs the regression suite in desktop Excel
+  from an exact, clean checkout: it imports the components into a new
+  workbook, compiles, runs the suite, reads each case from the log worksheet
+  and closes Excel without saving. Its JSON record carries a `result` in the
+  v1.4.0 execution-result schema. An optional red check replaces one component
+  and expects exactly one named case to fail. `AccessVBOM` is enabled only with
+  `-AllowVbomAccess`, for the current user and the run, and restored on every
+  path. `tools/test_excel_runner.py` keeps the runner in step with the
+  regression module, the README import order and the frozen schema. This is a
+  local, maintainer-run first step towards the automated gate (#11).
 - `tools/repository_settings.py` now manages Dependabot security updates
   through their own endpoint (`/automated-security-fixes`), after
   vulnerability alerts, and reads them from it. It falls back to
