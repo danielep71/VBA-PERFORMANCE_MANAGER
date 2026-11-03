@@ -258,6 +258,14 @@ Use only the categories needed by a release.
   stale baseline. An exempt scope no longer reads, writes or restores
   Calculation; final teardown clears the exemption. Public API is unchanged;
   regression case 81 covers it (#33).
+- A failed aligned method-3 (`timeGetTime`) start no longer leaves the 1 ms
+  multimedia timer period behind. When a strict next-tick alignment times out,
+  `StartTimer` now releases the `timeBeginPeriod(1)` request that the attempt
+  acquired, then re-raises the original error unchanged. A period held before
+  the attempt is kept, so `timeBeginPeriod` and `timeEndPeriod` stay
+  balanced. Non-strict starts keep the request as before. Public API is
+  unchanged; regression case 82 covers it, using a new one-shot, test-only
+  alignment-timeout seam shared with #44 (#31).
 
 ---
 
