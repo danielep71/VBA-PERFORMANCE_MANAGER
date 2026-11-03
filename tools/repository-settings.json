@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "repository": "danielep71/VBA-PERFORMANCE_MANAGER",
+  "general": {
+    "default_branch": "main",
+    "has_issues": true,
+    "has_wiki": true,
+    "has_projects": true,
+    "has_discussions": false,
+    "allow_squash_merge": true,
+    "allow_merge_commit": true,
+    "allow_rebase_merge": true,
+    "allow_auto_merge": false,
+    "allow_update_branch": true,
+    "delete_branch_on_merge": true,
+    "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+    "squash_merge_commit_message": "COMMIT_MESSAGES",
+    "web_commit_signoff_required": false
+  },
+  "security": {
+    "vulnerability_alerts": true,
+    "dependabot_security_updates": true,
+    "secret_scanning": true,
+    "secret_scanning_push_protection": true,
+    "private_vulnerability_reporting": true
+  },
+  "rulesets": [
+    {
+      "name": "Protect main",
+      "target": "branch",
+      "enforcement": "active",
+      "conditions": {"ref_name": {"exclude": [], "include": ["~DEFAULT_BRANCH"]}},
+      "bypass_actors": [],
+      "rules": [
+        {"type": "deletion"},
+        {"type": "non_fast_forward"},
+        {
+          "type": "pull_request",
+          "parameters": {
+            "allowed_merge_methods": ["merge", "squash", "rebase"],
+            "dismiss_stale_reviews_on_push": true,
+            "require_code_owner_review": false,
+            "require_extra_approval_for_unattributed_changes": true,
+            "require_last_push_approval": false,
+            "required_approving_review_count": 0,
+            "required_review_thread_resolution": false,
+            "required_reviewers": []
+          }
+        }
+      ]
+    }
+  ]
+}

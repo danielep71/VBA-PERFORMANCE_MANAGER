@@ -77,7 +77,7 @@ class IssueFormTests(unittest.TestCase):
                 self.assertEqual(elements["dependencies"]["attributes"]["label"], "Dependencies")
                 self.assertIs(elements["dependencies"]["validations"]["required"], True)
                 self.assertEqual(elements["target-date"]["type"], "input")
-                self.assertEqual(elements["target-date"]["attributes"]["label"], "Target end date")
+                self.assertEqual(elements["target-date"]["attributes"]["label"], "Target date")
 
 
 @unittest.skipIf(wc is None and not os.environ.get("GITHUB_ACTIONS"),

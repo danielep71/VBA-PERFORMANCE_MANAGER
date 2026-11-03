@@ -261,7 +261,7 @@ body:
   - type: input
     id: target-date
     attributes:
-      label: Target end date
+      label: Target date
       description: >
         Optional, as YYYY-MM-DD. The maintainer sets or confirms it during triage;
         it must fall on or before the milestone's due date.
