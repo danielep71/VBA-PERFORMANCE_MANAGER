@@ -67,11 +67,12 @@
 > tagged source remains the authoritative implementation.
 
 > [!NOTE]
-> The latest tagged release is **v1.4.0**. Development for **v1.4.1** is tracked
-> on the `release/v1.4.1` branch and squash-merged to `main` on request; its
-> [implementation plan](docs/V1.4.1_IMPLEMENTATION_PLAN.md) on that branch is
-> canonical during the milestone. Unreleased changes do not alter the exact-tag v1.4.0 certification
-> record below.
+> The latest tagged release is **v1.4.0**. Development for **v1.4.1** happens on
+> the `release/v1.4.1` branch and is squash-merged to `main` on request. Its work
+> is tracked in the
+> [v1.4.1 milestone](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/milestone/4),
+> and its evidence in [docs/releases/v1.4.1/EVIDENCE.md](docs/releases/v1.4.1/EVIDENCE.md).
+> Unreleased changes do not alter the exact-tag v1.4.0 certification record below.
 
 ## ✨ What this project is
 

@@ -3,7 +3,7 @@
   "files": {
     "images/cPM Demo Control Panel.png": {
       "sha256": "40ee94efc016acb8d0552cb650581102264e3f804d4dd478292dddcb90b065c2",
-      "reason": "Demo control-panel screenshot. Not referenced by the README or the wiki as of 2 November 2026; kept pending a maintainer decision."
+      "reason": "Demo control-panel screenshot. Not referenced by the README or the wiki; kept by the maintainer's decision of 3 November 2026."
     },
     "images/cPM Test Results.png": {
       "sha256": "9034514013edb8cd5426b97cfb47db93b73160c9aa969f2eeb74928a9acc8d3c",

@@ -315,6 +315,13 @@ Retain at least:
 
 A release note summarizes evidence; it does not replace it.
 
+Each release keeps this record in `docs/releases/vX.Y.Z/EVIDENCE.md`, started
+while the release is in development and completed from the frozen candidate.
+It links to the issues, pull requests and runs that hold the detail instead of
+repeating their state. v1.4.0's record is its archived
+[implementation and release plan](docs/releases/v1.4.0/IMPLEMENTATION_AND_RELEASE_PLAN.md);
+v1.4.1's is [docs/releases/v1.4.1/EVIDENCE.md](docs/releases/v1.4.1/EVIDENCE.md).
+
 ## 10. Publish the GitHub Release
 
 Create the release from the annotated tag and include:
