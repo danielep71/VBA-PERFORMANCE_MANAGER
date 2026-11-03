@@ -965,6 +965,14 @@ Dependabot proposes updates to the pinned actions and the hash-locked Python
 requirements, and an OpenSSF Scorecard workflow reports the default branch's
 supply-chain posture to code scanning.
 
+Issues are filed through issue forms (bug, feature, documentation). Each form
+sets one priority label, assigns the maintainer, and asks for the issue's
+dependencies and an optional target end date. Labels are kept as data in
+`tools/labels.json`: the labels-sync workflow creates and updates them on the
+default branch, and a weekly drift check fails when the live labels differ.
+Milestones plan issues, not pull requests, so a workflow removes any milestone
+set on a pull request.
+
 The two compile-safety checks scan production, regression and demo exports with
 separate Windows conditional-compilation profiles and fixture-backed grammar.
 See [scope, limitations and verification](docs/COMPILE_SAFETY_CHECKS.md).
@@ -1042,10 +1050,11 @@ Its SHA-256 proves the identity of the downloaded file, not how it was assembled
 ```text
 VBA-PERFORMANCE_MANAGER/
 ├─ .github/
-│  ├─ ISSUE_TEMPLATE/
-│  ├─ pull_request_template.md
-│  └─ workflows/
-│     └─ static-checks.yml
+│  ├─ ISSUE_TEMPLATE/         # issue forms: bug, feature, documentation
+│  ├─ PULL_REQUEST_TEMPLATE.md
+│  ├─ dependabot.yml
+│  └─ workflows/              # static checks, labels sync and drift,
+│                             # pull-request milestones, link check, Scorecard
 ├─ demo/
 │  ├─ M_DEMO_BUILDER.bas
 │  ├─ M_cPM_DEMO.bas
@@ -1059,8 +1068,14 @@ VBA-PERFORMANCE_MANAGER/
 ├─ test/
 │  └─ M_cPM_Test.bas
 ├─ tools/
-│  ├─ release_provenance.py
-│  └─ vba_lint.py
+│  ├─ vba_lint.py             # the static gate
+│  ├─ release_provenance.py   # release package and manifest verifier
+│  ├─ labels.json             # issue labels: names, colours, descriptions
+│  ├─ binary-allowlist.json   # reviewed tracked binaries
+│  ├─ requirements-*.txt      # hash-locked CI dependencies
+│  └─ test_*.py               # tool tests, run by unittest discovery
+├─ .python-version
+├─ pyproject.toml
 ├─ CHANGELOG.md
 ├─ CODE_OF_CONDUCT.md
 ├─ INSTALLATION.md

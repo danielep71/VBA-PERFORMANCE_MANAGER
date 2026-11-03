@@ -1,0 +1,284 @@
+name: 🐛 Bug report
+description: Report incorrect behavior or an unreliable measurement.
+title: "[Bug] "
+labels: ["bug", "P2"]
+assignees: ["danielep71"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve VBA Performance Manager.
+
+        Before submitting, search open and closed issues for an existing report,
+        reduce the problem to the smallest reproducible workbook or code sample,
+        record the exact release tag or full 40-character commit SHA you tested,
+        and remove passwords, client data and workbook internals.
+
+        **Security vulnerabilities must not be reported publicly.** Follow
+        [SECURITY.md](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/SECURITY.md) instead.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 🔍 Summary
+      description: >
+        One observable problem in a few sentences: what fails, when it fails,
+        and why it matters. Avoid diagnosing the cause unless you have evidence.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 🎯 Expected behavior
+      description: What should have happened? Link the documented contract when possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead? Include exact values, status text and error details.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      options:
+        - Every time
+        - Intermittent
+        - Happened once
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 🔁 Steps to reproduce
+      description: Start from a clean Excel session or a known workbook state.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Minimal VBA
+      description: >
+        Prefer a new workbook with only src/modules/M_cPM_TIMEWASTERS.bas and
+        src/classes/cPerformanceManager.cls. Capture LastReadStatus immediately
+        after the operation being diagnosed, and always restore Excel state with
+        ResetEnvironment, including on an error path.
+      render: vb
+      value: |
+        Option Explicit
+
+        Public Sub ReproduceIssue()
+            Dim PM As cPerformanceManager
+            Dim ElapsedS As Double
+
+            On Error GoTo CleanFail
+            Set PM = New cPerformanceManager
+
+            PM.StartTimer cPM_MethodQPC
+
+            ' Minimal workload that exposes the problem.
+
+            ElapsedS = PM.ElapsedSeconds
+            Debug.Print "ElapsedSeconds="; ElapsedS
+            Debug.Print "ActiveMethodID="; PM.ActiveMethodID
+            Debug.Print "LastReadStatus="; PM.LastReadStatus
+
+        CleanExit:
+            If Not PM Is Nothing Then PM.ResetEnvironment
+            Exit Sub
+
+        CleanFail:
+            Debug.Print "Err.Number="; Err.Number
+            Debug.Print "Err.Source="; Err.Source
+            Debug.Print "Err.Description="; Err.Description
+            Resume CleanExit
+        End Sub
+
+  - type: textarea
+    id: cleanup
+    attributes:
+      label: Cleanup result
+      description: >
+        Did ResetEnvironment complete? Did Excel settings return to their original
+        values? Say whether VBA's End command or an Excel restart was required;
+        both can hide cleanup defects and shared-state leaks.
+
+  - type: textarea
+    id: source
+    attributes:
+      label: 📦 Exact source identity
+      description: >
+        "Latest" is not reproducible. Use a release tag or the full output of
+        git rev-parse HEAD. If the source was edited, link or attach a minimal diff.
+      value: |
+        | Field | Value |
+        | --- | --- |
+        | Release tag or full 40-character commit SHA | |
+        | Source origin (official release, release branch, fork, copied files) | |
+        | Local modifications | |
+        | VERSION in the cPerformanceManager.cls header | |
+        | VERSION in the M_cPM_TIMEWASTERS.bas header | |
+        | Imported files | |
+        | Debug > Compile VBAProject (pass, or the exact error) | |
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 💻 Host environment
+      description: >
+        Real Office 32-bit execution is unverified, so a 32-bit report is
+        especially valuable; please say so explicitly.
+      value: |
+        | Field | Value |
+        | --- | --- |
+        | Excel version and full build (File > Account > About Excel) | |
+        | Office bitness (32-bit / 64-bit) | |
+        | Windows version and build | |
+        | Workbook host (.xlsm / .xlam / PERSONAL.XLSB / other) | |
+        | Relevant add-ins | |
+        | Regional settings, if formatting may matter | |
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: ⚠️ Error, timer and result evidence
+      description: >
+        Use N/A for fields that do not apply, and preserve the raw values.
+        Capture LastReadStatus immediately after the failing read. In non-strict
+        mode a failed high-resolution read may fall back, so report both the
+        requested method and ActiveMethodID.
+      value: |
+        | Field | Value |
+        | --- | --- |
+        | Err.Number | |
+        | Err.Source | |
+        | Err.Description | |
+        | Returned value or output | |
+        | Requested timing method | |
+        | ActiveMethodID | |
+        | HasActiveSession | |
+        | StrictMode | |
+        | LastReadStatus | |
+
+  - type: textarea
+    id: harness
+    attributes:
+      label: 📊 Measurement-harness evidence
+      description: >
+        For MeasureProcedure, MeasureBaseline or MeasureOverhead_Samples problems;
+        otherwise write "Not applicable". FailedReadsOut and RejectedSamplesOut
+        start at -1: a negative count means the run ended before evidence was
+        published, and Err is then authoritative. Application.Run executes the
+        supplied procedure name, so use only a trusted target and give its exact
+        qualification.
+      value: |
+        | Field | Value |
+        | --- | --- |
+        | API used | |
+        | Exact ProcedureName | |
+        | Host workbook filename | |
+        | Iterations / warm-up iterations | |
+        | Requested timing method | |
+        | Stats_Count returned | |
+        | FailedReadsOut | |
+        | LastFailureStatusOut | |
+        | RejectedSamplesOut | |
+        | Sample vector concern | |
+
+  - type: textarea
+    id: excel-state
+    attributes:
+      label: 🧹 Shared Excel-state evidence
+      description: >
+        For TimeWasters, nesting, cleanup, pause/resume or leaked Excel-state
+        problems; otherwise write "Not applicable". The coordinator is
+        process-wide, so record other open workbooks or add-ins that may take part.
+      value: |
+        | Field | Before | After reproduction / cleanup |
+        | --- | --- | --- |
+        | TW_IsActive | | |
+        | TW_ActiveSessionCount | | |
+        | TW_CalculationExempted | | |
+        | Application.ScreenUpdating | | |
+        | Application.EnableEvents | | |
+        | Application.DisplayAlerts | | |
+        | Application.Calculation | | |
+        | Application.Cursor | | |
+        | Open workbook set | | |
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: 🧪 Validation evidence
+      description: >
+        Static CI checks source shape; it does not launch Excel. Report the
+        regression suite only if you ran it against the source identity above.
+      value: |
+        - Debug > Compile VBAProject:
+        - Static lint:
+        - Regression suite:
+        - Tested source SHA:
+        - Cases / assertions / failures:
+        - Excel build and bitness used for the run:
+        - Failing case names and first failure:
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 📎 Logs, screenshots and additional context
+      description: >
+        Paste short logs as text. Mention concurrency, workbook lifecycle,
+        midnight rollover, clock changes, sleep/resume or VM conditions.
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: >
+        Issues or external conditions this depends on, one per line (for example
+        "#11" or "External condition: ..."). Write None if there are none.
+      value: None
+    validations:
+      required: true
+
+  - type: input
+    id: target-date
+    attributes:
+      label: Target end date
+      description: >
+        Optional, as YYYY-MM-DD. The maintainer sets or confirms it during triage;
+        it must fall on or before the milestone's due date.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: ✅ Reporter checklist
+      options:
+        - label: I searched open and closed issues for this problem.
+          required: true
+        - label: I supplied an exact release tag or full commit SHA, not "latest".
+          required: true
+        - label: I reduced the report to a minimal, repeatable example where possible.
+        - label: I captured statuses and error details before another call could replace them.
+        - label: I described cleanup and any Excel application-state changes.
+        - label: I removed credentials, client data and other sensitive information.
+          required: true
+        - label: This is not a security vulnerability; security reports follow SECURITY.md.
+          required: true

@@ -73,7 +73,7 @@ jobs:
 
 def run(static: str = STATIC, labels: str = LABELS, version: str | None = "3.13.18\n",
         readme: str | None = README_OK) -> list[str]:
-    return wc.check({"static-checks.yml": static, "sync-label-colors.yml": labels},
+    return wc.check({"static-checks.yml": static, "labels-sync.yml": labels},
                     version, readme)
 
 

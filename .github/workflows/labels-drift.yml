@@ -1,0 +1,38 @@
+name: Labels drift
+
+# Read-only: fails when the live issue labels differ from tools/labels.json,
+# including labels that exist only on GitHub (#86). A failed run is the signal
+# to update the file or run the labels-sync workflow.
+
+on:
+  schedule:
+    # Weekly, off the hour.
+    - cron: "29 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Compare live labels with tools/labels.json
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+
+      - name: Check for drift
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python tools/labels.py --check

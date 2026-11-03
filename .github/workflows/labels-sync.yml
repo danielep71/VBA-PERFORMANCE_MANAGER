@@ -1,0 +1,46 @@
+name: Labels sync
+
+# Brings the repository's issue labels in line with tools/labels.json: missing
+# labels are created and changed colours or descriptions are updated. A label
+# that exists only on GitHub is reported, never deleted (#86). It runs only on
+# the default branch, so a branch or pull request cannot change live labels.
+
+on:
+  push:
+    paths:
+      - tools/labels.json
+      - tools/labels.py
+      - .github/workflows/labels-sync.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: labels-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Apply tools/labels.json
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+
+      - name: Create and update labels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python tools/labels.py --apply

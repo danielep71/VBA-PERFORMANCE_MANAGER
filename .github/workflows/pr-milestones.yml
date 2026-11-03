@@ -1,0 +1,41 @@
+name: Pull request milestones
+
+# Milestones plan issues, not pull requests (#86). This removes the milestone
+# from a pull request when one is set, and a weekly sweep catches any missed
+# event. It never checks out or runs pull-request code: the only step calls the
+# GitHub API, and no event value is interpolated into the shell.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, edited, milestoned]
+  schedule:
+    # Weekly, off the hour.
+    - cron: "53 6 * * 3"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pr-milestones-${{ github.event.pull_request.number || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  clear:
+    name: Remove milestones from pull requests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Clear pull-request milestones
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api --paginate "repos/${REPO}/pulls?state=open&per_page=100" \
+            --jq '.[] | select(.milestone != null) | .number' |
+          while read -r number; do
+            printf '{"milestone": null}' |
+              gh api --method PATCH "repos/${REPO}/issues/${number}" --input - --silent
+            echo "removed the milestone from #${number}"
+          done
