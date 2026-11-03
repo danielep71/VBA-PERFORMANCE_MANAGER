@@ -129,6 +129,37 @@ Repository maintainers may use the repository's configured direct-push workflow
 where permitted. External contributions and reviewable portfolio changes should
 use branches and pull requests.
 
+### Maintainer workflow
+
+Planning lives in GitHub issues and milestones, not in repository documents.
+
+- **Issue metadata.** Every issue has:
+  - an assignee;
+  - exactly one priority label (`P1`, `P2` or `P3`);
+  - an open milestone;
+  - a `## Dependencies` section listing `None`, `#` references or
+    `External condition:` lines;
+  - a `## Schedule` with a target date on or before the milestone's due date.
+
+  The issue-triage workflow audits every open issue for these. The issue forms
+  ask for them.
+- **Release branch.** Work for the next release happens on one branch,
+  `release/vX.Y.Z`.
+- **Topic branches.** Each change goes on a topic branch (`fix/<issue>-<slug>`,
+  `ci/<issue>-<slug>` or `docs/<slug>`) and reaches the release branch through
+  its own pull request.
+- **Merges to `main`.** These happen only at the maintainer's request, by
+  squash merge through a pull request, as the `Protect main` ruleset requires.
+  The release branch is then recreated from the new `main`.
+- **Excel boundary.** A change to executable VBA reaches `main` only after an
+  Excel run on its exact SHA. If such a change is ready but unrun when `main`
+  is aligned, it is withdrawn by one commit for the merge and restored on the
+  recreated branch.
+- **Evidence.** Each issue closes with a comment that records the commit, the
+  checks actually run and their results. Each release keeps a short evidence
+  record in `docs/releases/vX.Y.Z/EVIDENCE.md`; see
+  [RELEASING.md](RELEASING.md#-evidence-record).
+
 ### Commit discipline
 
 Write imperative, specific subjects, normally in this form:

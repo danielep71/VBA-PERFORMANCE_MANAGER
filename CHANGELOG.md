@@ -148,6 +148,14 @@ Use only the categories needed by a release.
   security updates, and private vulnerability reporting. Labels are kept as data in `tools/labels.json`,
   with a sync workflow that creates and updates them (never deletes) and a
   weekly drift check. A workflow removes milestones from pull requests (#86).
+- Planning now lives in GitHub issues and the milestone. The 2,362-line v1.4.1
+  implementation plan is retired: every open item already had an issue, and
+  its final certification and publication became #101. Its text stays
+  readable at its last commit. The branch, merge, Excel-boundary and evidence
+  rules move to the new "Maintainer workflow" section of `CONTRIBUTING.md`.
+  Each release keeps a short `docs/releases/vX.Y.Z/EVIDENCE.md`, described in
+  `RELEASING.md`. The archived v1.4.0 plan and its redirect notice are
+  unchanged (#90).
 - Five static checks (20–24) apply per-component VBA source rules in every
   modelled compilation profile:
   - `VB_Name` matches the file name, the source is ASCII, `Option Explicit`
