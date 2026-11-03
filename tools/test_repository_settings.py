@@ -18,13 +18,18 @@ BASELINE = rs.BASELINE.read_text(encoding="utf-8")
 class FakeGitHub:
     """A repository whose settings start as today's and change through the API."""
 
-    def __init__(self, *, readable_alerts: bool = True) -> None:
+    def __init__(self, *, readable_alerts: bool = True, readable_fixes: bool = True,
+                 fixes_delay: int = 0, summary_fixes: bool = True) -> None:
         baseline = json.loads(BASELINE)
         self.general = dict(baseline["general"])
         self.analysis = {key: "disabled" for key in rs.ANALYSIS}
         self.alerts = False
+        self.fixes = False
+        self.fixes_delay = fixes_delay      # reads that still see the old state after a PUT
         self.reporting = False
         self.readable_alerts = readable_alerts
+        self.readable_fixes = readable_fixes
+        self.summary_fixes = summary_fixes  # whether security_and_analysis reports them
         self.rulesets = {7: {"id": 7, **copy.deepcopy(baseline["rulesets"][0])}}
         self.writes: list[tuple[str, str, Any]] = []
 
@@ -34,8 +39,17 @@ class FakeGitHub:
             self.writes.append((method, endpoint, copy.deepcopy(payload)))
         payload = copy.deepcopy(payload)
         if endpoint == base and method == "GET":
-            return 200, {**self.general, "security_and_analysis":
-                         {key: {"status": value} for key, value in self.analysis.items()}}
+            summary = {key: {"status": value} for key, value in self.analysis.items()}
+            if self.summary_fixes:
+                summary[rs.DEPENDABOT] = {"status": "enabled" if self.fixes_visible(consume=False)
+                                          else "disabled"}
+            return 200, {**self.general, "security_and_analysis": summary}
+        if endpoint == f"{base}/automated-security-fixes":
+            if method == "GET":
+                return (200, {"enabled": self.fixes_visible(), "paused": False}) \
+                    if self.readable_fixes else (403, {"message": "forbidden"})
+            self.fixes = method == "PUT"
+            return 204, None
         if endpoint == base and method == "PATCH":
             analysis = payload.pop("security_and_analysis", {})
             self.general.update(payload)
@@ -65,6 +79,27 @@ class FakeGitHub:
         return 404, {"message": "not found"}
 
 
+    def fixes_visible(self, consume: bool = True) -> bool:
+        """GitHub turns security updates on asynchronously: the first snapshots lag.
+
+        Each snapshot reads the summary first and the dedicated endpoint last,
+        so only the endpoint read counts one lagging snapshot.
+        """
+        if self.fixes and self.fixes_delay:
+            if consume:
+                self.fixes_delay -= 1
+            return False
+        return self.fixes
+
+
+def no_wait(_: float) -> None:
+    """Stand-in for time.sleep, so the re-read loop runs instantly."""
+
+
+def apply(github: FakeGitHub, **options: object) -> tuple[int, list[str]]:
+    return rs.run("apply", github.call, wait=no_wait, **options)  # type: ignore[arg-type]
+
+
 class SettingsTests(unittest.TestCase):
     def test_baseline_file_is_valid_and_enables_security(self) -> None:
         baseline, problems = rs.load_baseline(BASELINE)
@@ -80,16 +115,20 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(github.writes, [])
         self.assertEqual([line for line in out if line.startswith("would call")], [
             f"would call: PUT repos/{REPO}/vulnerability-alerts",
+            f"would call: PUT repos/{REPO}/automated-security-fixes",
             f"would call: PATCH repos/{REPO}",
             f"would call: PUT repos/{REPO}/private-vulnerability-reporting"])
         self.assertIn("5 setting(s) differ from the baseline", out)
 
     def test_apply_converges_and_verify_then_passes(self) -> None:
         github = FakeGitHub()
-        status, out = rs.run("apply", github.call)
+        status, out = apply(github)
         self.assertEqual(status, 0, out)
-        self.assertEqual(github.writes[0][:2], ("PUT", f"repos/{REPO}/vulnerability-alerts"))
-        patch = github.writes[1][2]
+        self.assertEqual([w[:2] for w in github.writes[:2]], [
+            ("PUT", f"repos/{REPO}/vulnerability-alerts"),
+            ("PUT", f"repos/{REPO}/automated-security-fixes")])
+        self.assertIn("verified with 1 read(s)", out)
+        patch = github.writes[2][2]
         self.assertEqual(patch, {"security_and_analysis": {key: {"status": "enabled"}
                                                            for key in rs.ANALYSIS}})
         self.assertEqual(rs.run("verify", github.call), (0, ["settings match the baseline"]))
@@ -101,7 +140,9 @@ class SettingsTests(unittest.TestCase):
 
     def test_unreadable_setting_is_a_difference(self) -> None:
         github = FakeGitHub(readable_alerts=False)
-        rs.run("apply", github.call)
+        status, out = apply(github)
+        self.assertEqual(status, 1)
+        self.assertIn("verified with 5 read(s)", out)
         status, out = rs.run("verify", github.call)
         self.assertEqual(status, 1)
         self.assertIn('differs: security.vulnerability_alerts: expected true, live "unreadable"', out)
@@ -111,20 +152,20 @@ class SettingsTests(unittest.TestCase):
         github.general["delete_branch_on_merge"] = False
         github.rulesets[7]["rules"] = list(reversed(github.rulesets[7]["rules"]))   # order only
         github.rulesets[7]["enforcement"] = "disabled"
-        rs.run("apply", github.call)
+        apply(github)
         self.assertIn(("PUT", f"repos/{REPO}/rulesets/7"), [w[:2] for w in github.writes])
         self.assertEqual(rs.run("verify", github.call)[0], 0)
 
     def test_missing_ruleset_is_created(self) -> None:
         github = FakeGitHub()
         github.rulesets.clear()
-        rs.run("apply", github.call)
+        apply(github)
         self.assertIn(("POST", f"repos/{REPO}/rulesets"), [w[:2] for w in github.writes])
 
     def test_default_branch_is_never_patched(self) -> None:
         github = FakeGitHub()
         github.general["default_branch"] = "develop"
-        status, _ = rs.run("apply", github.call)
+        status, _ = apply(github)
         self.assertEqual(status, 1)
         self.assertFalse(any("default_branch" in (w[2] or {}) for w in github.writes))
 
@@ -139,6 +180,43 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(record["result"], "differs")
         self.assertEqual(len(record["differences"]), 5)
         self.assertEqual(len(record["baseline_sha256"]), 64)
+
+    def test_a_late_setting_passes_after_a_re_read(self) -> None:
+        """The #103 case: security updates read as off just after the apply."""
+        github = FakeGitHub(fixes_delay=2)
+        waits: list[float] = []
+        status, out = rs.run("apply", github.call, wait=waits.append)
+        self.assertEqual(status, 0, out)
+        self.assertEqual(waits, [rs.PAUSE, rs.PAUSE])
+        self.assertIn("re-read 1 of 5: 1 setting(s) still differ; waiting 3 s", out)
+        self.assertIn("verified with 3 read(s)", out)
+
+    def test_verify_reads_once(self) -> None:
+        github = FakeGitHub(fixes_delay=1)
+        apply(github, attempts=1)
+        status, out = rs.run("verify", github.call, wait=self.fail)   # never waits
+        self.assertEqual(status, 0, out)
+
+    def test_dependabot_read_falls_back_then_is_unreadable(self) -> None:
+        github = FakeGitHub(readable_fixes=False)
+        apply(github)
+        self.assertEqual(rs.run("verify", github.call)[0], 0)    # from security_and_analysis
+        github = FakeGitHub(readable_fixes=False, summary_fixes=False)
+        status, out = apply(github)
+        self.assertEqual(status, 1)
+        self.assertIn('still differs: security.dependabot_security_updates: expected true, '
+                      'live "unreadable"', out)
+
+    def test_disabling_turns_security_updates_off_before_alerts(self) -> None:
+        github = FakeGitHub()
+        apply(github)
+        baseline = json.loads(BASELINE)
+        baseline["security"].update(vulnerability_alerts=False, dependabot_security_updates=False)
+        github.writes.clear()
+        apply(github, baseline_text=json.dumps(baseline))
+        self.assertEqual([w[:2] for w in github.writes[:2]], [
+            ("DELETE", f"repos/{REPO}/automated-security-fixes"),
+            ("DELETE", f"repos/{REPO}/vulnerability-alerts")])
 
     def test_invalid_baseline_fails(self) -> None:
         self.assertEqual(rs.run("verify", FakeGitHub().call, baseline_text="{")[0], 1)

@@ -8,8 +8,14 @@ maintainer's own authentication.
 
 - ``--preview`` (the default) lists every difference and the API calls that
   ``--apply`` would make, and changes nothing;
-- ``--apply`` makes those calls, then verifies;
-- ``--verify`` changes nothing and exits 1 on any difference.
+- ``--apply`` makes those calls, then verifies. GitHub enables some security
+  features asynchronously, so the verify re-reads the settings a bounded
+  number of times, with a pause between attempts, before it reports a
+  difference;
+- ``--verify`` changes nothing, reads once and exits 1 on any difference.
+
+Dependabot security updates go through their own endpoint,
+``/automated-security-fixes``, after vulnerability alerts (#103).
 
 ``--evidence DIR`` writes a dated JSON record of the run, with the live
 snapshot, the differences and the result, for the maintainer to keep. A
@@ -22,6 +28,7 @@ import hashlib
 import json
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,7 +37,11 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "tools" / "repository-settings.json"
 RULESET_KEYS = ("name", "target", "enforcement", "conditions", "bypass_actors", "rules")
-ANALYSIS = ("secret_scanning", "secret_scanning_push_protection", "dependabot_security_updates")
+# Settings the general PATCH carries in security_and_analysis.
+ANALYSIS = ("secret_scanning", "secret_scanning_push_protection")
+DEPENDABOT = "dependabot_security_updates"
+ATTEMPTS = 5          # reads after an apply before a difference is reported
+PAUSE = 3.0           # seconds between those reads
 UNREADABLE = "unreadable"
 
 # call(method, endpoint, payload) -> (HTTP status, parsed body or None)
@@ -90,6 +101,14 @@ def snapshot(call: Call, repo: str) -> dict[str, Any]:
     for key in ANALYSIS:
         state = (analysis.get(key) or {}).get("status")
         live["security"][key] = UNREADABLE if state is None else state == "enabled"
+    # Dependabot security updates: the dedicated endpoint, then the summary in
+    # security_and_analysis, else unreadable (#103).
+    status, fixes = call("GET", f"repos/{repo}/automated-security-fixes", None)
+    if status == 200 and isinstance(fixes, dict) and "enabled" in fixes:
+        live["security"][DEPENDABOT] = bool(fixes["enabled"])
+    else:
+        state = (analysis.get(DEPENDABOT) or {}).get("status")
+        live["security"][DEPENDABOT] = UNREADABLE if state is None else state == "enabled"
     status, _ = call("GET", f"repos/{repo}/vulnerability-alerts", None)
     live["security"]["vulnerability_alerts"] = {204: True, 404: False}.get(status, UNREADABLE)
     status, body = call("GET", f"repos/{repo}/private-vulnerability-reporting", None)
@@ -136,10 +155,17 @@ def planned_calls(baseline: dict[str, Any], live: dict[str, Any],
     changed = {setting for setting, _, _ in found}
     calls: list[tuple[str, str, Any]] = []
     security = baseline["security"]
-    # Dependabot security updates need vulnerability alerts first.
-    if "security.vulnerability_alerts" in changed:
-        method = "PUT" if security["vulnerability_alerts"] else "DELETE"
-        calls.append((method, f"repos/{repo}/vulnerability-alerts", None))
+    # Dependabot security updates need vulnerability alerts: enable alerts
+    # first, and disable the updates first.
+    alerts: list[tuple[str, str, Any]] = [
+        ("PUT" if security.get("vulnerability_alerts") else "DELETE",
+         f"repos/{repo}/vulnerability-alerts", None)
+    ] if "security.vulnerability_alerts" in changed else []
+    fixes: list[tuple[str, str, Any]] = [
+        ("PUT" if security.get(DEPENDABOT) else "DELETE",
+         f"repos/{repo}/automated-security-fixes", None)
+    ] if f"security.{DEPENDABOT}" in changed else []
+    calls += alerts + fixes if security.get(DEPENDABOT) else fixes + alerts
     general = {key: value for key, value in baseline["general"].items()
                if f"general.{key}" in changed and key != "default_branch"}
     analysis = {key: {"status": "enabled" if security[key] else "disabled"}
@@ -171,7 +197,9 @@ def write_evidence(directory: Path, record: dict[str, Any]) -> Path:
 
 
 def run(mode: str, call: Call = gh_call, baseline_text: str | None = None,
-        evidence: Path | None = None, now: datetime | None = None) -> tuple[int, list[str]]:
+        evidence: Path | None = None, now: datetime | None = None,
+        attempts: int = ATTEMPTS, pause: float = PAUSE,
+        wait: Callable[[float], None] = time.sleep) -> tuple[int, list[str]]:
     """Run one mode; return (exit status, output lines)."""
     text = baseline_text if baseline_text is not None else BASELINE.read_text(encoding="utf-8")
     baseline, problems = load_baseline(text)
@@ -192,8 +220,15 @@ def run(mode: str, call: Call = gh_call, baseline_text: str | None = None,
             out.append(f"called: {method} {endpoint} -> HTTP {status}")
             if status >= 300:
                 out.append(f"  failed: {body}")
-        live = snapshot(call, repo)
-        found = differences(baseline, live)
+        for attempt in range(1, attempts + 1):
+            live = snapshot(call, repo)
+            found = differences(baseline, live)
+            if not found or attempt == attempts:
+                break
+            out.append(f"re-read {attempt} of {attempts}: {len(found)} setting(s) still "
+                       f"differ; waiting {pause:g} s")
+            wait(pause)
+        out.append(f"verified with {attempt} read(s)")
         out += [f"still differs: {s}: expected {json.dumps(e)}, live {json.dumps(a)}"
                 for s, e, a in found]
     status = 1 if (found and mode in ("apply", "verify")) else 0

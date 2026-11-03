@@ -1043,7 +1043,9 @@ general options and merge methods, the security features, and the rulesets
 with their required checks. `python tools/repository_settings.py` previews the
 differences, `--apply` applies them through the maintainer's authenticated
 GitHub CLI, `--verify` fails on any difference, and `--evidence DIR` writes a
-dated JSON record of the run.
+dated JSON record of the run. GitHub enables Dependabot security updates
+asynchronously, through their own endpoint, so `--apply` re-reads the settings
+up to five times, three seconds apart, before it reports a difference.
 
 The two compile-safety checks scan production, regression and demo exports with
 separate Windows conditional-compilation profiles and fixture-backed grammar.
