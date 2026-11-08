@@ -33,27 +33,20 @@ They are unaffected. The changelog records the correction.
 Pending at implementation time. Record the full candidate SHA and Office build
 with the result; a later PR evidence comment supersedes this preparation record.
 
-The ordinary `Certify-PerformanceManager.cmd` runner imports the four regression
-dependencies, **not** `M_cPM_USAGE_EXAMPLES`. Its JSON alone cannot certify #77.
-Run the ordinary regression and also perform this focused check:
+Run `tools/Certify-MeasurementExamples.cmd` from the exact clean candidate.
+It runs the full regression, imports the usage module, creates the disposable
+DATA_cPM sheet, compiles and executes all four examples. Send the generated JSON:
+it includes imported hashes, compile status, core regression results, the example
+transcript, its verdict and cleanup state. See [Local Excel tools](../../LOCAL_EXCEL_TOOLS.md).
 
-1. From a clean checkout of the candidate, create a disposable `.xlsm` workbook.
-   Import `src/modules/M_cPM_TIMEWASTERS.bas`,
-   `src/classes/cPerformanceManager.cls`, and
-   `demo/M_cPM_USAGE_EXAMPLES.bas` into its VBA project. Keep only this test
-   workbook open to avoid unqualified workload-name ambiguity.
-2. Create a worksheet named `DATA_cPM`. The examples write synthetic data into
-   columns H and I; do not use a workbook containing useful data.
-3. Run **Debug > Compile VBAProject**, then open the Immediate Window (Ctrl+G).
-4. Run `Run_MeasurementUsageExamples`. Retain its entire Immediate Window output,
-   including all four example banners, failed/rejected counts and conclusions.
-   The example handlers print unexpected errors rather than re-raising them:
-   merely returning from the macro is not a passing result. Any `Error ...`
-   line requires investigation. A noisy-run refusal is legitimate, not a test
-   failure. Ordinary successful measurements should show zero failed/rejected
-   counts before statistics or a noise refusal.
-5. Record successful compile, all four completed examples, Excel build/bitness,
-   exact SHA and any observed errors. Close the disposable workbook normally.
+The ordinary `Certify-PerformanceManager.cmd` does not import the usage module;
+its JSON alone still cannot certify #77. The prior 0a32b32 core-only result does
+not certify the new capture/automation changes.
+
+The focused result records unexpected errors even when the interactive example
+handler swallows them. Noise/incomplete-measurement refusals remain legitimate
+outputs and must be reviewed as such; a PASS is execution evidence, not a claim
+that every run produced a usable performance comparison.
 
 Review the nonzero-evidence guards directly: they precede every statistical
 conclusion and combine both evidence counters for every measured vector.

@@ -260,6 +260,10 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- Add supervised local launchers for measurement-example certification with a
+  captured JSON transcript, copy-only workbook VBA synchronization, and VBA
+  export manifests (#138).
+
 - Measurement usage examples now report failed reads and rejected samples, and
   withhold statistics, speedup and baseline conclusions when either count is
   nonzero (#77).

@@ -1495,3 +1495,9 @@ for the attribution notice that redistributions must carry.
 Releases up to and including v1.4.0 were published under the MIT License, and
 copies obtained under those terms remain MIT-licensed. Later changes are
 licensed under Apache 2.0.
+
+## Local Excel launchers
+
+Use the [local Excel tools](docs/LOCAL_EXCEL_TOOLS.md) to certify the core suite
+and measurement examples, synchronize VBA into a new workbook copy, or export
+workbook modules with a hash manifest. The launchers are in `tools/`.

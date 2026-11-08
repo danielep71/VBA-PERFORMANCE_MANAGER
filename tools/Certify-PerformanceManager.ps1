@@ -11,7 +11,7 @@ value. No macro policy is changed. Existing Excel processes must be closed.
 This remains a supervised local run: modal Excel errors have no timeout.
 #>
 [CmdletBinding()]
-param([switch] $TimerRollbackRedCheck)
+param([switch] $TimerRollbackRedCheck, [switch] $MeasurementExamples)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -45,6 +45,7 @@ try {
     Write-Host 'If Excel displays an error dialog, capture it before dismissing it.'
     $runner = Join-Path $PSScriptRoot 'Invoke-ExcelRegression.ps1'
     $redArgs = @()
+    if ($MeasurementExamples) { $redArgs += '-MeasurementExamples' }
     if ($TimerRollbackRedCheck) {
         $classPath = Join-Path $repo 'src\classes\cPerformanceManager.cls'
         $sourceText = [System.IO.File]::ReadAllText($classPath)
@@ -55,7 +56,7 @@ try {
         $redText = [regex]::Replace($sourceText, $pattern, '$1'' Negative control: rollback call disabled')
         $redPath = Join-Path $bundle 'cPerformanceManager-red.cls'
         [System.IO.File]::WriteAllText($redPath, $redText, [System.Text.Encoding]::ASCII)
-        $redArgs = @('-RedFile', $redPath, '-RedComponent', 'src\classes\cPerformanceManager.cls', '-RedExpectedCase', '86')
+        $redArgs += @('-RedFile', $redPath, '-RedComponent', 'src\classes\cPerformanceManager.cls', '-RedExpectedCase', '86')
         Write-Host 'Two runs: source must pass; negative control must fail only case 86.'
     }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runner `
@@ -74,6 +75,9 @@ try {
         $record.result.cleanup_state -ne 'completed' -or
         $record.details.verdicts.source -ne 'PASS') {
         throw 'The evidence does not certify a completed, clean 64-bit Excel run.'
+    }
+    if ($MeasurementExamples -and $record.details.runs[0].examples.passed -ne $true) {
+        throw 'Measurement examples did not pass; keep the transcript in the JSON.'
     }
     if ($TimerRollbackRedCheck) {
         $runs = @($record.details.runs)
