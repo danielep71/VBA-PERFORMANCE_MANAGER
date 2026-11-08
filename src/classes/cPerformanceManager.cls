@@ -4948,6 +4948,9 @@ Public Function MeasureProcedure( _
 '------------------------------------------------------------------------------
 ' VALIDATE
 '------------------------------------------------------------------------------
+    'Include validation raises in seam cleanup while preserving their original error
+        On Error GoTo Err_Handler
+
     'Reject a blank procedure name
         If Len(Trim$(ProcedureName)) = 0 Then
             Err.Raise ERR_CPM_MEASURE_BLANK_PROC, _
@@ -4962,9 +4965,6 @@ Public Function MeasureProcedure( _
 '------------------------------------------------------------------------------
 ' INITIALIZE
 '------------------------------------------------------------------------------
-    'Route runtime failures through cleanup
-        On Error GoTo Err_Handler
-
     'The outputs stay sentinelled until classification completes. Only the two
     'publication points below overwrite them: the normal return, and the
     'aggregate raise which publishes before raising
@@ -5274,6 +5274,9 @@ Public Function MeasureBaseline( _
 
     'Reject a blank name with instructions rather than a bare failure
         If Len(Trim$(EmptyProcedureName)) = 0 Then
+            'This validation occurs before delegation: disarm both worker seams here
+            m_TestWorkerStartFailures = 0
+            m_TestWorkerEndpointFailures = 0
             Err.Raise ERR_CPM_MEASURE_NO_BASELINE, _
                       "cPerformanceManager.MeasureBaseline", _
                       "EmptyProcedureName cannot be blank. Add an empty Public Sub to " & _
@@ -7660,8 +7663,9 @@ Friend Sub Test_ForceWorkerStartReadFailures( _
 '   Warm-up cycles are not affected, so a forced failure lands on a measured
 '   cycle rather than a discarded one
 '
-'   The counter is cleared on every exit from MeasureProcedure, normal or
-'   raised, so an armed failure cannot leak into a later call
+'   Cleared on normal and raised exits from MeasureProcedure and
+'   MeasureOverhead_Samples, including blank-name rejection by MeasureProcedure
+'   or MeasureBaseline before any worker is created (#75).
 '
 ' UPDATED
 '   2026-10-21
@@ -7710,7 +7714,8 @@ Friend Sub Test_ForceWorkerEndpointReadFailures( _
 '   Test_ForceWorkerReadFailures is retained as a compatibility alias for this
 '   seam, since the endpoint read is the only thing it could ever reach
 '
-'   Cleared on every exit from MeasureProcedure, normal or raised
+'   Cleared on normal and raised measurement exits, including blank-name
+'   rejection by MeasureProcedure or MeasureBaseline before delegation (#75).
 '
 ' UPDATED
 '   2026-10-21
