@@ -67,7 +67,9 @@ class MilestoneWorkflowTests(unittest.TestCase):
         gh = self.root / "gh"
         gh.write_text("#!" + sys.executable + "\n" + FAKE_GH)
         gh.chmod(0o755)
-        self.script = load(ROOT / ".github/workflows/pr-milestones.yml")["jobs"]["clear"]["steps"][0]["run"]
+        step = load(ROOT / ".github/workflows/pr-milestones.yml")["jobs"]["clear"]["steps"][0]
+        self.assertEqual(step["shell"], "bash", "explicit Bash enables pipefail in Actions")
+        self.script = step["run"]
 
     def seed(self, items: list[dict[str, Any]]) -> None:
         self.state.write_text(json.dumps({str(item["number"]): item for item in items}))
