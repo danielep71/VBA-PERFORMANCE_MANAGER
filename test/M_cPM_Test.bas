@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 85    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 86    'Total number of executed regression cases
 
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -685,6 +685,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "TW zero-workbook lifecycle matrix"
         Test_TW_Calculation_ZeroWorkbookLifecycleMatrix
+
+    'Validate method-3 timer-period rollback (#31)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Method 3 timer-period rollback"
+        Test_Method3_AlignTimeout_PeriodRollback
 
 Clean_Exit:
 '------------------------------------------------------------------------------
@@ -12353,3 +12358,173 @@ Private Function Test_Stats_ErrorTextFor( _
         On Error GoTo 0
 
 End Function
+
+
+Private Sub Test_Method3_AlignTimeout_PeriodRollback()
+'
+'==============================================================================
+'              TEST METHOD 3 ALIGN TIMEOUT PERIOD ROLLBACK
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that a failed aligned method-3 start releases only the 1 ms
+'   multimedia timer period it acquired itself, and that ResetEnvironment stays
+'   balanced and idempotent (#31)
+'
+' WHY THIS EXISTS
+'   An aligned method-3 start calls timeBeginPeriod(1) before it waits for the
+'   next timeGetTime tick. When that wait times out in strict mode the session
+'   is rolled back, but the period used to stay held until ResetEnvironment or
+'   Class_Terminate. A real clock never stalls, so the timeout is forced with
+'   the one-shot Test_ForceNextAlignmentTimeout seam
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-03
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim RaisedNumber    As Long                   'Error number raised by the rejected start
+    Dim RaisedSource    As String                 'Error source raised by the rejected start
+    Dim T1Before        As Double                 'Start timestamp of the protected session
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Method 3 aligned-start timeout releases only the timer period it acquired"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance in strict mode
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = True
+
+    'A fresh instance has requested nothing
+        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
+                                 "A new instance holds no timer period"
+
+'------------------------------------------------------------------------------
+' A FAILED START RELEASES THE PERIOD IT ACQUIRED
+'------------------------------------------------------------------------------
+    'Force the next alignment to time out, then attempt an aligned method-3 start
+        cPM.Test_ForceNextAlignmentTimeout
+        RaisedNumber = 0
+        RaisedSource = vbNullString
+        On Error Resume Next
+        cPM.StartTimer cPM_MethodTimeGetTime, True
+        RaisedNumber = Err.Number
+        RaisedSource = Err.Source
+        Err.Clear
+        On Error GoTo CleanFail
+
+    'The original error reaches the caller unchanged
+        Test_Assert_EqualLong CLng(ERR_CPM_ALIGN_TICK_TIMEOUT), RaisedNumber, _
+                              "A strict aligned method-3 timeout raises ERR_CPM_ALIGN_TICK_TIMEOUT"
+        Test_Assert_EqualString "cPerformanceManager.Timestamp_TryGetNextSeconds", RaisedSource, _
+                                "The raised error still names the helper that timed out"
+    'Nothing was committed, and the side effect was rolled back with the state
+        Test_Assert_EqualBoolean False, cPM.HasActiveSession, _
+                                 "The failed start commits no session"
+        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
+                                 "The failed start releases the timer period it acquired"
+
+'------------------------------------------------------------------------------
+' A PERIOD HELD BEFORE THE ATTEMPT IS KEPT
+'------------------------------------------------------------------------------
+    'A successful aligned method-3 start holds the period for its session
+        cPM.StartTimer cPM_MethodTimeGetTime, True, "Held period"
+        T1Before = cPM.T1
+        Test_Assert_EqualBoolean True, cPM.Test_TimerPeriodHeld, _
+                                 "A successful aligned method-3 start holds the timer period"
+
+    'A later failed attempt must not release the earlier request
+        cPM.Test_ForceNextAlignmentTimeout
+        RaisedNumber = 0
+        On Error Resume Next
+        cPM.StartTimer cPM_MethodTimeGetTime, True
+        RaisedNumber = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong CLng(ERR_CPM_ALIGN_TICK_TIMEOUT), RaisedNumber, _
+                              "The second forced timeout raises in strict mode"
+        Test_Assert_EqualBoolean True, cPM.Test_TimerPeriodHeld, _
+                                 "A period held before the attempt is not released twice"
+        Test_Assert_EqualBoolean True, cPM.HasActiveSession, _
+                                 "The previous session is still active"
+        Test_Assert_EqualLong CLng(cPM_MethodTimeGetTime), CLng(cPM.ActiveMethodID), _
+                              "The previous backend binding is unchanged"
+        Test_Assert_ApproxDouble cPM.T1, T1Before, 0.000000001, _
+                                 "The previous start timestamp is unchanged"
+        Test_Assert_EqualString "Held period", cPM.RunLabel, _
+                                "The previous run label is unchanged"
+
+'------------------------------------------------------------------------------
+' RESET ENVIRONMENT STAYS BALANCED AND IDEMPOTENT
+'------------------------------------------------------------------------------
+    'One release for the one outstanding request
+        cPM.ResetEnvironment
+        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
+                                 "ResetEnvironment releases the held timer period"
+    'A second call has nothing left to release
+        cPM.ResetEnvironment
+        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
+                                 "A second ResetEnvironment is a balanced no-op"
+
+'------------------------------------------------------------------------------
+' NON-STRICT TIMEOUT KEEPS THE REQUEST, AS BEFORE
+'------------------------------------------------------------------------------
+    'Non-strict mode settles for a current timestamp and starts the session
+        cPM.StrictMode = False
+        cPM.Test_ForceNextAlignmentTimeout
+        cPM.StartTimer cPM_MethodTimeGetTime, True
+        Test_Assert_EqualLong CLng(cPM_MethodTimeGetTime), CLng(cPM.ActiveMethodID), _
+                              "A non-strict forced timeout still binds method 3"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
+                              "A non-strict forced timeout settles without a read failure"
+        Test_Assert_EqualBoolean True, cPM.Test_TimerPeriodHeld, _
+                                 "A successful non-strict start keeps the timer period"
+
+'------------------------------------------------------------------------------
+' THE SEAM WAS ONE-SHOT
+'------------------------------------------------------------------------------
+    'An ordinary strict aligned start succeeds once no timeout is armed
+        cPM.StrictMode = True
+        cPM.StartTimer cPM_MethodTimeGetTime, True, "Ordinary aligned run"
+        Test_Assert_EqualString "Ordinary aligned run", cPM.RunLabel, _
+                                "An ordinary aligned method-3 start succeeds after the forced timeouts"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Method3_AlignTimeout_PeriodRollback"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub

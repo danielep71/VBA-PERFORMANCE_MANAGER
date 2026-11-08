@@ -522,6 +522,9 @@ Attribute VB_Exposed = False
         Private m_TestFailNextSystemTimeRead As Boolean
         Private m_TestForceNextSystemTimeFormatInvalid As Boolean
         Private m_TestForceNextNegativeElapsed As Boolean
+        'One-shot forced exhaustion of the next next-tick alignment spin guard,
+        'shared by every aligned-start helper (#31, #44)
+        Private m_TestForceNextAlignTimeout As Boolean
         'Measured-cycle worker seams. Start and endpoint are counted separately
         'because they arm at different moments and prove different things: a
         'start failure produces a fallback the harness must reject, an endpoint
@@ -739,10 +742,15 @@ Public Sub StartTimer(Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC,
 '     BEFORE anything is committed.
 '   - Commits class state only once a valid start timestamp exists.
 '   - Starts a fresh checkpoint session and applies the optional run label.
+'   - If the attempt fails after acquiring the 1 ms timer period (an aligned
+'     method-3 start whose alignment times out in strict mode), releases that
+'     period before re-raising. A period held before the attempt is kept.
 '
 ' ERROR POLICY
 '   - Method validation is delegated to Method_NormalizeStart.
 '   - A failed start capture raises in strict mode, before any state changes.
+'   - Every raise leaves the call with the original number, source and
+'     description; releasing an acquired timer period never masks it.
 '
 ' CRITICAL INVARIANT
 '   No session is ever committed whose start value was not successfully read.
@@ -760,10 +768,11 @@ Public Sub StartTimer(Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC,
 ' DEPENDENCIES
 '   - Method_NormalizeStart
 '   - Start_TryCapture
+'   - Start_ReleaseAcquiredPeriod
 '   - Checkpoint_ClearState
 '
 ' UPDATED
-'   2026-08-15
+'   2026-11-03
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -774,12 +783,21 @@ Public Sub StartTimer(Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC,
     Dim NewQpcStart     As Currency         'QPC start tick for method 5
     Dim CaptureStatus   As cPM_ReadStatus   'Outcome of the capture attempt
     Dim FinalStatus     As cPM_ReadStatus   'Status published to the caller
+    Dim PeriodHeldBefore As Boolean         'TRUE when the 1 ms period was already held
+    Dim ErrNumber       As Long             'Original error number
+    Dim ErrSource       As String           'Original error source
+    Dim ErrDescription  As String           'Original error description
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
 '------------------------------------------------------------------------------
     'This operation describes its own read outcome
         FinalStatus = cPM_ReadOK
+
+    'Remember whether this instance already held the 1 ms timer period, so a
+    'failed attempt releases only what it acquired itself (#31)
+        PeriodHeldBefore = m_TimePeriodOn
+        On Error GoTo StartFailed
 
     'Normalize and validate the requested method
         NewMethod = Method_NormalizeStart(iMethod)
@@ -817,6 +835,9 @@ Public Sub StartTimer(Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC,
                 FinalStatus = cPM_ReadFallbackToMethod2
         End If
 
+    'The capture succeeded; nothing below raises
+        On Error GoTo 0
+
 '------------------------------------------------------------------------------
 ' COMMIT NEW SESSION STATE
 '------------------------------------------------------------------------------
@@ -847,6 +868,78 @@ Public Sub StartTimer(Optional ByVal iMethod As cPM_TimerMethod = cPM_MethodQPC,
     'Apply the supplied run label after the checkpoint reset has cleared it
         If Len(RunLabel) > 0 Then
             m_RunLabel = RunLabel
+        End If
+
+    Exit Sub
+
+StartFailed:
+'------------------------------------------------------------------------------
+' CAPTURE ORIGINAL ERROR
+'------------------------------------------------------------------------------
+    'Capture the original error before releasing anything
+        ErrNumber = Err.Number
+        ErrSource = Err.Source
+        ErrDescription = Err.Description
+
+'------------------------------------------------------------------------------
+' RELEASE A TIMER PERIOD THIS ATTEMPT ACQUIRED
+'------------------------------------------------------------------------------
+    'No session was committed, so the attempt must not leave the 1 ms multimedia
+    'timer period behind either (#31)
+        Start_ReleaseAcquiredPeriod PeriodHeldBefore
+
+'------------------------------------------------------------------------------
+' RE-RAISE ORIGINAL ERROR
+'------------------------------------------------------------------------------
+    'Re-raise the original error
+        Err.Raise ErrNumber, ErrSource, ErrDescription
+
+End Sub
+
+
+Private Sub Start_ReleaseAcquiredPeriod( _
+    ByVal PeriodHeldBefore As Boolean)
+'
+'==============================================================================
+'                      START RELEASE ACQUIRED PERIOD
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Releases the 1 ms multimedia timer period after a failed StartTimer attempt,
+'   when that attempt was the one that acquired it.
+'
+' WHY THIS EXISTS
+'   An aligned method-3 start calls timeBeginPeriod(1) before it waits for the
+'   next tick. If the wait then times out in strict mode, the session is rolled
+'   back, but the period used to stay held until ResetEnvironment or
+'   Class_Terminate (#31).
+'
+' INPUTS
+'   PeriodHeldBefore
+'     TRUE when the period was already held before the attempt. It then belongs
+'     to an earlier, committed use and is left in place.
+'
+' RETURNS
+'   None.
+'
+' ERROR POLICY
+'   Does not raise. If timeEndPeriod fails, the period stays recorded as held,
+'   so ResetEnvironment can still balance it, and the caller sees its original
+'   error.
+'
+' NOTES
+'   Releasing only a newly acquired period keeps timeBeginPeriod and
+'   timeEndPeriod balanced: an earlier request is never released twice.
+'
+' UPDATED
+'   2026-11-03
+'==============================================================================
+
+    'Leave a period that predates this attempt, or one that was never acquired
+        If PeriodHeldBefore Or Not m_TimePeriodOn Then Exit Sub
+
+    'Release the request this attempt made
+        If timeEndPeriod(1) = 0 Then
+            m_TimePeriodOn = False
         End If
 
 End Sub
@@ -4205,6 +4298,7 @@ Private Function Timestamp_TryGetNextSeconds( _
 
         Case cPM_MethodTimer
                 A = Timer
+                If Align_TestTimeoutArmed() Then GoTo SpinGuardExhausted
                 Do
                     SpinCount = SpinCount + 1
                     B = Timer
@@ -4217,6 +4311,7 @@ Private Function Timestamp_TryGetNextSeconds( _
 
         Case cPM_MethodTickCount
                 A = Get_TickCountSeconds()
+                If Align_TestTimeoutArmed() Then GoTo SpinGuardExhausted
                 Do
                     SpinCount = SpinCount + 1
                     B = Get_TickCountSeconds()
@@ -4230,6 +4325,7 @@ Private Function Timestamp_TryGetNextSeconds( _
         Case cPM_MethodTimeGetTime
                 EnsureTimerResolution1ms
                 A = UInt32ToDouble(timeGetTime())
+                If Align_TestTimeoutArmed() Then GoTo SpinGuardExhausted
                 Do
                     SpinCount = SpinCount + 1
                     B = UInt32ToDouble(timeGetTime())
@@ -4246,6 +4342,7 @@ Private Function Timestamp_TryGetNextSeconds( _
                     Timestamp_TryGetNextSeconds = False
                     Exit Function
                 End If
+                If Align_TestTimeoutArmed() Then GoTo SpinGuardExhausted
 
                 Do
                     SpinCount = SpinCount + 1
@@ -4274,10 +4371,12 @@ Private Function Timestamp_TryGetNextSeconds( _
 
     End Select
 
+SpinGuardExhausted:
 '------------------------------------------------------------------------------
 ' ALIGNMENT FAILURE
 '------------------------------------------------------------------------------
-    'The clock did not advance within the spin guard
+    'The clock did not advance within the spin guard, or the regression suite
+    'forced that outcome with Test_ForceNextAlignmentTimeout
         If m_StrictMode Then
             Err.Raise ERR_CPM_ALIGN_TICK_TIMEOUT, _
                       "cPerformanceManager.Timestamp_TryGetNextSeconds", _
@@ -4287,6 +4386,42 @@ Private Function Timestamp_TryGetNextSeconds( _
     'Non-strict: settle for a current timestamp
         Timestamp_TryGetNextSeconds = _
             Timestamp_TryGetCurrentSeconds(iMethod, ValueOut, StatusOut)
+
+End Function
+
+
+Private Function Align_TestTimeoutArmed() As Boolean
+'
+'==============================================================================
+'                         ALIGN TEST TIMEOUT ARMED
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Consumes the one-shot forced alignment timeout armed by the regression
+'   suite.
+'
+' WHY THIS EXISTS
+'   A real clock always advances, so the spin guard of a next-tick alignment
+'   cannot be exhausted on demand without a million native reads. Each aligned
+'   helper calls this right after its initial read; when it returns TRUE, the
+'   helper takes its spin-guard-exhausted path exactly as if the clock had
+'   stalled (#31, #44).
+'
+' RETURNS
+'   TRUE once after Test_ForceNextAlignmentTimeout, then FALSE.
+'
+' NOTES
+'   Production behaviour is unchanged: the flag is only ever set by the
+'   test-only seam, and CPM_ALIGN_MAX_SPINS is not altered.
+'
+' UPDATED
+'   2026-11-03
+'==============================================================================
+
+    'Consume the one-shot flag
+        If m_TestForceNextAlignTimeout Then
+            m_TestForceNextAlignTimeout = False
+            Align_TestTimeoutArmed = True
+        End If
 
 End Function
 
@@ -4347,6 +4482,7 @@ Private Function QPC_TryGetNextTick( _
 ' ALIGN TO NEXT TICK
 '------------------------------------------------------------------------------
     'Spin until the counter advances strictly beyond the initial read
+        If Align_TestTimeoutArmed() Then GoTo SpinGuardExhausted
         Do
             SpinCount = SpinCount + 1
 
@@ -4362,10 +4498,12 @@ Private Function QPC_TryGetNextTick( _
             End If
         Loop Until SpinCount >= CPM_ALIGN_MAX_SPINS
 
+SpinGuardExhausted:
 '------------------------------------------------------------------------------
 ' ALIGNMENT FAILURE
 '------------------------------------------------------------------------------
-    'The counter did not advance within the spin guard
+    'The counter did not advance within the spin guard, or the regression suite
+    'forced that outcome with Test_ForceNextAlignmentTimeout
         If m_StrictMode Then
             Err.Raise ERR_CPM_ALIGN_TICK_TIMEOUT, _
                       "cPerformanceManager.QPC_TryGetNextTick", _
@@ -7627,6 +7765,77 @@ Friend Sub Test_ForceNextQPCReadFailure()
         m_TestFailNextQpcRead = True
 
 End Sub
+
+
+Friend Sub Test_ForceNextAlignmentTimeout()
+'
+'==============================================================================
+'                     TEST FORCE NEXT ALIGNMENT TIMEOUT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms a ONE-SHOT forced exhaustion of the next next-tick alignment spin guard.
+'
+' WHY THIS EXISTS
+'   The timeout policy of every aligned start (strict raise of
+'   ERR_CPM_ALIGN_TICK_TIMEOUT, non-strict settling) is unreachable with a real
+'   clock. #31 uses it for the method-3 timer-period rollback; #44 covers the
+'   QPC and method-4 timeout paths with the same seam.
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   None.
+'
+' BEHAVIOR
+'   The next aligned-start helper to run takes its spin-guard-exhausted path
+'   after its initial read, and clears the flag.
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' NOTES
+'   One-shot and self-clearing, like the other read seams. Declared Friend, so
+'   it is reachable from the regression suite but invisible outside the project.
+'
+' UPDATED
+'   2026-11-03
+'==============================================================================
+
+    'Arm a single forced alignment timeout
+        m_TestForceNextAlignTimeout = True
+
+End Sub
+
+
+Friend Property Get Test_TimerPeriodHeld() As Boolean
+'
+'==============================================================================
+'                          TEST TIMER PERIOD HELD
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Reports whether this instance currently holds the 1 ms multimedia timer
+'   period it requested with timeBeginPeriod(1).
+'
+' WHY THIS EXISTS
+'   The period is an environmental side effect with no public read-back. The
+'   regression suite needs to see it to prove that a failed start releases
+'   only what it acquired, and that ResetEnvironment stays balanced (#31).
+'
+' RETURNS
+'   TRUE while the request is held.
+'
+' NOTES
+'   Declared Friend: test-only, invisible outside the project.
+'
+' UPDATED
+'   2026-11-03
+'==============================================================================
+
+    'Report the instance's ownership flag
+        Test_TimerPeriodHeld = m_TimePeriodOn
+
+End Property
 
 
 Friend Sub Test_ForceNextSystemTimeReadFailure()
