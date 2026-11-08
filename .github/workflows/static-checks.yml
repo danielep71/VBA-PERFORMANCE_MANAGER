@@ -89,6 +89,10 @@ jobs:
       - name: Lint the workflows with actionlint
         run: actionlint -no-color
 
+      - name: Exercise Excel runner verdicts without Excel
+        shell: pwsh
+        run: ./tools/Test-ExcelRunnerVerdicts.ps1
+
       - name: Run the tool tests by discovery
         run: python -m unittest discover -s tools -p "test_*.py" -v
 
