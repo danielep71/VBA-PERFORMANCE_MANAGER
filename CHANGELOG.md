@@ -252,6 +252,15 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- Pull-request milestone cleanup handles event PRs in any state and paginates
+  all open, closed and merged PRs during scheduled/manual sweeps (#109).
+
+- Issue triage normalizes Windows and mixed line endings before parsing dates
+  and dependencies, preserving start/target ordering checks (#110).
+
+- VBA formatting preserves continued comments without activating their contents;
+  source checks recognize inline `Rem` comments after `Then` and `Else` (#111).
+
 - Demo sheet construction skips printer-dependent page-break resets, preserving
   existing print pagination. Explicit `DEMO_Reset_Sheet` calls retain their
   `RemovePageBreaks` option (#119).
