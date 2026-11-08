@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 86    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 87    'Total number of executed regression cases
 
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -690,6 +690,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Method 3 timer-period rollback"
         Test_Method3_AlignTimeout_PeriodRollback
+
+    'Validate worker fault isolation after input validation failures (#75)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: validation disarms worker faults"
+        Test_Measure_ValidationDisarmsWorkerFaults
 
 Clean_Exit:
 '------------------------------------------------------------------------------
@@ -2772,8 +2777,8 @@ Private Sub Test_StrictMode_ElapsedBeforeStart()
         Dummy = cPM.ElapsedSeconds
 
     'Assert that an error was raised
-        Test_Assert_True (Err.Number <> 0), _
-                         "Strict mode raises when ElapsedSeconds is called before StartTimer"
+        Test_Assert_EqualLong ERR_CPM_NO_ACTIVE_SESSION, Err.Number, _
+                              "Strict mode raises when ElapsedSeconds is called before StartTimer (ERR_CPM_NO_ACTIVE_SESSION)"
 
     'Assert that the error description mentions StartTimer
         Test_Assert_ContainsString Err.Description, "StartTimer", _
@@ -2868,8 +2873,8 @@ Private Sub Test_StrictMode_MethodMismatch()
         Dummy = cPM.ElapsedSeconds(2)
 
     'Assert that an error was raised
-        Test_Assert_True (Err.Number <> 0), _
-                         "Strict mode raises on explicit elapsed-method mismatch"
+        Test_Assert_EqualLong ERR_CPM_METHOD_MISMATCH, Err.Number, _
+                              "Strict mode raises on explicit elapsed-method mismatch (ERR_CPM_METHOD_MISMATCH)"
 
     'Assert that the error description mentions the method mismatch
         Test_Assert_ContainsString Err.Description, "does not match", _
@@ -2958,8 +2963,8 @@ Private Sub Test_StrictMode_InvalidStartMethod()
         cPM.StartTimer 99, False
 
     'Assert that an error was raised
-        Test_Assert_True (Err.Number <> 0), _
-                         "Strict mode raises on invalid StartTimer method"
+        Test_Assert_EqualLong ERR_CPM_INVALID_START_METHOD, Err.Number, _
+                              "Strict mode raises on invalid StartTimer method (ERR_CPM_INVALID_START_METHOD)"
 
     'Assert that the error description mentions invalid timer method
         Test_Assert_ContainsString Err.Description, "Invalid timer method", _
@@ -3973,8 +3978,8 @@ Private Sub Test_TW_BlankKeyValidation()
     'Attempt an invalid blank-key begin
         PM_TW_BeginSession ""
     'Assert that blank-key begin raises
-        Test_Assert_True (Err.Number <> 0), _
-                         "PM_TW_BeginSession raises on blank key"
+        Test_Assert_EqualLong ERR_TW_BEGIN_BLANK_KEY, Err.Number, _
+                              "PM_TW_BeginSession raises on blank key (ERR_TW_BEGIN_BLANK_KEY)"
     'Clear the expected error state
         Err.Clear
 
@@ -3984,8 +3989,8 @@ Private Sub Test_TW_BlankKeyValidation()
     'Attempt an invalid blank-key end
         PM_TW_EndSession ""
     'Assert that blank-key end raises
-        Test_Assert_True (Err.Number <> 0), _
-                         "PM_TW_EndSession raises on blank key"
+        Test_Assert_EqualLong ERR_TW_END_BLANK_KEY, Err.Number, _
+                              "PM_TW_EndSession raises on blank key (ERR_TW_END_BLANK_KEY)"
     'Clear the expected error state
         Err.Clear
 
@@ -3995,8 +4000,8 @@ Private Sub Test_TW_BlankKeyValidation()
     'Attempt an invalid blank-key activity query
         Call PM_TW_IsInstanceActive("")
     'Assert that blank-key activity query raises
-        Test_Assert_True (Err.Number <> 0), _
-                         "PM_TW_IsInstanceActive raises on blank key"
+        Test_Assert_EqualLong ERR_TW_ISACTIVE_BLANK_KEY, Err.Number, _
+                              "PM_TW_IsInstanceActive raises on blank key (ERR_TW_ISACTIVE_BLANK_KEY)"
     'Clear the expected error state
         Err.Clear
 
@@ -4518,8 +4523,8 @@ Private Sub Test_Checkpoint_BeforeStart()
         cPM.Checkpoint "Phase 1"
 
     'Assert that an error was raised
-        Test_Assert_True (Err.Number <> 0), _
-                         "Checkpoint raises before StartTimer"
+        Test_Assert_EqualLong ERR_CPM_CHECKPOINT_NO_SESSION, Err.Number, _
+                              "Checkpoint raises before StartTimer (ERR_CPM_CHECKPOINT_NO_SESSION)"
 
     'Assert that the error text mentions StartTimer
         Test_Assert_ContainsString Err.Description, "StartTimer", _
@@ -4725,8 +4730,8 @@ Private Sub Test_SetRunLabel_AfterFirstCheckpoint()
         cPM.SetRunLabel "Late Label"
 
     'Assert that an error was raised
-        Test_Assert_True (Err.Number <> 0), _
-                         "SetRunLabel raises after first checkpoint"
+        Test_Assert_EqualLong ERR_CPM_RUNLABEL_AFTER_CAPTURE, Err.Number, _
+                              "SetRunLabel raises after first checkpoint (ERR_CPM_RUNLABEL_AFTER_CAPTURE)"
 
     'Assert that the error text mentions the first checkpoint rule
         Test_Assert_ContainsString Err.Description, "first checkpoint", _
@@ -7334,10 +7339,10 @@ Private Function Test_Stats_RaisesFor( _
 '------------------------------------------------------------------------------
 ' ROUTINE
 '------------------------------------------------------------------------------
-    'Attempt the call and report whether it raised
+    'The callers supply negative samples: require the documented domain error (#76)
         On Error Resume Next
         Discarded = cPM.Stats_IsContaminated(Samples)
-        Test_Stats_RaisesFor = (Err.Number <> 0)
+        Test_Stats_RaisesFor = (Err.Number = ERR_CPM_STATS_OUT_OF_DOMAIN)
         Err.Clear
         On Error GoTo 0
 
@@ -10528,9 +10533,9 @@ Private Sub Test_Measure_WorkerRaiseEvidenceBoundary()
 '------------------------------------------------------------------------------
 ' ASSERT THE BOUNDARY
 '------------------------------------------------------------------------------
-    'Something must have been raised
-        Test_Assert_True RaisedNumber <> 0, _
-                         "A strict-mode start failure propagates to the caller"
+    'The forced QPC start read must propagate its exact error (#76)
+        Test_Assert_EqualLong ERR_CPM_QPC_READ_FAILED, RaisedNumber, _
+                              "A strict-mode start failure propagates to the caller (ERR_CPM_QPC_READ_FAILED)"
 
     'It must not be the aggregate error: no cycle was ever classified
         Test_Assert_True RaisedNumber <> CLng(ERR_CPM_MEASURE_NO_VALID_SAMPLES), _
@@ -11290,8 +11295,8 @@ Private Sub Test_LegacyOverhead_ValidatedPath()
         RaisedNumber = Err.Number
         Err.Clear
         On Error GoTo CleanFail
-        Test_Assert_True RaisedNumber <> 0, _
-                         "An invalid backend still raises from the text formatter"
+        Test_Assert_EqualLong ERR_CPM_INVALID_START_METHOD, RaisedNumber, _
+                              "An invalid backend still raises from the text formatter (ERR_CPM_INVALID_START_METHOD)"
         Test_Assert_True RaisedNumber <> CLng(ERR_CPM_MEASURE_NO_VALID_SAMPLES), _
                          "An invalid backend is not reported as an undefined measurement"
         cPM.StrictMode = False
@@ -11850,8 +11855,8 @@ Private Sub Test_LastReadStatus_AfterStrictFailure()
         On Error GoTo CleanFail
 
     'Assert the error still fires with the correct number
-        Test_Assert_True (ErrNum <> 0), _
-                         "A failed QPC read still raises in strict mode"
+        Test_Assert_EqualLong ERR_CPM_QPC_READ_FAILED, ErrNum, _
+                              "A failed QPC read still raises in strict mode (ERR_CPM_QPC_READ_FAILED)"
 
     'This is the defect: the status must describe the failed read, not the one before
         Test_Assert_EqualLong CLng(cPM_ReadQpcFailed), CLng(cPM.LastReadStatus), _
@@ -11881,8 +11886,8 @@ Private Sub Test_LastReadStatus_AfterStrictFailure()
         On Error GoTo CleanFail
 
     'Assert the specific condition is reported, not a generic one
-        Test_Assert_True (ErrNum <> 0), _
-                         "A failed method-4 read still raises in strict mode"
+        Test_Assert_EqualLong ERR_CPM_TIMEGETSYSTEMTIME_FAILED, ErrNum, _
+                              "A failed method-4 read still raises in strict mode (ERR_CPM_TIMEGETSYSTEMTIME_FAILED)"
         Test_Assert_EqualLong CLng(cPM_ReadSystemTimeFailed), CLng(cPM.LastReadStatus), _
                               "LastReadStatus reports the timeGetSystemTime failure"
 
@@ -11900,8 +11905,8 @@ Private Sub Test_LastReadStatus_AfterStrictFailure()
         On Error GoTo CleanFail
 
     'Assert the format problem is distinguished from an outright read failure
-        Test_Assert_True (ErrNum <> 0), _
-                         "A wrong-format read still raises in strict mode"
+        Test_Assert_EqualLong ERR_CPM_TIMEGETSYSTEMTIME_FORMAT, ErrNum, _
+                              "A wrong-format read still raises in strict mode (ERR_CPM_TIMEGETSYSTEMTIME_FORMAT)"
         Test_Assert_EqualLong CLng(cPM_ReadSystemTimeFormatInvalid), CLng(cPM.LastReadStatus), _
                               "LastReadStatus distinguishes a wrong format from a read failure"
 
@@ -11925,8 +11930,8 @@ Private Sub Test_LastReadStatus_AfterStrictFailure()
         On Error GoTo CleanFail
 
     'Assert the failure is reported through both surfaces
-        Test_Assert_True (ErrNum <> 0), _
-                         "A failed checkpoint read raises in strict mode"
+        Test_Assert_EqualLong ERR_CPM_QPC_READ_FAILED, ErrNum, _
+                              "A failed checkpoint read raises in strict mode (ERR_CPM_QPC_READ_FAILED)"
         Test_Assert_EqualLong CLng(cPM_ReadQpcFailed), CLng(cPM.LastReadStatus), _
                               "LastReadStatus reports the failed checkpoint read"
 
@@ -12283,10 +12288,10 @@ Private Function Test_Stats_MinRaisesFor( _
 '------------------------------------------------------------------------------
 ' ROUTINE
 '------------------------------------------------------------------------------
-    'Attempt the call and report whether it raised
+    'The callers supply negative samples: require the documented domain error (#76)
         On Error Resume Next
         Discarded = cPM.Stats_Min(Samples)
-        Test_Stats_MinRaisesFor = (Err.Number <> 0)
+        Test_Stats_MinRaisesFor = (Err.Number = ERR_CPM_STATS_OUT_OF_DOMAIN)
         Err.Clear
         On Error GoTo 0
 
@@ -12322,10 +12327,10 @@ Private Function Test_Stats_MedianRaisesFor( _
 '------------------------------------------------------------------------------
 ' ROUTINE
 '------------------------------------------------------------------------------
-    'Attempt the call and report whether it raised
+    'The callers supply negative samples: require the documented domain error (#76)
         On Error Resume Next
         Discarded = cPM.Stats_Median(Samples)
-        Test_Stats_MedianRaisesFor = (Err.Number <> 0)
+        Test_Stats_MedianRaisesFor = (Err.Number = ERR_CPM_STATS_OUT_OF_DOMAIN)
         Err.Clear
         On Error GoTo 0
 
@@ -12542,4 +12547,119 @@ CleanFail:
     'Continue through centralized cleanup
         Resume CleanExit
 
+End Sub
+
+Private Sub Test_Measure_ValidationDisarmsWorkerFaults()
+'
+'==============================================================================
+'                 TEST MEASUREMENT VALIDATION SEAM CLEANUP
+'------------------------------------------------------------------------------
+' PURPOSE
+'   A rejected measurement must not leave either worker-failure seam armed.
+'
+' WHY THIS EXISTS
+'   Blank procedure/baseline names used to raise before the cleanup boundary.
+'   Check empty and whitespace names plus strict invalid-method errors through
+'   all three measurement entry points, then measure on the same instance.
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   None.
+'
+' UPDATED
+'   2026-11-08
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Instance under test
+    Dim Samples()       As Double                 'Returned measurement vector
+    Dim Scenario        As Long                   'Validation path under test
+    Dim RaisedNumber    As Long                   'Original validation error
+    Dim ExpectedNumber  As Long                   'Contractual validation error
+    Dim FailedReads     As Long                   'Failure output or sentinel
+    Dim Rejected        As Long                   'Rejection output or sentinel
+    Dim LastStatus      As cPM_ReadStatus          'Status output
+    Dim Context         As String                 'Assertion scenario label
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+        Case_Begin "Measure: validation disarms worker faults"
+        On Error GoTo CleanFail
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' ASSERT VALIDATION AND FOLLOWING CLEAN RUN
+'------------------------------------------------------------------------------
+        For Scenario = 1 To 7
+            Context = "Validation scenario " & CStr(Scenario) & ": "
+            cPM.StrictMode = True
+            cPM.Test_ForceWorkerStartReadFailures 1
+            cPM.Test_ForceWorkerEndpointReadFailures 1
+            FailedReads = 99
+            Rejected = 99
+            LastStatus = cPM_ReadElapsedInvalid
+            ExpectedNumber = ERR_CPM_INVALID_START_METHOD
+            Err.Clear
+            On Error Resume Next
+            Select Case Scenario
+                Case 1, 2
+                    ExpectedNumber = ERR_CPM_MEASURE_BLANK_PROC
+                    If Scenario = 1 Then
+                        Samples = cPM.MeasureProcedure("", 3, 0, cPM_MethodQPC, FailedReads, LastStatus, Rejected)
+                    Else
+                        Samples = cPM.MeasureProcedure("   ", 3, 0, cPM_MethodQPC, FailedReads, LastStatus, Rejected)
+                    End If
+                Case 3, 4
+                    ExpectedNumber = ERR_CPM_MEASURE_NO_BASELINE
+                    If Scenario = 3 Then
+                        Samples = cPM.MeasureBaseline("", 3, 0, cPM_MethodQPC, FailedReads, LastStatus, Rejected)
+                    Else
+                        Samples = cPM.MeasureBaseline("   ", 3, 0, cPM_MethodQPC, FailedReads, LastStatus, Rejected)
+                    End If
+                Case 5
+                    Samples = cPM.MeasureProcedure("cPM_Test_Workload", 3, 0, -1, FailedReads, LastStatus, Rejected)
+                Case 6
+                    Samples = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 3, 0, -1, FailedReads, LastStatus, Rejected)
+                Case 7
+                    Samples = cPM.MeasureOverhead_Samples(3, 0, -1, FailedReads, LastStatus, Rejected)
+            End Select
+            RaisedNumber = Err.Number
+            Err.Clear
+            On Error GoTo CleanFail
+            Test_Assert_EqualLong ExpectedNumber, RaisedNumber, Context & "original validation error preserved"
+            Test_Assert_EqualLong -1, FailedReads, Context & "failed reads remain unpublished"
+            Test_Assert_EqualLong -1, Rejected, Context & "rejections remain unpublished"
+            Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(LastStatus), Context & "status sentinel preserved"
+
+            'Non-strict next call exposes leaked faults as losses rather than stopping the case
+            cPM.StrictMode = False
+            Samples = cPM.MeasureProcedure("cPM_Test_Workload", 3, 0, cPM_MethodQPC, FailedReads, LastStatus, Rejected)
+            Test_Assert_EqualLong 3, cPM.Stats_Count(Samples), Context & "next run retains all samples"
+            Test_Assert_EqualLong 0, FailedReads, Context & "endpoint fault did not leak"
+            Test_Assert_EqualLong 0, Rejected, Context & "start fault did not leak"
+            Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(LastStatus), Context & "next run is clean"
+        Next Scenario
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+        On Error Resume Next
+        If Not cPM Is Nothing Then cPM.ResetEnvironment
+        Set cPM = Nothing
+        On Error GoTo 0
+        Case_Finalize
+        Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+        RecordUnexpectedError "Test_Measure_ValidationDisarmsWorkerFaults"
+        Resume CleanExit
 End Sub

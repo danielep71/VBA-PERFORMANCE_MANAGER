@@ -260,6 +260,18 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- **Regression error specificity (#76):** strict QPC/read/validation tests now
+  assert their documented error codes instead of accepting any nonzero error;
+  negative-sample helpers require the domain error. Runtime behavior is unchanged.
+
+
+- **Measurement test isolation (#75):** worker start/endpoint failure simulations
+  are disarmed when a blank procedure or baseline name is rejected, so they
+  cannot contaminate the next measurement. Original validation errors and
+  unpublished-output sentinels are preserved; supported measurement behavior
+  without armed internal test seams is unchanged.
+
+
 - Release-state gates bind changelog links, current-release claims and the wiki
   to explicit revisions; root VERSION participates in source consistency (#50).
 
