@@ -252,6 +252,10 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- Demo sheet construction skips printer-dependent page-break resets, preserving
+  existing print pagination. Explicit `DEMO_Reset_Sheet` calls retain their
+  `RemovePageBreaks` option (#119).
+
 - A Calculation exemption now lasts for the rest of the shared time-waster
   scope. Previously, once a workbook reappeared, a later begin, update or end
   could force Calculation back to Manual and final teardown could restore a

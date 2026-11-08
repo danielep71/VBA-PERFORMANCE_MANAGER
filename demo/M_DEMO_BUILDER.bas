@@ -223,7 +223,7 @@ Public Sub DEMO_Build_DemoTemplate( _
 ' BEHAVIOR
 '   - Uses the requested workbook or defaults to ThisWorkbook
 '   - Gets or creates the requested worksheet
-'   - Resets the sheet before rebuilding it
+'   - Resets sheet content while preserving print pagination
 '   - Derives the separator column from ContentColumns
 '   - Derives the first hidden column from the separator column
 '   - Writes title/subtitle bands from column B to the last content column
@@ -359,8 +359,8 @@ Public Sub DEMO_Build_DemoTemplate( _
     'Get or create the target worksheet
         Set WS = DEMO_GetOrCreateSheet(WB, WS_Name)
 
-    'Reset the worksheet to a clean reusable state before rebuilding it
-        DEMO_Reset_Sheet WS
+    'Preserve print pagination: demo layout does not need printer-dependent resets
+        DEMO_Reset_Sheet WS, RemovePageBreaks:=False
 
 '------------------------------------------------------------------------------
 ' INITIALIZE WORKSHEET LIMITS
