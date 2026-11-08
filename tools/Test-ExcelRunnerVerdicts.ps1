@@ -76,3 +76,6 @@ try {
 } finally {
     Remove-Item $temp -Recurse -Force
 }
+
+# The final child intentionally fails; do not leak its native exit code to CI.
+exit 0
