@@ -32,6 +32,19 @@ class SlugTests(unittest.TestCase):
     def test_repeated_headings_get_numbered(self) -> None:
         self.assertEqual(ml.anchors("# Notes\n## Notes\n### Notes\n"), {"notes", "notes-1", "notes-2"})
 
+    def test_inline_code_headings_keep_text_and_duplicate_suffixes(self) -> None:
+        text = ("## `LastReadStatus`\n## LastReadStatus\n"
+                "## `LastReadStatus`\n`TotalSteps` and counts\n===\n")
+        self.assertEqual(ml.anchors(text),
+                         {"lastreadstatus", "lastreadstatus-1", "lastreadstatus-2",
+                          "totalsteps-and-counts"})
+
+    def test_literal_html_anchors_and_fenced_headings_are_excluded(self) -> None:
+        text = ('`<a id="fake"></a>`\n<a id="real"></a>\n'
+                '~~~markdown\n## `LastReadStatus`\n~~~\n'
+                '## `LastReadStatus`\n')
+        self.assertEqual(ml.anchors(text), {"real", "lastreadstatus"})
+
     def test_explicit_and_setext_anchors(self) -> None:
         text = '<a id="date-and-version-rules"></a>\n<a name="Legacy"></a>\nTitle here\n==========\n'
         self.assertEqual(ml.anchors(text), {"date-and-version-rules", "legacy", "title-here"})
@@ -62,6 +75,22 @@ class OfflineTests(unittest.TestCase):
 
     def test_valid_links_pass(self) -> None:
         self.assertEqual(ml.offline_problems(self.FILES, self.EXISTING), [])
+
+    def test_inline_code_heading_links_resolve_end_to_end(self) -> None:
+        files = {
+            "README.md": "[first](Guide.md#lastreadstatus) "
+                         "[second](Guide.md#lastreadstatus-1) "
+                         "[setext](Guide.md#totalsteps-and-counts)\n",
+            "Guide.md": "## `LastReadStatus`\n## `LastReadStatus`\n"
+                        "`TotalSteps` and counts\n---\n"
+                        "`[ignored](missing.md)`\n"
+                        "```markdown\n## `LastReadStatus`\n[x](missing.md)\n```\n"
+                        "[self](#lastreadstatus)\n",
+        }
+        self.assertEqual(ml.offline_problems(files, set(files)), [])
+        files["README.md"] += "[bad](Guide.md#lastreadstatus-2)\n"
+        self.assertEqual(ml.offline_problems(files, set(files)),
+                         ["README.md:2: missing anchor #lastreadstatus-2 in Guide.md"])
 
     def test_repository_links_resolve(self) -> None:
         self.assertEqual(ml.repository_problems(ROOT), [])

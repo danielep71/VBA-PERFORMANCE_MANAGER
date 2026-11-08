@@ -252,6 +252,9 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- Markdown heading anchors retain inline-code text, including duplicate and
+  Setext headings, while link extraction still excludes code spans (#108).
+
 - Pull-request milestone cleanup handles event PRs in any state and paginates
   all open, closed and merged PRs during scheduled/manual sweeps (#109).
 

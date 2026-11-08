@@ -55,8 +55,8 @@ def slug(heading: str) -> str:
     return "".join(kept).replace(" ", "-")
 
 
-def _lines_outside_code(text: str) -> list[tuple[int, str]]:
-    """Numbered lines outside fenced code blocks, with code spans blanked."""
+def _lines_outside_fences(text: str) -> list[tuple[int, str]]:
+    """Numbered lines outside fenced blocks, preserving inline heading text."""
     out: list[tuple[int, str]] = []
     fence: str | None = None
     for number, line in enumerate(text.splitlines(), 1):
@@ -68,8 +68,17 @@ def _lines_outside_code(text: str) -> list[tuple[int, str]]:
             if match and match.group(1)[0] == fence[0] and len(match.group(1)) >= len(fence):
                 fence = None
             continue
-        out.append((number, CODE_SPAN.sub(lambda m: " " * len(m.group(0)), line)))
+        out.append((number, line))
     return out
+
+
+def _mask_code_spans(line: str) -> str:
+    return CODE_SPAN.sub(lambda m: " " * len(m.group(0)), line)
+
+
+def _lines_outside_code(text: str) -> list[tuple[int, str]]:
+    """Numbered lines for link extraction: fenced blocks and spans excluded."""
+    return [(number, _mask_code_spans(line)) for number, line in _lines_outside_fences(text)]
 
 
 def anchors(text: str) -> set[str]:
@@ -77,8 +86,8 @@ def anchors(text: str) -> set[str]:
     found: set[str] = set()
     used: dict[str, int] = {}
     previous = ""
-    for _, line in _lines_outside_code(text):
-        found.update(a.lower() for a in ANCHOR_ATTR.findall(line))
+    for _, line in _lines_outside_fences(text):
+        found.update(a.lower() for a in ANCHOR_ATTR.findall(_mask_code_spans(line)))
         match = HEADING.match(line)
         title = match.group(2) if match else (previous if previous.strip() and SETEXT.match(line)
                                                and not HEADING.match(previous) else None)
