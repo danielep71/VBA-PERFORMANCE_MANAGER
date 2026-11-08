@@ -13,7 +13,7 @@
 [![Windows](https://img.shields.io/badge/Platform-Windows_desktop-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#requirements)
 [![Version](https://img.shields.io/badge/Version-1.4.0-6f42c1?style=for-the-badge)](#release-status)
 [![Regression v1.4.0](https://img.shields.io/badge/Regression_v1.4.0-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
-[![Static checks](https://img.shields.io/badge/Static_checks-25_%2F_25-0969da?style=for-the-badge)](#static-source-analysis)
+[![Static checks](https://img.shields.io/badge/Static_checks-31_%2F_31-0969da?style=for-the-badge)](#static-source-analysis)
 [![License](https://img.shields.io/badge/License-Apache_2.0-2ea44f?style=for-the-badge)](LICENSE)
 <!-- /facts:badges -->
 
@@ -956,7 +956,7 @@ The published certifications above record the checks of their own tags and
 are not recertified by later additions.
 
 <!-- facts:static-checks -->
-The current development linter performs **25 checks**:
+The current development linter performs **31 checks**:
 
 1. no merge-conflict markers;
 2. balanced procedure blocks;
@@ -982,7 +982,13 @@ The current development linter performs **25 checks**:
 22. procedures and module-level declarations state Public, Private or Friend;
 23. no public name is defined in two standard modules;
 24. VBA source layout matches `tools/vba_format.py`;
-25. README facts match their sources.
+25. release changelog sections agree with tags;
+26. release comparison links form the tag chain;
+27. README current-release claims agree with tags;
+28. wiki input matches its pinned revision;
+29. wiki current-release badges agree with tags;
+30. current-status blocks agree with release evidence;
+31. README facts match their sources.
 <!-- /facts:static-checks -->
 
 The checks cover every tracked `.bas`, `.cls` and `.frm` export under `src/`,
@@ -1334,6 +1340,14 @@ are the immediate reference for changes made after its last reviewed baseline.
 <a id="release-status"></a>
 
 # 🧭 Release status
+
+<!-- release-state -->
+Latest release: v1.4.0
+Release status: published
+Development static checks: 31
+Execution evidence: 64-bit only
+32-bit follow-up: #29, v1.5.0, contributor-dependent
+<!-- /release-state -->
 
 ## v1.4.0 — latest tagged release
 

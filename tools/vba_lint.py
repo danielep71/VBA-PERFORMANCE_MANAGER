@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import re
 import subprocess
@@ -34,6 +35,8 @@ from readme_facts import fixture_problems as facts_fixture_problems
 from readme_facts import repository_problems as facts_problems
 from release_provenance import OPTIONAL as PROVENANCE_OPTIONAL
 from release_provenance import REQUIRED as PROVENANCE_REQUIRED
+from release_state import evaluate as release_state_results
+from release_state import source_version_problems
 from test_vba_compile_safety import fixture_problems
 from test_workflow_pins import fixture_problems as pin_fixture_problems
 from vba_compile_safety import ASSIGN_CHECK, LABEL_CHECK, analyse
@@ -103,6 +106,7 @@ class Report:
     failures: list[str] = field(default_factory=list)
     checks_run: int = 0
     results: list[dict[str, object]] = field(default_factory=list)
+    release_state: dict[str, object] = field(default_factory=dict)
 
     def check(self, name: str, problems: list[str]) -> None:
         self.checks_run += 1
@@ -375,7 +379,7 @@ def check_version_consistency(rep: Report) -> None:
         if m:
             versions["README.md"] = m.group(1)
 
-    problems = []
+    problems = source_version_problems(ROOT, versions)
     distinct = set(versions.values())
     if len(distinct) > 1:
         for name, v in sorted(versions.items()):
@@ -639,6 +643,7 @@ def write_json(rep: Report, path: Path) -> None:
         "failures": len(rep.failures),
         "passed": not rep.failures,
         "results": rep.results,
+        "release_state": rep.release_state,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -649,6 +654,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Static consistency checks for the VBA sources.")
     ap.add_argument("--json", metavar="PATH",
                     help="Also write a machine-readable result document to PATH.")
+    ap.add_argument("--wiki-root", type=Path,
+                    default=Path(os.environ.get("PERFORMANCE_MANAGER_WIKI", ROOT / ".cache/release-wiki")),
+                    help="Clean checkout of the wiki commit pinned in tools/release-state.json")
     args = ap.parse_args()
 
     if INVENTORY_ERROR:
@@ -700,6 +708,12 @@ def main() -> int:
     for name, found in rules.items():
         rep.check(name, found + fixtures[name])
     rep.check(FORMAT_CHECK, format_problems(ROOT, exports) + format_fixture_problems())
+    release_results, metadata = release_state_results(ROOT, args.wiki_root, len(GATE_CHECKS))
+    rep.release_state = metadata
+    print(f"note  source {metadata.get('source_commit')}; wiki {metadata.get('wiki_commit')} "
+          f"(expected {metadata.get('expected_wiki_commit')})")
+    for name, problems in release_results.items():
+        rep.check(name, problems)
     check_readme_facts(rep)
 
     print("-" * 60)

@@ -42,6 +42,12 @@ CHECKS: tuple[tuple[str, str], ...] = (
     ("public names are unique across standard modules",
      "no public name is defined in two standard modules"),
     ("VBA source layout is formatted", "VBA source layout matches `tools/vba_format.py`"),
+    ("release changelog sections agree with tags", "release changelog sections agree with tags"),
+    ("release comparison links form the tag chain", "release comparison links form the tag chain"),
+    ("README current-release claims agree with tags", "README current-release claims agree with tags"),
+    ("wiki input matches its pinned revision", "wiki input matches its pinned revision"),
+    ("wiki current-release badges agree with tags", "wiki current-release badges agree with tags"),
+    ("current-status blocks agree with release evidence", "current-status blocks agree with release evidence"),
     ("README facts match their sources", "README facts match their sources"),
 )
 

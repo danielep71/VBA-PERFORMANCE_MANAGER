@@ -99,8 +99,12 @@ class StaticGateTests(unittest.TestCase):
             self.assertNotEqual(proc.returncode, 0)
             report = json.loads(result.read_text(encoding="utf-8"))
             failed = {r["check"]: r["problems"] for r in report["results"] if not r["passed"]}
-            self.assertEqual(sorted(failed), ["no reserved words as identifiers",
-                                              "tracked VBA components are inventoried"])
+            from release_state import CHECKS as RELEASE_CHECKS
+
+            # This indexed fixture has no commits/tags: release checks must fail.
+            self.assertEqual(set(failed), {"no reserved words as identifiers",
+                                          "tracked VBA components are inventoried",
+                                          *RELEASE_CHECKS})
             self.assertTrue(any("M_cPM_NewDemo.bas" in p
                                 for p in failed["no reserved words as identifiers"]))
             self.assertTrue(any(p.startswith("demo/M_cPM_NewDemo.bas: tracked component missing")
