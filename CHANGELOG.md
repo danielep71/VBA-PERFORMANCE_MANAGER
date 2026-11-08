@@ -260,6 +260,11 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- **Regression error specificity (#76):** strict QPC/read/validation tests now
+  assert their documented error codes instead of accepting any nonzero error;
+  negative-sample helpers require the domain error. Runtime behavior is unchanged.
+
+
 - **Measurement test isolation (#75):** worker start/endpoint failure simulations
   are disarmed when a blank procedure or baseline name is rejected, so they
   cannot contaminate the next measurement. Original validation errors and
