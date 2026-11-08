@@ -31,9 +31,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          gh api --paginate "repos/${REPO}/pulls?state=open&per_page=100" \
-            --jq '.[] | select(.milestone != null) | .number' |
+          if [[ -n "${PR_NUMBER}" ]]; then
+            gh api "repos/${REPO}/pulls/${PR_NUMBER}" \
+              --jq 'select(.milestone != null) | .number'
+          else
+            gh api --paginate "repos/${REPO}/pulls?state=all&per_page=100" \
+              --jq '.[] | select(.milestone != null) | .number'
+          fi |
           while read -r number; do
             printf '{"milestone": null}' |
               gh api --method PATCH "repos/${REPO}/issues/${number}" --input - --silent
