@@ -88,6 +88,17 @@ class RunnerContractTests(unittest.TestCase):
         self.assertRegex(text, r"(?s)\} finally \{\s*if \(\$AllowVbomAccess\)")  # ... on every path
         self.assertIn("-OutDir must be outside the repository", text)
 
+    def test_cleanup_releases_every_com_reference_and_waits(self) -> None:
+        """A held reference keeps Excel alive after Quit, which forced cleanup once."""
+        text = runner()
+        cleanup = text[text.index("} finally {", text.index("function Invoke-Suite")):]
+        for name in ("$sheet", "$control", "$project", "$workbook", "$excel"):
+            self.assertIn(f"Release-Com {name}", cleanup)
+        self.assertLess(cleanup.index("Release-Com $project"), cleanup.index("$excel.Quit()"))
+        self.assertRegex(text, r"\$ExitWaitSeconds = \d+")
+        self.assertIn("while ((Get-Process -Id $excelPid", cleanup)
+        self.assertIn('Write-Host "  cleanup: $($run.cleanup)"', text)
+
     def test_runner_is_ascii_with_crlf(self) -> None:
         data = RUNNER.read_bytes()
         data.decode("ascii")
