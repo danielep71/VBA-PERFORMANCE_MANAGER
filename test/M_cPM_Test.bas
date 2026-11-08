@@ -342,7 +342,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate Pause method 3
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Pause method 3"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Pause method 3 (Timer guard and Application.Wait)"
         Test_Pause_Method3
 
     'Validate Pause method 4
@@ -3638,12 +3638,17 @@ Private Sub Test_Pause_Method3()
 '                           TEST PAUSE METHOD 3
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Validates Pause method 3 (Application.Wait) using QPC timing
+'   Validates both method-3 paths using independent QPC elapsed timing
 '
 ' WHY THIS EXISTS
-'   Application.Wait is coarse and should not be expected to behave like a
-'   fine-grained pause, but it should still produce a reasonable whole-second
-'   delay
+'   The 1-second request covers only the Timer guard (budget below 2 seconds).
+'   The 2.5-second request enters the coarse Application.Wait loop on a quiet
+'   host, then the Timer guard. Its upper bound detects an extra coarse second.
+'   Allow 0.05 seconds early for Timer quantization versus QPC and 0.25 seconds
+'   late for Timer/DoEvents scheduling on the controlled certification host.
+'   This tolerance is below one whole-second API tick; it is not a hard OS
+'   scheduling guarantee. Host suspension or heavy load invalidates this run.
+'   Adds one assertion and approximately 2.5 seconds; case count is unchanged.
 '
 ' INPUTS
 '   None
@@ -3652,7 +3657,7 @@ Private Sub Test_Pause_Method3()
 '   None
 '
 ' UPDATED
-'   2026-08-15
+'   2026-11-08
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3665,7 +3670,7 @@ Private Sub Test_Pause_Method3()
 ' INITIALIZE
 '------------------------------------------------------------------------------
     'Start the regression case
-        Case_Begin "Pause method 3 (Application.Wait)"
+        Case_Begin "Pause method 3 (Timer guard and Application.Wait)"
     'Enable case-level unexpected-error handling
         On Error GoTo CleanFail
     'Create a fresh class instance
@@ -3676,13 +3681,23 @@ Private Sub Test_Pause_Method3()
 '------------------------------------------------------------------------------
     'Start QPC timing
         cPM.StartTimer 5, True
-    'Pause for 1 second using method 3
+    'Sub-two-second request: the coarse wait is skipped; only the Timer guard runs
         cPM.Pause 1, 3
     'Measure elapsed time using QPC
         ElapsedS = cPM.ElapsedSeconds(5)
     'Assert that the measured pause lies within a broad practical range
         Test_Assert_InRangeDouble 0.8, 1.5, ElapsedS, _
-                                  "Pause method 3 elapsed range"
+                                  "Pause method 3 short request: Timer guard elapsed range"
+
+    'Restart independent QPC timing for a request with enough coarse-wait budget
+        cPM.StartTimer cPM_MethodQPC, True
+    'At entry 2.5 seconds remain, exceeding the 2-second Application.Wait guard
+        cPM.Pause 2.5, cPM_PauseAppWait
+    'Measure the complete coarse wait plus trailing Timer guard
+        ElapsedS = cPM.ElapsedSeconds(cPM_MethodQPC)
+    'Bound early completion and overshoot without allowing an extra coarse second
+        Test_Assert_InRangeDouble 2.45, 2.75, ElapsedS, _
+                                  "Pause method 3 coarse request: Application.Wait plus Timer guard"
 
 CleanExit:
 '------------------------------------------------------------------------------

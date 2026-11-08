@@ -168,6 +168,38 @@ The 32-bit source branches remain supported but execution-unverified. #29 is
 contributor-dependent, not an unconditional release gate while no host is
 available. This history does not certify any later candidate or additional host.
 
+<a id="legacy-host-evidence"></a>
+
+### Retained legacy-host evidence
+
+v1.4.1 retains pre-VBA7 legacy 32-bit, VBA7 Win32 and VBA7 Win64 source
+compatibility. No numeric oldest Office version is execution-certified and no
+new Office 2010/VBA7 floor is imposed. Pre-VBA7 is best-effort and unverified;
+retain its declarations and conditional paths. A static profile pass does not
+certify a host, and a VBA7 Win32 run does not certify pre-VBA7.
+
+A qualified contributor can provide evidence without requiring the maintainer
+to obtain an older host. Use an isolated Windows desktop Excel environment
+where macro/import policy permits the test; do not weaken ordinary workstation
+policy. For each candidate and runtime family:
+
+1. Record full source SHA, Excel product/version/build, VBA runtime family,
+   Windows version and Office process bitness.
+2. Freshly import the candidate's runtime and regression dependencies into a
+   clean workbook and record a successful VBA compile.
+3. Run the full suite, including backend-2 native binding, unsigned conversion,
+   rollover and applicable timing/lifecycle paths. Record cases, assertions,
+   failures and completion/cleanup state. Retain the established JSON evidence
+   schema; add runtime-family details in the accompanying evidence record.
+4. Keep results separate for pre-VBA7, VBA7 Win32 and VBA7 Win64. Update claims
+   only for the exact tested build and SHA. Report failures as an open support
+   gap; never infer success from a different family or static checks.
+
+#29 remains contributor-dependent v1.5.0 work, not an unconditional v1.4.1
+gate. If no qualified legacy-host evidence exists, publish the limitation and
+keep the retained branches. Any proposal to remove a family needs a separate
+compatibility/versioning decision and appropriate release scope.
+
 ## 7. Build release artifacts
 
 Planned outputs:
