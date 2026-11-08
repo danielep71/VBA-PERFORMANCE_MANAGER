@@ -86,6 +86,7 @@ def integration_problems() -> list[str]:
     import tempfile
     from pathlib import Path
 
+    from release_state import CHECKS as RELEASE_CHECKS
     from vba_compile_safety import ASSIGN_CHECK, LABEL_CHECK
 
     failures = []
@@ -120,7 +121,9 @@ def integration_problems() -> list[str]:
                 continue
             result = json.loads(output.read_text(encoding="utf-8"))
             failed = [r["check"] for r in result["results"] if not r["passed"]]
-            if run.returncode != int(expected is not None) or failed != ([expected] if expected else []):
+            # Missing history deliberately fails all release-state rules.
+            expected_failed = ([expected] if expected else []) + list(RELEASE_CHECKS)
+            if run.returncode != 1 or failed != expected_failed:
                 failures.append(f"CLI {name}: exit={run.returncode}, failed={failed}")
             names = [r["check"] for r in result["results"]]
             if any(names.count(check) != 1 for check in (LABEL_CHECK, ASSIGN_CHECK)):
