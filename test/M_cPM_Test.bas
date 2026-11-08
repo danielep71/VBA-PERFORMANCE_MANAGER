@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 81    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 85    'Total number of executed regression cases
 
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -665,6 +665,26 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation sticky exemption"
         Test_TW_Calculation_StickyExemption
+
+    'Validate update rollback after a partially applied Application-state failure
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW update rollback preserves original error"
+        Test_TW_UpdateFailure_RollbackPreservesOriginalError
+
+    'Validate recoverable bookkeeping after a final-restore failure
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW end restore failure is recoverable"
+        Test_TW_EndRestoreFailure_IsRecoverable
+
+    'Validate emergency recovery after a failed normal teardown
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW EndAllSessions emergency recovery"
+        Test_TW_EndAllSessions_EmergencyRecovery
+
+    'Validate the deterministic zero-workbook/open/close lifecycle matrix
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW zero-workbook lifecycle matrix"
+        Test_TW_Calculation_ZeroWorkbookLifecycleMatrix
 
 Clean_Exit:
 '------------------------------------------------------------------------------
@@ -9099,6 +9119,381 @@ CleanFail:
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_TW_Calculation_StickyExemption"
     'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+
+Private Sub Test_TW_UpdateFailure_RollbackPreservesOriginalError()
+'
+'==============================================================================
+'              TEST TW UPDATE FAILURE ROLLBACK PRESERVES ORIGINAL ERROR
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Proves that an update apply failure rolls registration and Application state
+'   back while re-raising the exact original failure
+'
+' WHY THIS EXISTS
+'   PM_TW_BeginSession promises best-effort rollback without masking the error
+'   that triggered it. The deterministic seam fails after ScreenUpdating has
+'   already changed, so this case verifies both bookkeeping and state repair.
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-08
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Const ForcedNumber As Long = vbObjectError + 2991
+    Const ForcedSource As String = "M_cPM_TimeWasters.Test.Update"
+    Const ForcedDescription As String = "Forced update apply failure"
+
+    Dim InstanceKey        As String
+    Dim ScreenOriginal     As Boolean
+    Dim ExceptAllButScreen As Long
+    Dim ExceptAll          As Long
+    Dim SeenNumber         As Long
+    Dim SeenSource         As String
+    Dim SeenDescription    As String
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+        Case_Begin "TW update rollback preserves original error"
+        On Error GoTo CleanFail
+
+        ScreenOriginal = Application.ScreenUpdating
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = True
+
+        ExceptAllButScreen = TW_Enum.EnableEvents Or TW_Enum.DisplayAlerts Or _
+                             TW_Enum.Calculation Or TW_Enum.Cursor
+        ExceptAll = ExceptAllButScreen Or TW_Enum.ScreenUpdating
+        InstanceKey = PM_TW_NewInstanceKey()
+
+'------------------------------------------------------------------------------
+' ESTABLISH THE PREVIOUS EFFECTIVE STATE
+'------------------------------------------------------------------------------
+        PM_TW_BeginSession InstanceKey, ExceptAllButScreen, False
+        Test_Assert_EqualBoolean False, Application.ScreenUpdating, _
+                                 "Initial session suppresses ScreenUpdating"
+        Test_Assert_EqualLong 1, PM_TW_ActiveCount(), _
+                              "Initial registration is active"
+
+'------------------------------------------------------------------------------
+' FORCE AN UPDATE FAILURE AFTER SCREENUPDATING HAS CHANGED
+'------------------------------------------------------------------------------
+        PM_TW_Test_FailNextApply ForcedNumber, ForcedSource, ForcedDescription
+
+        On Error Resume Next
+        PM_TW_BeginSession InstanceKey, ExceptAll, False
+        SeenNumber = Err.Number
+        SeenSource = Err.Source
+        SeenDescription = Err.Description
+        Err.Clear
+        On Error GoTo CleanFail
+
+'------------------------------------------------------------------------------
+' ASSERT ORIGINAL ERROR AND ROLLBACK
+'------------------------------------------------------------------------------
+        Test_Assert_EqualLong ForcedNumber, SeenNumber, _
+                              "Update re-raises the original apply error number"
+        Test_Assert_EqualString ForcedSource, SeenSource, _
+                                "Update preserves the original apply error source"
+        Test_Assert_EqualString ForcedDescription, SeenDescription, _
+                                "Update preserves the original apply error description"
+        Test_Assert_EqualLong 1, PM_TW_ActiveCount(), _
+                              "Failed update keeps the previous registration"
+        Test_Assert_EqualBoolean True, PM_TW_IsInstanceActive(InstanceKey), _
+                                 "Failed update leaves the instance registered"
+        Test_Assert_EqualBoolean False, Application.ScreenUpdating, _
+                                 "Rollback reapplies the previous ScreenUpdating state"
+
+'------------------------------------------------------------------------------
+' PROVE NORMAL TEARDOWN STILL WORKS
+'------------------------------------------------------------------------------
+        PM_TW_EndSession InstanceKey
+        Test_Assert_EqualLong 0, PM_TW_ActiveCount(), _
+                              "Successful teardown clears the registration"
+        Test_Assert_EqualBoolean True, Application.ScreenUpdating, _
+                                 "Successful teardown restores the captured baseline"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+        On Error Resume Next
+        PM_TW_Test_FailNextApply 0
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = ScreenOriginal
+        On Error GoTo 0
+
+        Case_Finalize
+        Exit Sub
+
+CleanFail:
+        RecordUnexpectedError "Test_TW_UpdateFailure_RollbackPreservesOriginalError"
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_TW_EndRestoreFailure_IsRecoverable()
+'
+'==============================================================================
+'                    TEST TW END RESTORE FAILURE IS RECOVERABLE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Proves that a failed final baseline restore reinstates session bookkeeping
+'   and that a later ordinary end can complete cleanly
+'
+' WHY THIS EXISTS
+'   PM_TW_EndSession removes the registration before the final restore. A restore
+'   error must put that registration back and reapply the prior effective state;
+'   otherwise the caller has no recoverable ownership record.
+'
+' UPDATED
+'   2026-11-08
+'==============================================================================
+
+    Const ForcedNumber As Long = vbObjectError + 2992
+    Const ForcedSource As String = "M_cPM_TimeWasters.Test.End"
+    Const ForcedDescription As String = "Forced final restore failure"
+
+    Dim InstanceKey        As String
+    Dim ScreenOriginal     As Boolean
+    Dim ExceptAllButScreen As Long
+    Dim SeenNumber         As Long
+    Dim SeenSource         As String
+    Dim SeenDescription    As String
+
+        Case_Begin "TW end restore failure leaves recoverable bookkeeping"
+        On Error GoTo CleanFail
+
+        ScreenOriginal = Application.ScreenUpdating
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = True
+
+        ExceptAllButScreen = TW_Enum.EnableEvents Or TW_Enum.DisplayAlerts Or _
+                             TW_Enum.Calculation Or TW_Enum.Cursor
+        InstanceKey = PM_TW_NewInstanceKey()
+        PM_TW_BeginSession InstanceKey, ExceptAllButScreen, False
+
+        PM_TW_Test_FailNextApply ForcedNumber, ForcedSource, ForcedDescription
+
+        On Error Resume Next
+        PM_TW_EndSession InstanceKey
+        SeenNumber = Err.Number
+        SeenSource = Err.Source
+        SeenDescription = Err.Description
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong ForcedNumber, SeenNumber, _
+                              "End re-raises the original restore error number"
+        Test_Assert_EqualString ForcedSource, SeenSource, _
+                                "End preserves the original restore error source"
+        Test_Assert_EqualString ForcedDescription, SeenDescription, _
+                                "End preserves the original restore error description"
+        Test_Assert_EqualLong 1, PM_TW_ActiveCount(), _
+                              "Failed final restore reinstates the session"
+        Test_Assert_EqualBoolean True, PM_TW_IsInstanceActive(InstanceKey), _
+                                 "Failed final restore keeps ownership recoverable"
+        Test_Assert_EqualBoolean False, Application.ScreenUpdating, _
+                                 "Failed final restore reapplies the active state"
+
+        PM_TW_EndSession InstanceKey
+
+        Test_Assert_EqualLong 0, PM_TW_ActiveCount(), _
+                              "Retrying EndSession clears the recovered registration"
+        Test_Assert_EqualBoolean True, Application.ScreenUpdating, _
+                                 "Retrying EndSession restores the baseline"
+
+CleanExit:
+        On Error Resume Next
+        PM_TW_Test_FailNextApply 0
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = ScreenOriginal
+        On Error GoTo 0
+
+        Case_Finalize
+        Exit Sub
+
+CleanFail:
+        RecordUnexpectedError "Test_TW_EndRestoreFailure_IsRecoverable"
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_TW_EndAllSessions_EmergencyRecovery()
+'
+'==============================================================================
+'                    TEST TW ENDALLSESSIONS EMERGENCY RECOVERY
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Proves that PM_TW_EndAllSessions can recover the shared manager after a
+'   normal final teardown fails and rolls its registration back
+'
+' UPDATED
+'   2026-11-08
+'==============================================================================
+
+    Const ForcedNumber As Long = vbObjectError + 2993
+
+    Dim InstanceKey        As String
+    Dim ScreenOriginal     As Boolean
+    Dim ExceptAllButScreen As Long
+    Dim SeenNumber         As Long
+
+        Case_Begin "TW EndAllSessions emergency recovery"
+        On Error GoTo CleanFail
+
+        ScreenOriginal = Application.ScreenUpdating
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = True
+
+        ExceptAllButScreen = TW_Enum.EnableEvents Or TW_Enum.DisplayAlerts Or _
+                             TW_Enum.Calculation Or TW_Enum.Cursor
+        InstanceKey = PM_TW_NewInstanceKey()
+        PM_TW_BeginSession InstanceKey, ExceptAllButScreen, False
+
+        PM_TW_Test_FailNextApply ForcedNumber, _
+                                 "M_cPM_TimeWasters.Test.Recovery", _
+                                 "Forced teardown failure before emergency recovery"
+
+        On Error Resume Next
+        PM_TW_EndSession InstanceKey
+        SeenNumber = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong ForcedNumber, SeenNumber, _
+                              "The setup failure occurred before emergency recovery"
+        Test_Assert_EqualLong 1, PM_TW_ActiveCount(), _
+                              "Failed normal teardown leaves a recoverable session"
+
+        PM_TW_EndAllSessions
+
+        Test_Assert_EqualLong 0, PM_TW_ActiveCount(), _
+                              "EndAllSessions clears all shared registrations"
+        Test_Assert_EqualBoolean False, PM_TW_IsInstanceActive(InstanceKey), _
+                                 "EndAllSessions removes the failed session owner"
+        Test_Assert_EqualBoolean True, Application.ScreenUpdating, _
+                                 "EndAllSessions restores the captured baseline"
+        Test_Assert_EqualBoolean False, PM_TW_CalculationExempted(), _
+                                 "EndAllSessions clears Calculation exemption bookkeeping"
+
+CleanExit:
+        On Error Resume Next
+        PM_TW_Test_FailNextApply 0
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = ScreenOriginal
+        On Error GoTo 0
+
+        Case_Finalize
+        Exit Sub
+
+CleanFail:
+        RecordUnexpectedError "Test_TW_EndAllSessions_EmergencyRecovery"
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_TW_Calculation_ZeroWorkbookLifecycleMatrix()
+'
+'==============================================================================
+'                TEST TW CALCULATION ZERO-WORKBOOK LIFECYCLE MATRIX
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Repeats the deterministic zero-workbook begin -> workbook appears ->
+'   workbook disappears before final teardown lifecycle twice
+'
+' WHY THIS EXISTS
+'   The suite itself must remain hosted in a workbook, so it cannot literally
+'   close every workbook and continue executing. PM_TW_Test_SimulateNoWorkbook
+'   drives the manager's workbook-availability decision without claiming a real
+'   zero-workbook Excel execution. Repeating the full sequence proves that the
+'   seam and shared bookkeeping reset cleanly between scopes.
+'
+' UPDATED
+'   2026-11-08
+'==============================================================================
+
+    Dim InstanceKey        As String
+    Dim CalcOriginal       As XlCalculation
+    Dim ExceptNonCalc      As Long
+    Dim Iteration          As Long
+
+        Case_Begin "TW Calculation zero-workbook lifecycle matrix"
+        On Error GoTo CleanFail
+
+        PM_TW_EndAllSessions
+        CalcOriginal = Application.Calculation
+        ExceptNonCalc = TW_Enum.ScreenUpdating Or TW_Enum.EnableEvents Or _
+                        TW_Enum.DisplayAlerts Or TW_Enum.Cursor
+
+        For Iteration = 1 To 2
+            Application.Calculation = xlSemiautomatic
+
+        '----------------------------------------------------------------------
+        ' ZERO-WORKBOOK BEGIN
+        '----------------------------------------------------------------------
+            PM_TW_Test_SimulateNoWorkbook True
+            InstanceKey = PM_TW_NewInstanceKey()
+            PM_TW_BeginSession InstanceKey, ExceptNonCalc, False
+
+            Test_Assert_EqualLong 1, PM_TW_ActiveCount(), _
+                                  "Zero-workbook begin registers one scope, pass " & CStr(Iteration)
+            Test_Assert_EqualBoolean True, PM_TW_CalculationExempted(), _
+                                     "Zero-workbook begin records Calculation exemption, pass " & CStr(Iteration)
+            Test_Assert_EqualLong CLng(xlSemiautomatic), CLng(Application.Calculation), _
+                                  "Zero-workbook begin does not write Calculation, pass " & CStr(Iteration)
+
+        '----------------------------------------------------------------------
+        ' A WORKBOOK APPEARS DURING THE SCOPE
+        '----------------------------------------------------------------------
+            PM_TW_Test_SimulateNoWorkbook False
+            PM_TW_BeginSession InstanceKey, ExceptNonCalc, False
+
+            Test_Assert_EqualBoolean True, PM_TW_CalculationExempted(), _
+                                     "Opening a workbook does not clear the sticky exemption, pass " & CStr(Iteration)
+            Test_Assert_EqualLong CLng(xlSemiautomatic), CLng(Application.Calculation), _
+                                  "Opening a workbook does not lazily capture or suppress Calculation, pass " & CStr(Iteration)
+
+        '----------------------------------------------------------------------
+        ' ALL WORKBOOKS DISAPPEAR BEFORE FINAL RESTORE
+        '----------------------------------------------------------------------
+            PM_TW_Test_SimulateNoWorkbook True
+            PM_TW_EndSession InstanceKey
+
+            Test_Assert_EqualLong 0, PM_TW_ActiveCount(), _
+                                  "Final teardown clears the scope, pass " & CStr(Iteration)
+            Test_Assert_EqualLong CLng(xlSemiautomatic), CLng(Application.Calculation), _
+                                  "Workbook-less final teardown does not restore a synthetic baseline, pass " & CStr(Iteration)
+            Test_Assert_EqualBoolean False, PM_TW_CalculationExempted(), _
+                                     "Final teardown resets exemption bookkeeping, pass " & CStr(Iteration)
+
+            PM_TW_Test_SimulateNoWorkbook False
+        Next Iteration
+
+CleanExit:
+        On Error Resume Next
+        PM_TW_Test_SimulateNoWorkbook False
+        PM_TW_EndAllSessions
+        Application.Calculation = CalcOriginal
+        On Error GoTo 0
+
+        Case_Finalize
+        Exit Sub
+
+CleanFail:
+        RecordUnexpectedError "Test_TW_Calculation_ZeroWorkbookLifecycleMatrix"
         Resume CleanExit
 
 End Sub
