@@ -87,6 +87,44 @@ class TriageRuleTests(unittest.TestCase):
                          ["#1: dependency line 'wait for the release' names no #issue, None or "
                           "External condition"])
 
+    def test_line_endings_do_not_change_audit_results(self) -> None:
+        form = ("### Dependencies\n\n#2\n\n"
+                "### Target date\n\n2026-11-20\n")
+        bodies = [
+            PLANNING, form,
+            PLANNING.replace("2026-11-03", "2026-11-28"),
+            PLANNING.replace("2026-11-27", "2026-12-01"),
+            PLANNING.replace("2026-11-27", "2026-02-30"),
+            PLANNING.replace("2026-11-27", "27/11/2026"),
+            form.replace("2026-11-20", "_No response_"),
+            form.replace("#2", "#99"),
+            form.replace("#2", "External condition: an Excel run"),
+            PLANNING + "\n### Target date\n\n2027-05-01\n",
+        ]
+        for body in bodies:
+            expected = findings(issue(body=body), issue(2))
+            for ending in ("\r\n", "\r"):
+                with self.subTest(body=body, ending=repr(ending)):
+                    changed = issue(body=body.replace("\n", ending))
+                    self.assertEqual(findings(changed, issue(2)), expected)
+                    self.assertEqual(changed["body"], body.replace("\n", ending))
+
+    def test_crlf_form_target_and_reversed_start_are_checked(self) -> None:
+        body = ("### Dependencies\r\n\r\nNone\r\n"
+                "### Target date\r\n\r\n2026-11-20\r\n"
+                "## Schedule\r\n- Start date: 2026-11-21\r\n")
+        self.assertEqual(findings(issue(body=body)),
+                         ["#1: start date 2026-11-21 is after the target date 2026-11-20"])
+
+    def test_direct_parsers_accept_mixed_line_endings(self) -> None:
+        body = ("### Dependencies\r\n\r\n- #2\n"
+                "- External condition: Excel\r"
+                "### Target date\r\n\r\n2026-11-20\n")
+        self.assertEqual(it.target_date(body), ("2026-11-20", None))
+        self.assertEqual(it.dependency_lines(body),
+                         ["#2", "External condition: Excel"])
+        self.assertEqual(it.dependency_problems(body, {2}), [])
+
     def test_pull_requests_and_closed_issues_are_not_audited(self) -> None:
         self.assertEqual(findings(issue(1, body="", pull_request={"url": "x"}),
                                   issue(2, body="", state="closed")), [])
