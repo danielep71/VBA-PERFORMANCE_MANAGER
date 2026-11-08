@@ -252,6 +252,9 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- Issue triage normalizes Windows and mixed line endings before parsing dates
+  and dependencies, preserving start/target ordering checks (#110).
+
 - VBA formatting preserves continued comments without activating their contents;
   source checks recognize inline `Rem` comments after `Then` and `Else` (#111).
 

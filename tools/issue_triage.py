@@ -43,8 +43,14 @@ NO_RESPONSE = "_no response_"   # what an issue form renders for an empty field
 Get = Callable[[str], Any]
 
 
+def normalize_line_endings(body: str) -> str:
+    """Use LF for parsing browser-edited bodies without changing their content."""
+    return body.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def target_date(body: str) -> tuple[str | None, str | None]:
     """Return (date text, problem). The planning line wins over the form field."""
+    body = normalize_line_endings(body)
     for pattern in (PLANNED_DATE, FORM_DATE):
         match = pattern.search(body)
         if match and match.group(1).strip().lower() not in ("", NO_RESPONSE):
@@ -61,6 +67,7 @@ def target_date(body: str) -> tuple[str | None, str | None]:
 
 def dependency_lines(body: str) -> list[str] | None:
     """The non-empty lines of the Dependencies section, or None when it is absent."""
+    body = normalize_line_endings(body)
     headings = list(HEADING.finditer(body))
     for index, heading in enumerate(headings):
         if heading.group(2).strip().lower() == "dependencies":
@@ -74,7 +81,7 @@ def dependency_lines(body: str) -> list[str] | None:
 def issue_problems(issue: dict[str, Any], known: set[int]) -> list[str]:
     """Every rule the issue breaks; known holds every issue and PR number."""
     problems: list[str] = []
-    body = issue.get("body") or ""
+    body = normalize_line_endings(issue.get("body") or "")
     if ASSIGNEE not in [a["login"] for a in issue.get("assignees") or []]:
         problems.append(f"not assigned to {ASSIGNEE}")
     priorities = [label["name"] for label in issue.get("labels") or []
