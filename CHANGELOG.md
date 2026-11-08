@@ -252,6 +252,9 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- Pull-request milestone cleanup handles event PRs in any state and paginates
+  all open, closed and merged PRs during scheduled/manual sweeps (#109).
+
 - Issue triage normalizes Windows and mixed line endings before parsing dates
   and dependencies, preserving start/target ordering checks (#110).
 
