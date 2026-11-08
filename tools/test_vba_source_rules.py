@@ -62,6 +62,26 @@ class SourceRuleTests(unittest.TestCase):
                                    "    text = \"Rem 'not a comment\"\r\nEnd Sub\r\n")
         self.assertEqual(self.check(body), [])
 
+    def test_inline_rem_comments_allow_quotes_and_continuation(self) -> None:
+        for statement in ('If True Then Rem a "quote',
+                          'If False Then Beep Else rEm a "quote',
+                          'Beep: Rem a "quote'):
+            with self.subTest(statement=statement):
+                body = GOOD_MODULE
+                body = body.replace("End Sub\r\n",
+                                    statement + ' _\r\n'
+                                    '    another "quote\r\nEnd Sub\r\n')
+                self.assertEqual(self.check(body), [])
+
+    def test_rem_inside_literals_or_identifiers_does_not_hide_open_strings(self) -> None:
+        for statement in ('text = "Then Rem still open',
+                          'ThenRem = "open', 'ElseRem = "open',
+                          'Remember = "open'):
+            with self.subTest(statement=statement):
+                source = GOOD_MODULE.replace("text = Greeting", statement)
+                self.assertEqual(self.check(source),
+                                 ["M_Good.bas:14: string literal is not closed"])
+
     def test_the_class_header_is_not_source(self) -> None:
         source = CLASS_HEADER + GOOD_MODULE.split("\r\n", 1)[1].replace("    Option Private Module\r\n", "")
         self.assertEqual(run(source, "cGood.cls"), {name: [] for name in run(GOOD_MODULE)})

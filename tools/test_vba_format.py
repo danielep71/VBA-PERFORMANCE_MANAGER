@@ -55,6 +55,34 @@ class RuleTests(unittest.TestCase):
         header = "VERSION 1.0 CLASS\r\nBEGIN\r\n  MultiUse = -1  'True\r\nEND\r\n"
         self.assertTrue(vf.format_text(header + HEAD).startswith(header))
 
+    def test_continued_comments_keep_code_inactive_and_are_idempotent(self) -> None:
+        for comment in ("' example", "Rem example", "If True Then Rem example",
+                        "If False Then Beep Else Rem example", "Beep ' example"):
+            with self.subTest(comment=comment):
+                body = ("Public Sub A()\r\n"
+                        f"    {comment} _\r\n"
+                        "    End Sub _\r\n"
+                        '    MsgBox "not executed"\r\n'
+                        "End Sub\r\n")
+                self.assertEqual(formatted(body), body)
+                self.assertEqual(formatted(formatted(body)), body)
+
+    def test_comment_after_real_end_does_not_gain_a_blank_inside_it(self) -> None:
+        body = ("Public Sub A()\r\nEnd Sub ' continued _\r\n"
+                "    End Sub _\r\n"
+                '    MsgBox "not executed"\r\n'
+                "Public Sub B()\r\nEnd Sub\r\n")
+        expected = body.replace("Public Sub B()", "\r\nPublic Sub B()")
+        self.assertEqual(formatted(body), expected)
+        self.assertEqual(formatted(expected), expected)
+
+    def test_blank_ends_comment_continuation(self) -> None:
+        body = ("' example _\r\n\r\n"
+                "  Public Sub A()\r\n  End Sub\r\n")
+        expected = "' example _\r\n\r\nPublic Sub A()\r\nEnd Sub\r\n"
+        self.assertEqual(formatted(body), expected)
+        self.assertEqual(formatted(expected), expected)
+
     def test_in_gate_fixtures_pass_and_the_check_is_registered(self) -> None:
         self.assertEqual(vf.fixture_problems(), [])
         self.assertIn(vf.CHECK, gate_checks.NAMES)

@@ -94,8 +94,8 @@ def code_part(line: str) -> tuple[str, bool]:
         elif not in_literal and char == "'":
             break
         elif not in_literal and re.match(r"Rem(?:\s|$)", line[index:], re.I) \
-                and re.search(r"(?:^|:)\s*$", "".join(out)):
-            break       # Rem starts a comment only at the start of a statement
+                and re.search(r"(?:^|:)\s*$|(?:\bThen|\bElse)\s+$", "".join(out), re.I):
+            break       # Statement start, including an inline If branch
         out.append(char)
     return "".join(out), in_literal
 

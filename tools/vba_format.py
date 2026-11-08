@@ -47,11 +47,19 @@ def _outer(code: str) -> bool:
 def format_body(physical: Sequence[str]) -> list[str]:
     out: list[str] = []
     continued = False
+    comment_continues = False
     after_end: int | None = None      # blank lines seen since a procedure's End
     for raw in physical:
         body = raw.rstrip(" \t").lstrip(" \t")
         indent = raw[:len(raw) - len(raw.lstrip(" \t"))].replace("\t", INDENT)
         line = indent + body if body else ""
+        if comment_continues:
+            # Never insert spacing inside a continued comment: a blank line
+            # would end it and could activate the following physical line.
+            out.append(line)
+            comment_continues = line.endswith(" _")
+            continued = False
+            continue
         if not line:
             if after_end is None:
                 out.append("")
@@ -61,7 +69,9 @@ def format_body(physical: Sequence[str]) -> list[str]:
         if after_end is not None:
             out.extend([""] * min(max(after_end, 1), MAX_BLANK_AFTER_END))
             after_end = None
-        code = code_part(line)[0].strip()
+        code_text = code_part(line)[0]
+        comment_continues = code_text != line and line.endswith(" _")
+        code = code_text.strip()
         if not continued and _outer(code):
             line = line.lstrip()
             if PROC_END.match(code):
