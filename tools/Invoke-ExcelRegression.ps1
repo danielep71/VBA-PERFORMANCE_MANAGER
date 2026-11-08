@@ -71,6 +71,7 @@ $EntryPoint = 'Run_cPerformanceManager_RegressionSuite'
 $LogSheet = 'REGRESSION_cPM'
 $FirstSummaryRow = 6            # the suite writes one row per case from row 6
 $CompileControlId = 578         # Debug > Compile VBAProject
+$ExitWaitSeconds = 15           # how long Excel may take to exit after Quit
 $VbomKey = 'HKCU:\Software\Microsoft\Office\16.0\Excel\Security'
 
 if (-not $Repo) { $Repo = Split-Path -Parent $PSScriptRoot }
@@ -139,7 +140,7 @@ function Invoke-Suite([string] $Label, [string] $ReplacedComponent, [string] $Re
         excel = $null; cases = 0; assertions = 0; failures = 0
         failed_cases = @(); cleanup = $null; error = $null
     }
-    $excel = $null; $workbook = $null; $excelPid = $null
+    $excel = $null; $workbook = $null; $project = $null; $control = $null; $sheet = $null; $excelPid = $null
     try {
         $excel = New-Object -ComObject Excel.Application
         $excel.Visible = $true
@@ -178,7 +179,6 @@ function Invoke-Suite([string] $Label, [string] $ReplacedComponent, [string] $Re
         # The command stays enabled while the project does not compile.
         if ($control.Enabled) { throw 'The VBA project did not compile.' }
         $result.compiled = $true
-        Release-Com $control
 
         $result.state = 'running'
         [void]$excel.Run("'$($workbook.Name)'!$EntryPoint")
@@ -202,20 +202,31 @@ function Invoke-Suite([string] $Label, [string] $ReplacedComponent, [string] $Re
             }
             $row += 1
         }
-        Release-Com $sheet
         $result.state = 'completed'
     } catch {
         $result.error = $_.Exception.Message
     } finally {
+        # Every COM reference this script holds keeps Excel alive after Quit, so
+        # release them all, innermost first, and let the collector free the
+        # intermediate objects (such as the cells read above) as well.
+        Release-Com $sheet; Release-Com $control; Release-Com $project
+        $sheet = $null; $control = $null; $project = $null
         if ($null -ne $workbook) { try { $workbook.Close($false) } catch { } }
         if ($null -ne $excel) { try { $excel.Quit() } catch { } }
         Release-Com $workbook; Release-Com $excel
-        [GC]::Collect(); [GC]::WaitForPendingFinalizers()
+        $workbook = $null; $excel = $null
+        for ($pass = 0; $pass -lt 2; $pass++) { [GC]::Collect(); [GC]::WaitForPendingFinalizers() }
         $result.cleanup = 'completed'
         if ($excelPid) {
-            Start-Sleep -Seconds 3
-            $left = Get-Process -Id $excelPid -ErrorAction SilentlyContinue
-            if ($left) { Stop-Process -Id $excelPid -Force; $result.cleanup = 'forced: Excel stopped after Quit' }
+            # Excel exits on its own once released; give it time before forcing.
+            $deadline = (Get-Date).AddSeconds($ExitWaitSeconds)
+            while ((Get-Process -Id $excelPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+                Start-Sleep -Milliseconds 500
+            }
+            if (Get-Process -Id $excelPid -ErrorAction SilentlyContinue) {
+                Stop-Process -Id $excelPid -Force
+                $result.cleanup = "forced: Excel still running $ExitWaitSeconds s after Quit"
+            }
         }
         $result.finished = (Get-Date).ToUniversalTime().ToString('o')
     }
@@ -313,6 +324,7 @@ foreach ($run in $runs) {
     Write-Host "[$($run.run)] state: $($run.state)"
     if ($run.excel) { Write-Host "  Excel $($run.excel.version) build $($run.excel.build) ($($run.excel.version_to_report)), $($run.excel.bitness)" }
     Write-Host "  cases $($run.cases) of $expectedCases, assertions $($run.assertions), failures $($run.failures)"
+    Write-Host "  cleanup: $($run.cleanup)"
     foreach ($failed in $run.failed_cases) { Write-Host "  FAIL case $($failed.case): $($failed.name)" }
     if ($run.error) { Write-Host "  error: $($run.error)" }
 }
