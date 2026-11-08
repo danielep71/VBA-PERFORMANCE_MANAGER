@@ -88,18 +88,14 @@ Attribute VB_Exposed = False
 '     overlapping instances can coexist without corrupting Application state.
 '
 ' ELAPSED-TIME VALIDATION POLICY
-'   Elapsed_Validate runs after any rollover correction. A naturally negative
-'   value can therefore reach it only where no positive rollover correction
-'   masks the sign: method 2 on Win64 (GetTickCount64) and method 6 (Now).
+'   A computed elapsed time can only be negative when the underlying timing
+'   source moved backwards, which makes the measurement invalid rather than
+'   merely imprecise.
 '
-'   For method 1, a negative Timer delta is treated as one midnight rollover.
-'   For method 2 on Win32/pre-VBA7 and methods 3 and 4, a negative delta is
-'   treated as one 32-bit millisecond-counter wrap. Those paths cannot
-'   distinguish a genuine wrap from a backwards step by sign alone.
-'
-'   When Elapsed_Validate does receive a negative value:
-'     - strict mode     => raises ERR_CPM_NEGATIVE_ELAPSED through the caller
-'     - non-strict mode => clamps the result to zero and reports invalid status
+'   Methods 1, 2, 3, 4 and 6 therefore route their result through
+'   Elapsed_Validate after rollover correction:
+'     - strict mode     => raises ERR_CPM_NEGATIVE_ELAPSED
+'     - non-strict mode => clamps the result to zero
 '
 '   Method 5 (QPC) deliberately skips this check. QPC is monotonic, and method 5
 '   is the default hot path where the extra call is not justified.
@@ -3220,18 +3216,13 @@ Friend Function Elapsed_Validate( _
 '   reports whether it is a real measurement
 '
 ' WHY THIS EXISTS
-'   After rollover correction, any negative value that still reaches this helper
-'   is invalid and must not be published as a real duration.
+'   Once rollover correction has been applied, a negative elapsed time can only
+'   mean the underlying timing source moved backwards. That makes the whole
+'   measurement invalid rather than merely imprecise.
 '
-'   Natural reachability is deliberately narrower than the set of callers:
-'   - Win64 method 2 uses GetTickCount64, so RolloverSeconds returns 0 and a
-'     negative delta survives correction;
-'   - method 6 uses Now() and applies no rollover correction, so a backwards
-'     wall-clock step can also remain negative.
-'
-'   Method 1 and the 32-bit millisecond-counter paths correct a negative raw
-'   delta as rollover before this helper runs. They therefore cannot distinguish
-'   backwards movement from rollover by sign alone.
+'   This matters specifically on Win64 method 2, where RolloverSeconds returns 0
+'   because GetTickCount64 is used. Without this check a negative value would be
+'   returned to the caller unchanged and silently treated as a real duration.
 '
 ' INPUTS
 '   Seconds
@@ -3262,10 +3253,6 @@ Friend Function Elapsed_Validate( _
 '   Method 5 (QPC) deliberately does not call this helper. QPC is monotonic and
 '   method 5 is the default hot path, so the extra call is not justified there.
 '
-'   The regression seam can inject a negative value directly at this helper.
-'   Those tests prove clamp/status/caller behavior once the helper is reached;
-'   they do not prove that every timing backend can naturally reach it.
-'
 '   Declared Friend rather than Private so the regression suite can test this
 '   arithmetic directly. Friend keeps it invisible outside the project.
 '
@@ -3276,9 +3263,9 @@ Friend Function Elapsed_Validate( _
 '------------------------------------------------------------------------------
 ' FAULT INJECTION
 '------------------------------------------------------------------------------
-    'Consume the one-shot forced-negative flag, if the suite armed it. The seam
-    'is intentionally inside this helper: it proves behavior after validation is
-    'reached, not natural negative-delta reachability for every backend
+    'Consume the one-shot forced-negative flag, if the suite armed it. A clock
+    'that moves backwards cannot be arranged on demand, so the condition is
+    'injected here rather than left permanently untested end to end
         If m_TestForceNextNegativeElapsed Then
             m_TestForceNextNegativeElapsed = False
             Seconds = -1#

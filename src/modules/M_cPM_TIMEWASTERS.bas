@@ -48,10 +48,9 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '
 '     - cPM_Report_WriteToRange
 '
-'   Regression seams exposed here (test infrastructure, not supported API):
+'   Regression seam exposed here (test infrastructure, not supported API):
 '
 '     - PM_TW_Test_SimulateNoWorkbook
-'     - PM_TW_Test_FailNextApply
 '
 ' IMPORT REQUIREMENT
 '   Import this module together with cPerformanceManager.cls
@@ -220,15 +219,6 @@ Attribute VB_Name = "M_cPM_TimeWasters"
     'the only deterministic way to drive the workbook lifecycle. Cleared by
     'PM_TW_ResetSharedState, so it never outlives the scope that armed it
         Private g_TW_TestNoWorkbook         As Boolean
-
-    'Regression seam only: injects one deterministic failure after the
-    'ScreenUpdating branch of PM_TW_ApplyEffectiveState. The supplied error
-    'identity lets regression cases prove that rollback preserves the ORIGINAL
-    'failure rather than replacing it with a cleanup/reapply error.
-        Private g_TW_TestApplyFailArmed      As Boolean
-        Private g_TW_TestApplyFailNumber     As Long
-        Private g_TW_TestApplyFailSource     As String
-        Private g_TW_TestApplyFailDescription As String
 
     'Saved baseline Application state
         Private g_TW_SCREENUPDATING         As Boolean
@@ -1075,14 +1065,10 @@ Private Sub PM_TW_ResetSharedState()
         g_TW_CURSOR = xlDefault
 
 '------------------------------------------------------------------------------
-' CLEAR REGRESSION SEAMS
+' CLEAR REGRESSION SEAM
 '------------------------------------------------------------------------------
-    'Regression controls never outlive the shared scope that armed them
+    'A workbook-availability override never outlives the scope that armed it
         g_TW_TestNoWorkbook = False
-        g_TW_TestApplyFailArmed = False
-        g_TW_TestApplyFailNumber = 0
-        g_TW_TestApplyFailSource = vbNullString
-        g_TW_TestApplyFailDescription = vbNullString
 
 End Sub
 
@@ -1279,17 +1265,6 @@ Private Sub PM_TW_ApplyEffectiveState( _
                 Else
                     .ScreenUpdating = g_TW_SCREENUPDATING
                 End If
-
-            'Regression seam: fail AFTER one real Application-state branch has
-            'executed. This proves that the caller's rollback/reapply path repairs
-            'partial apply work and preserves the injected original error.
-                If g_TW_TestApplyFailArmed Then
-                    g_TW_TestApplyFailArmed = False
-                    Err.Raise g_TW_TestApplyFailNumber, _
-                              g_TW_TestApplyFailSource, _
-                              g_TW_TestApplyFailDescription
-                End If
-
             'EnableEvents
                 If (DisableMask And PM_TW_MASK_ENABLEEVENTS) <> 0 Then
                     .EnableEvents = False
@@ -1660,12 +1635,7 @@ Public Sub PM_TW_Test_SimulateNoWorkbook( _
 '   Internal test infrastructure only, not supported API. Option Private
 '   Module keeps it off the Macro dialog. The override is cleared by
 '   PM_TW_ResetSharedState, so final teardown and PM_TW_EndAllSessions
-'   always disarm it.
-'
-'   This seam simulates the manager's workbook-availability decision only. It
-'   does NOT physically close or open Excel workbooks. Regression cases therefore
-'   prove the state-machine transitions deterministically in-process; literal
-'   zero-workbook host behavior remains an external/manual automation boundary.
+'   always disarm it
 '
 ' UPDATED
 '   2026-10-07
@@ -1676,65 +1646,5 @@ Public Sub PM_TW_Test_SimulateNoWorkbook( _
 '------------------------------------------------------------------------------
     'Arm or disarm the workbook-availability override
         g_TW_TestNoWorkbook = Simulate
-
-End Sub
-
-Public Sub PM_TW_Test_FailNextApply( _
-    ByVal ErrorNumber As Long, _
-    Optional ByVal ErrorSource As String = "M_cPM_TimeWasters.TestApplyFailure", _
-    Optional ByVal ErrorDescription As String = "Forced TW apply failure")
-'
-'==============================================================================
-'                         PM_TW_TEST_FAILNEXTAPPLY
-'------------------------------------------------------------------------------
-' PURPOSE
-'   Regression seam: injects one deterministic PM_TW_ApplyEffectiveState error
-'
-' WHY THIS EXISTS
-'   Begin/update and end paths promise to preserve the original Application-state
-'   failure while rolling their bookkeeping back. Real Excel property failures
-'   cannot be induced reliably, so this seam supplies exact error metadata and
-'   fails after ScreenUpdating has already been applied.
-'
-' INPUTS
-'   ErrorNumber
-'     Nonzero => arm one failure using the supplied number/source/description
-'     Zero    => disarm the seam
-'
-'   ErrorSource / ErrorDescription
-'     Exact identity to raise, so the regression can prove preservation
-'
-' RETURNS
-'   None
-'
-' ERROR POLICY
-'   Does not raise. The next effective-state apply raises when armed.
-'
-' NOTES
-'   Internal test infrastructure only, not supported API. Option Private Module
-'   keeps it off the external macro surface. The seam is one-shot and is also
-'   cleared by PM_TW_ResetSharedState.
-'
-' UPDATED
-'   2026-11-08
-'==============================================================================
-
-'------------------------------------------------------------------------------
-' CONFIGURE
-'------------------------------------------------------------------------------
-    'A zero error number is the deterministic disarm operation
-        If ErrorNumber = 0 Then
-            g_TW_TestApplyFailArmed = False
-            g_TW_TestApplyFailNumber = 0
-            g_TW_TestApplyFailSource = vbNullString
-            g_TW_TestApplyFailDescription = vbNullString
-            Exit Sub
-        End If
-
-    'Store the exact injected failure identity and arm one apply
-        g_TW_TestApplyFailNumber = ErrorNumber
-        g_TW_TestApplyFailSource = ErrorSource
-        g_TW_TestApplyFailDescription = ErrorDescription
-        g_TW_TestApplyFailArmed = True
 
 End Sub
