@@ -409,3 +409,7 @@ Do not silently replace assets or move the tag.
 ---
 
 **Release principle:** certify one exact source revision, build from it once, and publish only evidence-backed artifacts derived from it.
+
+## Paired source and wiki checks
+
+Follow [Release-state consistency](docs/RELEASE_STATE.md) to prepare the pinned wiki input, update the two repositories in order, and record both final commit identities.

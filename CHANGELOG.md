@@ -252,6 +252,9 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- Release-state gates bind changelog links, current-release claims and the wiki
+  to explicit revisions; root VERSION participates in source consistency (#50).
+
 - Markdown heading anchors retain inline-code text, including duplicate and
   Setext headings, while link extraction still excludes code spans (#108).
 
@@ -986,7 +989,7 @@ Initial public release.
 
 [Unreleased]: https://github.com/danielep71/vba-performance_manager/compare/v1.4.0...main
 [1.4.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.3.0...v1.4.0
-[1.3.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.3.0
-[1.2.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.2.0
-[1.1.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.1.0
+[1.3.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/danielep71/vba-performance_manager/releases/tag/v1.0.0

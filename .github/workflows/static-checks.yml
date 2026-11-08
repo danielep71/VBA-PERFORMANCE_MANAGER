@@ -77,8 +77,11 @@ jobs:
           tar --no-same-owner -xzf "$archive" -C "$dir" actionlint
           echo "$dir" >> "$GITHUB_PATH"
 
+      - name: Prepare pinned wiki input
+        run: python tools/release_state.py --fetch-wiki --wiki-root "${RUNNER_TEMP}/performance-manager-wiki"
+
       - name: Run static checks
-        run: python tools/vba_lint.py --json vba-lint-results.json
+        run: python tools/vba_lint.py --wiki-root "${RUNNER_TEMP}/performance-manager-wiki" --json vba-lint-results.json
 
       - name: Lint the Python tools with Ruff
         run: ruff check --no-cache tools
@@ -131,8 +134,11 @@ jobs:
           python -m pip install --disable-pip-version-check
           --only-binary=:all: --require-hashes -r tools/requirements-ci.txt
 
+      - name: Prepare pinned wiki input
+        run: python tools/release_state.py --fetch-wiki --wiki-root "${RUNNER_TEMP}/performance-manager-wiki"
+
       - name: Run static checks
-        run: python tools/vba_lint.py
+        run: python tools/vba_lint.py --wiki-root "${RUNNER_TEMP}/performance-manager-wiki"
 
       - name: Run the tool tests by discovery
         run: python -m unittest discover -s tools -p "test_*.py" -v
