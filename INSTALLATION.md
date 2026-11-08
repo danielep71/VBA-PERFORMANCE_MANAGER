@@ -50,8 +50,14 @@ Source compatibility and execution certification are separate claims. v1.4.0
 was certified on Microsoft 365 Excel **64-bit** (80 cases, 643 assertions,
 0 failures). Real Office **32-bit remains unverified**, with evidence tracked
 in [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29);
-32-bit source support has not been removed. The minimum Office/VBA version
-remains an open contract in [#34](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/34).
+v1.4.1 retains pre-VBA7 legacy 32-bit, VBA7 Win32 and VBA7 Win64 source
+compatibility, with no new Office 2010/VBA7 minimum. Pre-VBA7 is best-effort and
+execution-unverified; no numeric oldest Office release is certified. This is
+not a guarantee for every older Office version. Follow the
+[Office/VBA support policy](README.md#officevba-support-policy-v141) and the
+[legacy-host evidence procedure](RELEASING.md#legacy-host-evidence). A successful
+VBA7 32-bit run cannot certify pre-VBA7. Removing a retained family requires an
+explicit compatibility/versioning decision outside this patch.
 Read [README.md](README.md), [CHANGELOG.md](CHANGELOG.md), and the selected
 release notes before installation. Historical evidence describes only its own tag.
 

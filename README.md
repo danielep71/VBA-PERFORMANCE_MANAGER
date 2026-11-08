@@ -1204,9 +1204,34 @@ treated as binary artifacts.
 | Windows APIs | Uses OS-provided `kernel32` and `winmm` timing APIs |
 | Macro policy | VBA execution and source import must be permitted by the host organization |
 
-The repository does not currently define a formal minimum supported Office/VBA
-version. That contract is tracked in
-[#34](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/34).
+### Office/VBA support policy (v1.4.1)
+
+This patch retains the existing Windows desktop Excel source-compatibility
+contract, including **pre-VBA7 legacy 32-bit**, **VBA7 Win32** and **VBA7 Win64**.
+It does not impose a new Office 2010/VBA7 minimum or remove older-host branches.
+Pre-VBA7 compatibility is retained on a best-effort, execution-unverified basis;
+it is not a promise that every older Office release works.
+
+| Runtime family | Source compatibility | Execution evidence |
+|---|---|---|
+| Pre-VBA7, legacy 32-bit (Office 2007-era and earlier) | Retained; statically reviewed conditional profile | No real-host certification; no oldest certified release established |
+| VBA7, 32-bit | Retained; statically reviewed conditional profile | No real-host certification; contributor evidence tracked in #29 |
+| VBA7, 64-bit | Retained | Only the exact builds and source SHAs in [Execution evidence](#execution-evidence) are certified |
+
+**Minimum-version boundary:** no numeric oldest Office release is certified.
+The supported source families above are explicit; the published v1.4.0 evidence
+is Microsoft 365 Excel 64-bit Version 2607, Build 16.0.20228.20188, not a blanket
+certification of all VBA7 hosts. Static review does not establish a minimum
+working Office version.
+
+For an older-host certification, a contributor must import the exact candidate
+sources into a clean workbook, compile, run the full suite and applicable native
+backend paths, and retain the SHA, Excel build, Office bitness, assertions,
+failures and cleanup outcome. A VBA7 32-bit result does not certify pre-VBA7.
+[The release procedure](RELEASING.md#legacy-host-evidence) defines that route.
+#29 remains contributor-dependent v1.5.0 work and does not block this patch.
+Any future removal of a retained family requires an explicit compatibility and
+versioning decision; an incompatible removal cannot silently ship in v1.4.1.
 
 There is no official Performance Manager `.xlam` distribution. You may embed
 the source in your own add-in, but that host is built and maintained by you.

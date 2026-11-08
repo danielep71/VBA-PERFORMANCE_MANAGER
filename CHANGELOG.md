@@ -97,6 +97,14 @@ Use only the categories needed by a release.
 
 ## [Unreleased]
 
+### Support policy
+
+- **Office/VBA compatibility (#34):** retain pre-VBA7 legacy 32-bit, VBA7 Win32
+  and VBA7 Win64 source families in v1.4.1; no new minimum or branch removal.
+  Pre-VBA7 remains best-effort and execution-unverified. No oldest Office
+  version is certified; exact-build/SHA evidence and contributor validation
+  are documented separately from retained source compatibility.
+
 ### Added
 
 - Added two independent compile-safety checks for same-procedure error-handler

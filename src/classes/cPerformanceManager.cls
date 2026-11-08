@@ -37,8 +37,10 @@ Attribute VB_Exposed = False
 '   - Windows only for API-backed timing methods (2..5).
 '   - On non-Windows hosts, only Timer()/Now()-based methods are conceptually
 '     portable, if retained.
-'   - Requires appropriate VBA7 / Win64 conditional compilation for 32-bit and
-'     64-bit Office.
+'   - Retains pre-VBA7 legacy 32-bit, VBA7 Win32 and VBA7 Win64 source paths.
+'   - Pre-VBA7 is best-effort and execution-unverified; no new VBA7 floor.
+'   - Only documented exact-build/SHA evidence certifies an Excel host.
+'     See README requirements and RELEASING legacy-host evidence (#34).
 '
 ' TIMER METHODS (iMethod)
 '   1 = Timer
@@ -3844,14 +3846,14 @@ Private Function Get_TickCountSeconds() As Double
 '
 '   What remains bitness-specific here is the declaration binding and the API
 '   return itself, not the semantics. That is a materially smaller surface, but
-'   it is not zero, which is why 32-bit execution evidence is still required
-'   before a major release.
+'   it is not zero. Real-host evidence is required before claiming 32-bit
+'   certification; contributor-dependent #29 does not block v1.4.1.
 '
 ' NOTES
-'   The pre-VBA7 branch targets Office 2007 and earlier. VBA7 arrived with
-'   Office 2010, so that branch is retained for completeness rather than because
-'   any supported host reaches it. Whether to keep carrying it is a separate
-'   decision from this one.
+'   Pre-VBA7 legacy source compatibility is retained on a best-effort basis.
+'   It is not execution-certified, nor is every older Office version promised.
+'   VBA7 Win32 evidence cannot certify this branch. No runtime family is
+'   removed in v1.4.1; any removal needs a separate compatibility decision.
 '
 ' UPDATED
 '   2026-08-16
