@@ -6383,18 +6383,20 @@ Private Sub Test_ElapsedValidate_StrictAndNonStrict()
 '                  TEST ELAPSED VALIDATE STRICT AND NON-STRICT
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Validates that a backwards-moving timing source is reported as such, and
-'   that the clamped value never passes as a real measurement
+'   Validates the negative-elapsed helper and its public caller behavior once a
+'   negative value reaches Elapsed_Validate.
 '
 ' WHY THIS EXISTS
-'   This guard is what stops a backwards-moving clock being reported as a real
-'   duration, which is the failure mode the Win64 method 2 path allows through
-'   otherwise.
+'   Natural negative-delta reachability exists for Win64 method 2 and method 6.
+'   The deterministic seam injects at Elapsed_Validate so clamp/status/strict
+'   behavior can be tested without manipulating the host clock. It does not prove
+'   that methods whose negative raw deltas are corrected as rollover can
+'   naturally reach the helper.
 '
 '   Clamping alone was not enough. It produced "zero seconds, status OK", which
-'   is indistinguishable from a genuine measurement of zero, so a backward-clock
-'   event could be recorded as a valid checkpoint or kept as the fastest sample
-'   in a benchmark
+'   is indistinguishable from a genuine measurement of zero, so an invalid
+'   negative elapsed value could be recorded as a valid checkpoint or kept as
+'   the fastest sample in a benchmark.
 '
 ' INPUTS
 '   None
@@ -6459,7 +6461,9 @@ Private Sub Test_ElapsedValidate_StrictAndNonStrict()
 '------------------------------------------------------------------------------
 ' ASSERT NON-STRICT REPORTS THE CONDITION END TO END
 '------------------------------------------------------------------------------
-    'Method 2 is used because method 5 does not route through Elapsed_Validate
+    'Method 2 exercises the public path. The forced-negative seam acts inside
+    'Elapsed_Validate, so this proves caller behavior rather than native
+    'backwards-step reachability for every backend
         cPM.StrictMode = False
         cPM.StartTimer cPM_MethodTickCount
         cPM.Pause 0.02, cPM_PauseSleep
