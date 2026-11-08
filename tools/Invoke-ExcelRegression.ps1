@@ -140,8 +140,7 @@ function Invoke-Suite([string] $Label, [string] $ReplacedComponent, [string] $Re
         excel = $null; cases = 0; assertions = 0; failures = 0
         failed_cases = @(); cleanup = $null; error = $null
     }
-    $excel = $null; $workbook = $null; $excelPid = $null
-    $project = $null; $control = $null; $sheet = $null
+    $excel = $null; $workbook = $null; $project = $null; $control = $null; $sheet = $null; $excelPid = $null
     try {
         $excel = New-Object -ComObject Excel.Application
         $excel.Visible = $true

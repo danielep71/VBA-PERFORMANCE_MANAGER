@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 82    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 86    'Total number of executed regression cases
 
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -666,7 +666,27 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation sticky exemption"
         Test_TW_Calculation_StickyExemption
 
-    'Validate that a failed aligned method-3 start releases its timer period
+    'Validate update rollback after a partially applied Application-state failure
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW update rollback preserves original error"
+        Test_TW_UpdateFailure_RollbackPreservesOriginalError
+
+    'Validate recoverable bookkeeping after a final-restore failure
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW end restore failure is recoverable"
+        Test_TW_EndRestoreFailure_IsRecoverable
+
+    'Validate emergency recovery after a failed normal teardown
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW EndAllSessions emergency recovery"
+        Test_TW_EndAllSessions_EmergencyRecovery
+
+    'Validate the deterministic zero-workbook/open/close lifecycle matrix
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW zero-workbook lifecycle matrix"
+        Test_TW_Calculation_ZeroWorkbookLifecycleMatrix
+
+    'Validate method-3 timer-period rollback (#31)
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Method 3 timer-period rollback"
         Test_Method3_AlignTimeout_PeriodRollback
@@ -6388,18 +6408,20 @@ Private Sub Test_ElapsedValidate_StrictAndNonStrict()
 '                  TEST ELAPSED VALIDATE STRICT AND NON-STRICT
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Validates that a backwards-moving timing source is reported as such, and
-'   that the clamped value never passes as a real measurement
+'   Validates the negative-elapsed helper and its public caller behavior once a
+'   negative value reaches Elapsed_Validate.
 '
 ' WHY THIS EXISTS
-'   This guard is what stops a backwards-moving clock being reported as a real
-'   duration, which is the failure mode the Win64 method 2 path allows through
-'   otherwise.
+'   Natural negative-delta reachability exists for Win64 method 2 and method 6.
+'   The deterministic seam injects at Elapsed_Validate so clamp/status/strict
+'   behavior can be tested without manipulating the host clock. It does not prove
+'   that methods whose negative raw deltas are corrected as rollover can
+'   naturally reach the helper.
 '
 '   Clamping alone was not enough. It produced "zero seconds, status OK", which
-'   is indistinguishable from a genuine measurement of zero, so a backward-clock
-'   event could be recorded as a valid checkpoint or kept as the fastest sample
-'   in a benchmark
+'   is indistinguishable from a genuine measurement of zero, so an invalid
+'   negative elapsed value could be recorded as a valid checkpoint or kept as
+'   the fastest sample in a benchmark.
 '
 ' INPUTS
 '   None
@@ -6464,7 +6486,9 @@ Private Sub Test_ElapsedValidate_StrictAndNonStrict()
 '------------------------------------------------------------------------------
 ' ASSERT NON-STRICT REPORTS THE CONDITION END TO END
 '------------------------------------------------------------------------------
-    'Method 2 is used because method 5 does not route through Elapsed_Validate
+    'Method 2 exercises the public path. The forced-negative seam acts inside
+    'Elapsed_Validate, so this proves caller behavior rather than native
+    'backwards-step reachability for every backend
         cPM.StrictMode = False
         cPM.StartTimer cPM_MethodTickCount
         cPM.Pause 0.02, cPM_PauseSleep
@@ -9105,22 +9129,19 @@ CleanFail:
 End Sub
 
 
-Private Sub Test_Method3_AlignTimeout_PeriodRollback()
+Private Sub Test_TW_UpdateFailure_RollbackPreservesOriginalError()
 '
 '==============================================================================
-'              TEST METHOD 3 ALIGN TIMEOUT PERIOD ROLLBACK
+'              TEST TW UPDATE FAILURE ROLLBACK PRESERVES ORIGINAL ERROR
 '------------------------------------------------------------------------------
 ' PURPOSE
-'   Validates that a failed aligned method-3 start releases only the 1 ms
-'   multimedia timer period it acquired itself, and that ResetEnvironment stays
-'   balanced and idempotent (#31)
+'   Proves that an update apply failure rolls registration and Application state
+'   back while re-raising the exact original failure
 '
 ' WHY THIS EXISTS
-'   An aligned method-3 start calls timeBeginPeriod(1) before it waits for the
-'   next timeGetTime tick. When that wait times out in strict mode the session
-'   is rolled back, but the period used to stay held until ResetEnvironment or
-'   Class_Terminate. A real clock never stalls, so the timeout is forced with
-'   the one-shot Test_ForceNextAlignmentTimeout seam
+'   PM_TW_BeginSession promises best-effort rollback without masking the error
+'   that triggered it. The deterministic seam fails after ScreenUpdating has
+'   already changed, so this case verifies both bookkeeping and state repair.
 '
 ' INPUTS
 '   None
@@ -9129,147 +9150,355 @@ Private Sub Test_Method3_AlignTimeout_PeriodRollback()
 '   None
 '
 ' UPDATED
-'   2026-11-03
+'   2026-11-08
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
-    Dim cPM             As cPerformanceManager    'Class under test
-    Dim RaisedNumber    As Long                   'Error number raised by the rejected start
-    Dim RaisedSource    As String                 'Error source raised by the rejected start
-    Dim T1Before        As Double                 'Start timestamp of the protected session
+    Const ForcedNumber As Long = vbObjectError + 2991
+    Const ForcedSource As String = "M_cPM_TimeWasters.Test.Update"
+    Const ForcedDescription As String = "Forced update apply failure"
+
+    Dim InstanceKey        As String
+    Dim ScreenOriginal     As Boolean
+    Dim ExceptAllButScreen As Long
+    Dim ExceptAll          As Long
+    Dim SeenNumber         As Long
+    Dim SeenSource         As String
+    Dim SeenDescription    As String
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
 '------------------------------------------------------------------------------
-    'Start the regression case
-        Case_Begin "Method 3 aligned-start timeout releases only the timer period it acquired"
-    'Enable case-level unexpected-error handling
+        Case_Begin "TW update rollback preserves original error"
         On Error GoTo CleanFail
-    'Create a fresh class instance in strict mode
-        Set cPM = New cPerformanceManager
-        cPM.StrictMode = True
 
-    'A fresh instance has requested nothing
-        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
-                                 "A new instance holds no timer period"
+        ScreenOriginal = Application.ScreenUpdating
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = True
+
+        ExceptAllButScreen = TW_Enum.EnableEvents Or TW_Enum.DisplayAlerts Or _
+                             TW_Enum.Calculation Or TW_Enum.Cursor
+        ExceptAll = ExceptAllButScreen Or TW_Enum.ScreenUpdating
+        InstanceKey = PM_TW_NewInstanceKey()
 
 '------------------------------------------------------------------------------
-' A FAILED START RELEASES THE PERIOD IT ACQUIRED
+' ESTABLISH THE PREVIOUS EFFECTIVE STATE
 '------------------------------------------------------------------------------
-    'Force the next alignment to time out, then attempt an aligned method-3 start
-        cPM.Test_ForceNextAlignmentTimeout
-        RaisedNumber = 0
-        RaisedSource = vbNullString
+        PM_TW_BeginSession InstanceKey, ExceptAllButScreen, False
+        Test_Assert_EqualBoolean False, Application.ScreenUpdating, _
+                                 "Initial session suppresses ScreenUpdating"
+        Test_Assert_EqualLong 1, PM_TW_ActiveCount(), _
+                              "Initial registration is active"
+
+'------------------------------------------------------------------------------
+' FORCE AN UPDATE FAILURE AFTER SCREENUPDATING HAS CHANGED
+'------------------------------------------------------------------------------
+        PM_TW_Test_FailNextApply ForcedNumber, ForcedSource, ForcedDescription
+
         On Error Resume Next
-        cPM.StartTimer cPM_MethodTimeGetTime, True
-        RaisedNumber = Err.Number
-        RaisedSource = Err.Source
+        PM_TW_BeginSession InstanceKey, ExceptAll, False
+        SeenNumber = Err.Number
+        SeenSource = Err.Source
+        SeenDescription = Err.Description
         Err.Clear
         On Error GoTo CleanFail
 
-    'The original error reaches the caller unchanged
-        Test_Assert_EqualLong CLng(ERR_CPM_ALIGN_TICK_TIMEOUT), RaisedNumber, _
-                              "A strict aligned method-3 timeout raises ERR_CPM_ALIGN_TICK_TIMEOUT"
-        Test_Assert_EqualString "cPerformanceManager.Timestamp_TryGetNextSeconds", RaisedSource, _
-                                "The raised error still names the helper that timed out"
-    'Nothing was committed, and the side effect was rolled back with the state
-        Test_Assert_EqualBoolean False, cPM.HasActiveSession, _
-                                 "The failed start commits no session"
-        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
-                                 "The failed start releases the timer period it acquired"
+'------------------------------------------------------------------------------
+' ASSERT ORIGINAL ERROR AND ROLLBACK
+'------------------------------------------------------------------------------
+        Test_Assert_EqualLong ForcedNumber, SeenNumber, _
+                              "Update re-raises the original apply error number"
+        Test_Assert_EqualString ForcedSource, SeenSource, _
+                                "Update preserves the original apply error source"
+        Test_Assert_EqualString ForcedDescription, SeenDescription, _
+                                "Update preserves the original apply error description"
+        Test_Assert_EqualLong 1, PM_TW_ActiveCount(), _
+                              "Failed update keeps the previous registration"
+        Test_Assert_EqualBoolean True, PM_TW_IsInstanceActive(InstanceKey), _
+                                 "Failed update leaves the instance registered"
+        Test_Assert_EqualBoolean False, Application.ScreenUpdating, _
+                                 "Rollback reapplies the previous ScreenUpdating state"
 
 '------------------------------------------------------------------------------
-' A PERIOD HELD BEFORE THE ATTEMPT IS KEPT
+' PROVE NORMAL TEARDOWN STILL WORKS
 '------------------------------------------------------------------------------
-    'A successful aligned method-3 start holds the period for its session
-        cPM.StartTimer cPM_MethodTimeGetTime, True, "Held period"
-        T1Before = cPM.T1
-        Test_Assert_EqualBoolean True, cPM.Test_TimerPeriodHeld, _
-                                 "A successful aligned method-3 start holds the timer period"
-
-    'A later failed attempt must not release the earlier request
-        cPM.Test_ForceNextAlignmentTimeout
-        RaisedNumber = 0
-        On Error Resume Next
-        cPM.StartTimer cPM_MethodTimeGetTime, True
-        RaisedNumber = Err.Number
-        Err.Clear
-        On Error GoTo CleanFail
-
-        Test_Assert_EqualLong CLng(ERR_CPM_ALIGN_TICK_TIMEOUT), RaisedNumber, _
-                              "The second forced timeout raises in strict mode"
-        Test_Assert_EqualBoolean True, cPM.Test_TimerPeriodHeld, _
-                                 "A period held before the attempt is not released twice"
-        Test_Assert_EqualBoolean True, cPM.HasActiveSession, _
-                                 "The previous session is still active"
-        Test_Assert_EqualLong CLng(cPM_MethodTimeGetTime), CLng(cPM.ActiveMethodID), _
-                              "The previous backend binding is unchanged"
-        Test_Assert_ApproxDouble cPM.T1, T1Before, 0.000000001, _
-                                 "The previous start timestamp is unchanged"
-        Test_Assert_EqualString "Held period", cPM.RunLabel, _
-                                "The previous run label is unchanged"
-
-'------------------------------------------------------------------------------
-' RESET ENVIRONMENT STAYS BALANCED AND IDEMPOTENT
-'------------------------------------------------------------------------------
-    'One release for the one outstanding request
-        cPM.ResetEnvironment
-        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
-                                 "ResetEnvironment releases the held timer period"
-    'A second call has nothing left to release
-        cPM.ResetEnvironment
-        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
-                                 "A second ResetEnvironment is a balanced no-op"
-
-'------------------------------------------------------------------------------
-' NON-STRICT TIMEOUT KEEPS THE REQUEST, AS BEFORE
-'------------------------------------------------------------------------------
-    'Non-strict mode settles for a current timestamp and starts the session
-        cPM.StrictMode = False
-        cPM.Test_ForceNextAlignmentTimeout
-        cPM.StartTimer cPM_MethodTimeGetTime, True
-        Test_Assert_EqualLong CLng(cPM_MethodTimeGetTime), CLng(cPM.ActiveMethodID), _
-                              "A non-strict forced timeout still binds method 3"
-        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
-                              "A non-strict forced timeout settles without a read failure"
-        Test_Assert_EqualBoolean True, cPM.Test_TimerPeriodHeld, _
-                                 "A successful non-strict start keeps the timer period"
-
-'------------------------------------------------------------------------------
-' THE SEAM WAS ONE-SHOT
-'------------------------------------------------------------------------------
-    'An ordinary strict aligned start succeeds once no timeout is armed
-        cPM.StrictMode = True
-        cPM.StartTimer cPM_MethodTimeGetTime, True, "Ordinary aligned run"
-        Test_Assert_EqualString "Ordinary aligned run", cPM.RunLabel, _
-                                "An ordinary aligned method-3 start succeeds after the forced timeouts"
+        PM_TW_EndSession InstanceKey
+        Test_Assert_EqualLong 0, PM_TW_ActiveCount(), _
+                              "Successful teardown clears the registration"
+        Test_Assert_EqualBoolean True, Application.ScreenUpdating, _
+                                 "Successful teardown restores the captured baseline"
 
 CleanExit:
 '------------------------------------------------------------------------------
 ' CLEANUP
 '------------------------------------------------------------------------------
-    'Release any environment changes held by the instance on a best-effort basis
         On Error Resume Next
-        If Not cPM Is Nothing Then
-            cPM.ResetEnvironment
-            Set cPM = Nothing
-        End If
+        PM_TW_Test_FailNextApply 0
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = ScreenOriginal
         On Error GoTo 0
 
-    'Finalize the current case
         Case_Finalize
-
-    Exit Sub
+        Exit Sub
 
 CleanFail:
+        RecordUnexpectedError "Test_TW_UpdateFailure_RollbackPreservesOriginalError"
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_TW_EndRestoreFailure_IsRecoverable()
+'
+'==============================================================================
+'                    TEST TW END RESTORE FAILURE IS RECOVERABLE
 '------------------------------------------------------------------------------
-' ERROR HANDLER
+' PURPOSE
+'   Proves that a failed final baseline restore reinstates session bookkeeping
+'   and that a later ordinary end can complete cleanly
+'
+' WHY THIS EXISTS
+'   PM_TW_EndSession removes the registration before the final restore. A restore
+'   error must put that registration back and reapply the prior effective state;
+'   otherwise the caller has no recoverable ownership record.
+'
+' UPDATED
+'   2026-11-08
+'==============================================================================
+
+    Const ForcedNumber As Long = vbObjectError + 2992
+    Const ForcedSource As String = "M_cPM_TimeWasters.Test.End"
+    Const ForcedDescription As String = "Forced final restore failure"
+
+    Dim InstanceKey        As String
+    Dim ScreenOriginal     As Boolean
+    Dim ExceptAllButScreen As Long
+    Dim SeenNumber         As Long
+    Dim SeenSource         As String
+    Dim SeenDescription    As String
+
+        Case_Begin "TW end restore failure leaves recoverable bookkeeping"
+        On Error GoTo CleanFail
+
+        ScreenOriginal = Application.ScreenUpdating
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = True
+
+        ExceptAllButScreen = TW_Enum.EnableEvents Or TW_Enum.DisplayAlerts Or _
+                             TW_Enum.Calculation Or TW_Enum.Cursor
+        InstanceKey = PM_TW_NewInstanceKey()
+        PM_TW_BeginSession InstanceKey, ExceptAllButScreen, False
+
+        PM_TW_Test_FailNextApply ForcedNumber, ForcedSource, ForcedDescription
+
+        On Error Resume Next
+        PM_TW_EndSession InstanceKey
+        SeenNumber = Err.Number
+        SeenSource = Err.Source
+        SeenDescription = Err.Description
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong ForcedNumber, SeenNumber, _
+                              "End re-raises the original restore error number"
+        Test_Assert_EqualString ForcedSource, SeenSource, _
+                                "End preserves the original restore error source"
+        Test_Assert_EqualString ForcedDescription, SeenDescription, _
+                                "End preserves the original restore error description"
+        Test_Assert_EqualLong 1, PM_TW_ActiveCount(), _
+                              "Failed final restore reinstates the session"
+        Test_Assert_EqualBoolean True, PM_TW_IsInstanceActive(InstanceKey), _
+                                 "Failed final restore keeps ownership recoverable"
+        Test_Assert_EqualBoolean False, Application.ScreenUpdating, _
+                                 "Failed final restore reapplies the active state"
+
+        PM_TW_EndSession InstanceKey
+
+        Test_Assert_EqualLong 0, PM_TW_ActiveCount(), _
+                              "Retrying EndSession clears the recovered registration"
+        Test_Assert_EqualBoolean True, Application.ScreenUpdating, _
+                                 "Retrying EndSession restores the baseline"
+
+CleanExit:
+        On Error Resume Next
+        PM_TW_Test_FailNextApply 0
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = ScreenOriginal
+        On Error GoTo 0
+
+        Case_Finalize
+        Exit Sub
+
+CleanFail:
+        RecordUnexpectedError "Test_TW_EndRestoreFailure_IsRecoverable"
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_TW_EndAllSessions_EmergencyRecovery()
+'
+'==============================================================================
+'                    TEST TW ENDALLSESSIONS EMERGENCY RECOVERY
 '------------------------------------------------------------------------------
-    'Record the unexpected case-level error
-        RecordUnexpectedError "Test_Method3_AlignTimeout_PeriodRollback"
-    'Continue through centralized cleanup
+' PURPOSE
+'   Proves that PM_TW_EndAllSessions can recover the shared manager after a
+'   normal final teardown fails and rolls its registration back
+'
+' UPDATED
+'   2026-11-08
+'==============================================================================
+
+    Const ForcedNumber As Long = vbObjectError + 2993
+
+    Dim InstanceKey        As String
+    Dim ScreenOriginal     As Boolean
+    Dim ExceptAllButScreen As Long
+    Dim SeenNumber         As Long
+
+        Case_Begin "TW EndAllSessions emergency recovery"
+        On Error GoTo CleanFail
+
+        ScreenOriginal = Application.ScreenUpdating
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = True
+
+        ExceptAllButScreen = TW_Enum.EnableEvents Or TW_Enum.DisplayAlerts Or _
+                             TW_Enum.Calculation Or TW_Enum.Cursor
+        InstanceKey = PM_TW_NewInstanceKey()
+        PM_TW_BeginSession InstanceKey, ExceptAllButScreen, False
+
+        PM_TW_Test_FailNextApply ForcedNumber, _
+                                 "M_cPM_TimeWasters.Test.Recovery", _
+                                 "Forced teardown failure before emergency recovery"
+
+        On Error Resume Next
+        PM_TW_EndSession InstanceKey
+        SeenNumber = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong ForcedNumber, SeenNumber, _
+                              "The setup failure occurred before emergency recovery"
+        Test_Assert_EqualLong 1, PM_TW_ActiveCount(), _
+                              "Failed normal teardown leaves a recoverable session"
+
+        PM_TW_EndAllSessions
+
+        Test_Assert_EqualLong 0, PM_TW_ActiveCount(), _
+                              "EndAllSessions clears all shared registrations"
+        Test_Assert_EqualBoolean False, PM_TW_IsInstanceActive(InstanceKey), _
+                                 "EndAllSessions removes the failed session owner"
+        Test_Assert_EqualBoolean True, Application.ScreenUpdating, _
+                                 "EndAllSessions restores the captured baseline"
+        Test_Assert_EqualBoolean False, PM_TW_CalculationExempted(), _
+                                 "EndAllSessions clears Calculation exemption bookkeeping"
+
+CleanExit:
+        On Error Resume Next
+        PM_TW_Test_FailNextApply 0
+        PM_TW_EndAllSessions
+        Application.ScreenUpdating = ScreenOriginal
+        On Error GoTo 0
+
+        Case_Finalize
+        Exit Sub
+
+CleanFail:
+        RecordUnexpectedError "Test_TW_EndAllSessions_EmergencyRecovery"
+        Resume CleanExit
+
+End Sub
+
+Private Sub Test_TW_Calculation_ZeroWorkbookLifecycleMatrix()
+'
+'==============================================================================
+'                TEST TW CALCULATION ZERO-WORKBOOK LIFECYCLE MATRIX
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Repeats the deterministic zero-workbook begin -> workbook appears ->
+'   workbook disappears before final teardown lifecycle twice
+'
+' WHY THIS EXISTS
+'   The suite itself must remain hosted in a workbook, so it cannot literally
+'   close every workbook and continue executing. PM_TW_Test_SimulateNoWorkbook
+'   drives the manager's workbook-availability decision without claiming a real
+'   zero-workbook Excel execution. Repeating the full sequence proves that the
+'   seam and shared bookkeeping reset cleanly between scopes.
+'
+' UPDATED
+'   2026-11-08
+'==============================================================================
+
+    Dim InstanceKey        As String
+    Dim CalcOriginal       As XlCalculation
+    Dim ExceptNonCalc      As Long
+    Dim Iteration          As Long
+
+        Case_Begin "TW Calculation zero-workbook lifecycle matrix"
+        On Error GoTo CleanFail
+
+        PM_TW_EndAllSessions
+        CalcOriginal = Application.Calculation
+        ExceptNonCalc = TW_Enum.ScreenUpdating Or TW_Enum.EnableEvents Or _
+                        TW_Enum.DisplayAlerts Or TW_Enum.Cursor
+
+        For Iteration = 1 To 2
+            Application.Calculation = xlSemiautomatic
+
+        '----------------------------------------------------------------------
+        ' ZERO-WORKBOOK BEGIN
+        '----------------------------------------------------------------------
+            PM_TW_Test_SimulateNoWorkbook True
+            InstanceKey = PM_TW_NewInstanceKey()
+            PM_TW_BeginSession InstanceKey, ExceptNonCalc, False
+
+            Test_Assert_EqualLong 1, PM_TW_ActiveCount(), _
+                                  "Zero-workbook begin registers one scope, pass " & CStr(Iteration)
+            Test_Assert_EqualBoolean True, PM_TW_CalculationExempted(), _
+                                     "Zero-workbook begin records Calculation exemption, pass " & CStr(Iteration)
+            Test_Assert_EqualLong CLng(xlSemiautomatic), CLng(Application.Calculation), _
+                                  "Zero-workbook begin does not write Calculation, pass " & CStr(Iteration)
+
+        '----------------------------------------------------------------------
+        ' A WORKBOOK APPEARS DURING THE SCOPE
+        '----------------------------------------------------------------------
+            PM_TW_Test_SimulateNoWorkbook False
+            PM_TW_BeginSession InstanceKey, ExceptNonCalc, False
+
+            Test_Assert_EqualBoolean True, PM_TW_CalculationExempted(), _
+                                     "Opening a workbook does not clear the sticky exemption, pass " & CStr(Iteration)
+            Test_Assert_EqualLong CLng(xlSemiautomatic), CLng(Application.Calculation), _
+                                  "Opening a workbook does not lazily capture or suppress Calculation, pass " & CStr(Iteration)
+
+        '----------------------------------------------------------------------
+        ' ALL WORKBOOKS DISAPPEAR BEFORE FINAL RESTORE
+        '----------------------------------------------------------------------
+            PM_TW_Test_SimulateNoWorkbook True
+            PM_TW_EndSession InstanceKey
+
+            Test_Assert_EqualLong 0, PM_TW_ActiveCount(), _
+                                  "Final teardown clears the scope, pass " & CStr(Iteration)
+            Test_Assert_EqualLong CLng(xlSemiautomatic), CLng(Application.Calculation), _
+                                  "Workbook-less final teardown does not restore a synthetic baseline, pass " & CStr(Iteration)
+            Test_Assert_EqualBoolean False, PM_TW_CalculationExempted(), _
+                                     "Final teardown resets exemption bookkeeping, pass " & CStr(Iteration)
+
+            PM_TW_Test_SimulateNoWorkbook False
+        Next Iteration
+
+CleanExit:
+        On Error Resume Next
+        PM_TW_Test_SimulateNoWorkbook False
+        PM_TW_EndAllSessions
+        Application.Calculation = CalcOriginal
+        On Error GoTo 0
+
+        Case_Finalize
+        Exit Sub
+
+CleanFail:
+        RecordUnexpectedError "Test_TW_Calculation_ZeroWorkbookLifecycleMatrix"
         Resume CleanExit
 
 End Sub
@@ -12129,3 +12358,173 @@ Private Function Test_Stats_ErrorTextFor( _
         On Error GoTo 0
 
 End Function
+
+
+Private Sub Test_Method3_AlignTimeout_PeriodRollback()
+'
+'==============================================================================
+'              TEST METHOD 3 ALIGN TIMEOUT PERIOD ROLLBACK
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that a failed aligned method-3 start releases only the 1 ms
+'   multimedia timer period it acquired itself, and that ResetEnvironment stays
+'   balanced and idempotent (#31)
+'
+' WHY THIS EXISTS
+'   An aligned method-3 start calls timeBeginPeriod(1) before it waits for the
+'   next timeGetTime tick. When that wait times out in strict mode the session
+'   is rolled back, but the period used to stay held until ResetEnvironment or
+'   Class_Terminate. A real clock never stalls, so the timeout is forced with
+'   the one-shot Test_ForceNextAlignmentTimeout seam
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-03
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim RaisedNumber    As Long                   'Error number raised by the rejected start
+    Dim RaisedSource    As String                 'Error source raised by the rejected start
+    Dim T1Before        As Double                 'Start timestamp of the protected session
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Method 3 aligned-start timeout releases only the timer period it acquired"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Create a fresh class instance in strict mode
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = True
+
+    'A fresh instance has requested nothing
+        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
+                                 "A new instance holds no timer period"
+
+'------------------------------------------------------------------------------
+' A FAILED START RELEASES THE PERIOD IT ACQUIRED
+'------------------------------------------------------------------------------
+    'Force the next alignment to time out, then attempt an aligned method-3 start
+        cPM.Test_ForceNextAlignmentTimeout
+        RaisedNumber = 0
+        RaisedSource = vbNullString
+        On Error Resume Next
+        cPM.StartTimer cPM_MethodTimeGetTime, True
+        RaisedNumber = Err.Number
+        RaisedSource = Err.Source
+        Err.Clear
+        On Error GoTo CleanFail
+
+    'The original error reaches the caller unchanged
+        Test_Assert_EqualLong CLng(ERR_CPM_ALIGN_TICK_TIMEOUT), RaisedNumber, _
+                              "A strict aligned method-3 timeout raises ERR_CPM_ALIGN_TICK_TIMEOUT"
+        Test_Assert_EqualString "cPerformanceManager.Timestamp_TryGetNextSeconds", RaisedSource, _
+                                "The raised error still names the helper that timed out"
+    'Nothing was committed, and the side effect was rolled back with the state
+        Test_Assert_EqualBoolean False, cPM.HasActiveSession, _
+                                 "The failed start commits no session"
+        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
+                                 "The failed start releases the timer period it acquired"
+
+'------------------------------------------------------------------------------
+' A PERIOD HELD BEFORE THE ATTEMPT IS KEPT
+'------------------------------------------------------------------------------
+    'A successful aligned method-3 start holds the period for its session
+        cPM.StartTimer cPM_MethodTimeGetTime, True, "Held period"
+        T1Before = cPM.T1
+        Test_Assert_EqualBoolean True, cPM.Test_TimerPeriodHeld, _
+                                 "A successful aligned method-3 start holds the timer period"
+
+    'A later failed attempt must not release the earlier request
+        cPM.Test_ForceNextAlignmentTimeout
+        RaisedNumber = 0
+        On Error Resume Next
+        cPM.StartTimer cPM_MethodTimeGetTime, True
+        RaisedNumber = Err.Number
+        Err.Clear
+        On Error GoTo CleanFail
+
+        Test_Assert_EqualLong CLng(ERR_CPM_ALIGN_TICK_TIMEOUT), RaisedNumber, _
+                              "The second forced timeout raises in strict mode"
+        Test_Assert_EqualBoolean True, cPM.Test_TimerPeriodHeld, _
+                                 "A period held before the attempt is not released twice"
+        Test_Assert_EqualBoolean True, cPM.HasActiveSession, _
+                                 "The previous session is still active"
+        Test_Assert_EqualLong CLng(cPM_MethodTimeGetTime), CLng(cPM.ActiveMethodID), _
+                              "The previous backend binding is unchanged"
+        Test_Assert_ApproxDouble cPM.T1, T1Before, 0.000000001, _
+                                 "The previous start timestamp is unchanged"
+        Test_Assert_EqualString "Held period", cPM.RunLabel, _
+                                "The previous run label is unchanged"
+
+'------------------------------------------------------------------------------
+' RESET ENVIRONMENT STAYS BALANCED AND IDEMPOTENT
+'------------------------------------------------------------------------------
+    'One release for the one outstanding request
+        cPM.ResetEnvironment
+        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
+                                 "ResetEnvironment releases the held timer period"
+    'A second call has nothing left to release
+        cPM.ResetEnvironment
+        Test_Assert_EqualBoolean False, cPM.Test_TimerPeriodHeld, _
+                                 "A second ResetEnvironment is a balanced no-op"
+
+'------------------------------------------------------------------------------
+' NON-STRICT TIMEOUT KEEPS THE REQUEST, AS BEFORE
+'------------------------------------------------------------------------------
+    'Non-strict mode settles for a current timestamp and starts the session
+        cPM.StrictMode = False
+        cPM.Test_ForceNextAlignmentTimeout
+        cPM.StartTimer cPM_MethodTimeGetTime, True
+        Test_Assert_EqualLong CLng(cPM_MethodTimeGetTime), CLng(cPM.ActiveMethodID), _
+                              "A non-strict forced timeout still binds method 3"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
+                              "A non-strict forced timeout settles without a read failure"
+        Test_Assert_EqualBoolean True, cPM.Test_TimerPeriodHeld, _
+                                 "A successful non-strict start keeps the timer period"
+
+'------------------------------------------------------------------------------
+' THE SEAM WAS ONE-SHOT
+'------------------------------------------------------------------------------
+    'An ordinary strict aligned start succeeds once no timeout is armed
+        cPM.StrictMode = True
+        cPM.StartTimer cPM_MethodTimeGetTime, True, "Ordinary aligned run"
+        Test_Assert_EqualString "Ordinary aligned run", cPM.RunLabel, _
+                                "An ordinary aligned method-3 start succeeds after the forced timeouts"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release any environment changes held by the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Method3_AlignTimeout_PeriodRollback"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub

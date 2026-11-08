@@ -264,7 +264,7 @@ Use only the categories needed by a release.
   acquired, then re-raises the original error unchanged. A period held before
   the attempt is kept, so `timeBeginPeriod` and `timeEndPeriod` stay
   balanced. Non-strict starts keep the request as before. Public API is
-  unchanged; regression case 82 covers it, using a new one-shot, test-only
+  unchanged; regression case 86 covers it, using a new one-shot, test-only
   alignment-timeout seam shared with #44 (#31).
 
 ---
