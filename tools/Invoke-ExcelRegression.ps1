@@ -286,7 +286,8 @@ $verdicts = [ordered]@{ source = $(if ($sourcePass) { 'PASS' } else { 'FAIL' }) 
 if ($RedFile) {
     $red = $runs[1]
     $redCases = @($red.failed_cases | ForEach-Object { $_.case })
-    $redAsExpected = ($red.state -eq 'completed' -and $red.cases -eq $expectedCases -and
+    $redAsExpected = ($red.state -eq 'completed' -and $red.cleanup -eq 'completed' -and
+                      $red.cases -eq $expectedCases -and
                       $redCases.Count -eq 1 -and $redCases[0] -eq $RedExpectedCase)
     $verdicts.red_check = $(if ($redAsExpected) { "AS EXPECTED: only case $RedExpectedCase fails" } else { 'NOT AS EXPECTED' })
 }
