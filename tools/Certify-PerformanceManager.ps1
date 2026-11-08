@@ -11,7 +11,7 @@ value. No macro policy is changed. Existing Excel processes must be closed.
 This remains a supervised local run: modal Excel errors have no timeout.
 #>
 [CmdletBinding()]
-param()
+param([switch] $TimerRollbackRedCheck)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -44,8 +44,22 @@ try {
     Write-Host 'VBA project access is enabled temporarily and restored by the runner.'
     Write-Host 'If Excel displays an error dialog, capture it before dismissing it.'
     $runner = Join-Path $PSScriptRoot 'Invoke-ExcelRegression.ps1'
+    $redArgs = @()
+    if ($TimerRollbackRedCheck) {
+        $classPath = Join-Path $repo 'src\classes\cPerformanceManager.cls'
+        $sourceText = [System.IO.File]::ReadAllText($classPath)
+        $pattern = '(?m)^(\s*)Start_ReleaseAcquiredPeriod PeriodHeldBefore\r?$'
+        if ([regex]::Matches($sourceText, $pattern).Count -ne 1) {
+            throw 'Expected exactly one rollback call; cannot construct the negative control.'
+        }
+        $redText = [regex]::Replace($sourceText, $pattern, '$1'' Negative control: rollback call disabled')
+        $redPath = Join-Path $bundle 'cPerformanceManager-red.cls'
+        [System.IO.File]::WriteAllText($redPath, $redText, [System.Text.Encoding]::ASCII)
+        $redArgs = @('-RedFile', $redPath, '-RedComponent', 'src\classes\cPerformanceManager.cls', '-RedExpectedCase', '86')
+        Write-Host 'Two runs: source must pass; negative control must fail only case 86.'
+    }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runner `
-        -ExpectedSha $sha -Repo $repo -OutDir $bundle -AllowVbomAccess
+        -ExpectedSha $sha -Repo $repo -OutDir $bundle -AllowVbomAccess @redArgs
     $runnerCode = $LASTEXITCODE
     $records = @(Get-ChildItem -LiteralPath $bundle -Filter 'cpm-regression-*.json')
     if ($runnerCode -ne 0 -or $records.Count -ne 1) {
@@ -60,6 +74,15 @@ try {
         $record.result.cleanup_state -ne 'completed' -or
         $record.details.verdicts.source -ne 'PASS') {
         throw 'The evidence does not certify a completed, clean 64-bit Excel run.'
+    }
+    if ($TimerRollbackRedCheck) {
+        $runs = @($record.details.runs)
+        if ($runs.Count -ne 2 -or $runs[1].cleanup -ne 'completed' -or
+            $runs[1].compiled -ne $true -or
+            $record.details.verdicts.red_check -ne 'AS EXPECTED: only case 86 fails') {
+            throw 'The negative control did not finish with the expected failure and clean Excel exit.'
+        }
+        Write-Host 'NEGATIVE CONTROL=PASS: only case 86 fails without the fix; cleanup completed.'
     }
     Write-Host "RESULT=PASS: $($record.result.cases) cases, $($record.result.assertions) assertions, zero failures."
     Write-Host 'Send the JSON file in the evidence folder for review.'

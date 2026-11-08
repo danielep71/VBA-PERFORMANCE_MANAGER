@@ -27,3 +27,13 @@ If a compile/runtime dialog appears, capture the error before dismissing it;
 the underlying runner has no timeout for modal dialogs. A forced Excel cleanup
 is a failed certification. No new Excel execution is claimed by adding this
 launcher. It runs the source suite only, not the separate red check for #31.
+
+## Timer rollback (#31)
+
+On `fix/31-timer-period-rollback`, double-click `tools/Certify-TimerRollback.cmd`.
+It runs all 86 cases, then repeats them using a temporary copy of the class
+with only the rollback call disabled. The checkout is never edited. The source
+run must pass; only case 86 must fail in the negative control, and both Excel
+processes must exit cleanly. Send the generated JSON, which contains both runs.
+The negative control is expected to report assertion failures; it is not source
+certification. Do not merge #107 until this evidence is reviewed.
