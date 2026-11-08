@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 86    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 87    'Total number of executed regression cases
 
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -690,6 +690,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Method 3 timer-period rollback"
         Test_Method3_AlignTimeout_PeriodRollback
+
+    'Validate worker fault isolation after input validation failures (#75)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: validation disarms worker faults"
+        Test_Measure_ValidationDisarmsWorkerFaults
 
 Clean_Exit:
 '------------------------------------------------------------------------------
@@ -12542,4 +12547,119 @@ CleanFail:
     'Continue through centralized cleanup
         Resume CleanExit
 
+End Sub
+
+Private Sub Test_Measure_ValidationDisarmsWorkerFaults()
+'
+'==============================================================================
+'                 TEST MEASUREMENT VALIDATION SEAM CLEANUP
+'------------------------------------------------------------------------------
+' PURPOSE
+'   A rejected measurement must not leave either worker-failure seam armed.
+'
+' WHY THIS EXISTS
+'   Blank procedure/baseline names used to raise before the cleanup boundary.
+'   Check empty and whitespace names plus strict invalid-method errors through
+'   all three measurement entry points, then measure on the same instance.
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   None.
+'
+' UPDATED
+'   2026-11-08
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Instance under test
+    Dim Samples()       As Double                 'Returned measurement vector
+    Dim Scenario        As Long                   'Validation path under test
+    Dim RaisedNumber    As Long                   'Original validation error
+    Dim ExpectedNumber  As Long                   'Contractual validation error
+    Dim FailedReads     As Long                   'Failure output or sentinel
+    Dim Rejected        As Long                   'Rejection output or sentinel
+    Dim LastStatus      As cPM_ReadStatus          'Status output
+    Dim Context         As String                 'Assertion scenario label
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+        Case_Begin "Measure: validation disarms worker faults"
+        On Error GoTo CleanFail
+        Set cPM = New cPerformanceManager
+
+'------------------------------------------------------------------------------
+' ASSERT VALIDATION AND FOLLOWING CLEAN RUN
+'------------------------------------------------------------------------------
+        For Scenario = 1 To 7
+            Context = "Validation scenario " & CStr(Scenario) & ": "
+            cPM.StrictMode = True
+            cPM.Test_ForceWorkerStartReadFailures 1
+            cPM.Test_ForceWorkerEndpointReadFailures 1
+            FailedReads = 99
+            Rejected = 99
+            LastStatus = cPM_ReadElapsedInvalid
+            ExpectedNumber = ERR_CPM_INVALID_START_METHOD
+            Err.Clear
+            On Error Resume Next
+            Select Case Scenario
+                Case 1, 2
+                    ExpectedNumber = ERR_CPM_MEASURE_BLANK_PROC
+                    If Scenario = 1 Then
+                        Samples = cPM.MeasureProcedure("", 3, 0, cPM_MethodQPC, FailedReads, LastStatus, Rejected)
+                    Else
+                        Samples = cPM.MeasureProcedure("   ", 3, 0, cPM_MethodQPC, FailedReads, LastStatus, Rejected)
+                    End If
+                Case 3, 4
+                    ExpectedNumber = ERR_CPM_MEASURE_NO_BASELINE
+                    If Scenario = 3 Then
+                        Samples = cPM.MeasureBaseline("", 3, 0, cPM_MethodQPC, FailedReads, LastStatus, Rejected)
+                    Else
+                        Samples = cPM.MeasureBaseline("   ", 3, 0, cPM_MethodQPC, FailedReads, LastStatus, Rejected)
+                    End If
+                Case 5
+                    Samples = cPM.MeasureProcedure("cPM_Test_Workload", 3, 0, -1, FailedReads, LastStatus, Rejected)
+                Case 6
+                    Samples = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 3, 0, -1, FailedReads, LastStatus, Rejected)
+                Case 7
+                    Samples = cPM.MeasureOverhead_Samples(3, 0, -1, FailedReads, LastStatus, Rejected)
+            End Select
+            RaisedNumber = Err.Number
+            Err.Clear
+            On Error GoTo CleanFail
+            Test_Assert_EqualLong ExpectedNumber, RaisedNumber, Context & "original validation error preserved"
+            Test_Assert_EqualLong -1, FailedReads, Context & "failed reads remain unpublished"
+            Test_Assert_EqualLong -1, Rejected, Context & "rejections remain unpublished"
+            Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(LastStatus), Context & "status sentinel preserved"
+
+            'Non-strict next call exposes leaked faults as losses rather than stopping the case
+            cPM.StrictMode = False
+            Samples = cPM.MeasureProcedure("cPM_Test_Workload", 3, 0, cPM_MethodQPC, FailedReads, LastStatus, Rejected)
+            Test_Assert_EqualLong 3, cPM.Stats_Count(Samples), Context & "next run retains all samples"
+            Test_Assert_EqualLong 0, FailedReads, Context & "endpoint fault did not leak"
+            Test_Assert_EqualLong 0, Rejected, Context & "start fault did not leak"
+            Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(LastStatus), Context & "next run is clean"
+        Next Scenario
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+        On Error Resume Next
+        If Not cPM Is Nothing Then cPM.ResetEnvironment
+        Set cPM = Nothing
+        On Error GoTo 0
+        Case_Finalize
+        Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+        RecordUnexpectedError "Test_Measure_ValidationDisarmsWorkerFaults"
+        Resume CleanExit
 End Sub
