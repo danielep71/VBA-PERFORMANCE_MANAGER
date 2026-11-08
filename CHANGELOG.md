@@ -260,6 +260,10 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- Measurement usage examples now report failed reads and rejected samples, and
+  withhold statistics, speedup and baseline conclusions when either count is
+  nonzero (#77).
+
 - **Regression error specificity (#76):** strict QPC/read/validation tests now
   assert their documented error codes instead of accepting any nonzero error;
   negative-sample helpers require the domain error. Runtime behavior is unchanged.

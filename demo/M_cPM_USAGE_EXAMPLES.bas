@@ -1698,6 +1698,8 @@ Public Sub Example_Benchmark_WithStatistics()
 '   None
 '
 ' BEHAVIOR
+'   - Reports failed reads and rejected samples before any harness statistics
+'   - Withholds conclusions if either evidence count is nonzero
 '   - Measures a workload procedure thirty times, discarding three warm-up runs
 '   - Prints the full statistics summary
 '   - Checks explicitly whether the run is trustworthy
@@ -1715,7 +1717,7 @@ Public Sub Example_Benchmark_WithStatistics()
 '   scheduling and is the closest estimate of the true cost
 '
 ' UPDATED
-'   2026-10-21
+'   2026-11-08
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1723,6 +1725,9 @@ Public Sub Example_Benchmark_WithStatistics()
 '------------------------------------------------------------------------------
     Dim cPM         As cPerformanceManager    'Performance manager instance
     Dim Samples()   As Double                 'Per-run elapsed seconds
+    Dim FailedReads As Long                   'Failed native reads, including warm-up
+    Dim RejectedSamples As Long               'Measured cycles rejected after fallback
+    Dim LastStatus As cPM_ReadStatus           'Last harness failure
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
@@ -1736,11 +1741,21 @@ Public Sub Example_Benchmark_WithStatistics()
 ' MEASURE
 '------------------------------------------------------------------------------
     'Thirty measured runs after three discarded warm-up runs
-        Samples = cPM.MeasureProcedure("cPM_Usage_Workload_BulkArray", 30, 3)
+        Samples = cPM.MeasureProcedure("cPM_Usage_Workload_BulkArray", 30, 3, _
+                                       cPM_MethodQPC, FailedReads, LastStatus, RejectedSamples)
 
 '------------------------------------------------------------------------------
 ' REPORT
 '------------------------------------------------------------------------------
+    'Require complete published evidence before presenting statistics
+        Debug.Print "Failed reads       : " & FailedReads
+        Debug.Print "Rejected samples   : " & RejectedSamples
+        Debug.Print "Last failure status: " & CLng(LastStatus)
+        If FailedReads <> 0 Or RejectedSamples <> 0 Then
+            Debug.Print ">>> Incomplete measurement. No statistics reported."
+            GoTo CleanExit
+        End If
+
     'The summary reports median and minimum first, and the mean last
         Debug.Print cPM.Stats_Text(Samples, "Bulk array write")
 
@@ -1806,6 +1821,8 @@ Public Sub Example_Compare_TwoImplementations()
 '   None
 '
 ' BEHAVIOR
+'   - Reports failed reads and rejected samples before any harness statistics
+'   - Withholds conclusions if either evidence count is nonzero
 '   - Measures two implementations of the same task, back to back
 '   - Reports both summaries
 '   - Refuses to state a speedup if either run looks contaminated
@@ -1824,7 +1841,7 @@ Public Sub Example_Compare_TwoImplementations()
 '   number compared against today's is not a comparison
 '
 ' UPDATED
-'   2026-10-21
+'   2026-11-08
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1833,6 +1850,13 @@ Public Sub Example_Compare_TwoImplementations()
     Dim cPM         As cPerformanceManager    'Performance manager instance
     Dim Slow()      As Double                 'Samples for the cell-by-cell approach
     Dim Fast()      As Double                 'Samples for the bulk-array approach
+
+    Dim SlowFailed As Long                   'Failed native reads, including warm-up
+    Dim SlowRejected As Long                 'Rejected measured cycles
+    Dim SlowStatus As cPM_ReadStatus          'Last harness failure
+    Dim FastFailed As Long                   'Failed native reads, including warm-up
+    Dim FastRejected As Long                 'Rejected measured cycles
+    Dim FastStatus As cPM_ReadStatus          'Last harness failure
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
@@ -1846,12 +1870,25 @@ Public Sub Example_Compare_TwoImplementations()
 ' MEASURE BOTH, BACK TO BACK
 '------------------------------------------------------------------------------
     'Measure the two implementations under identical conditions
-        Slow = cPM.MeasureProcedure("cPM_Usage_Workload_CellByCell", 10, 2)
-        Fast = cPM.MeasureProcedure("cPM_Usage_Workload_BulkArray", 10, 2)
+        Slow = cPM.MeasureProcedure("cPM_Usage_Workload_CellByCell", 10, 2, _
+                                       cPM_MethodQPC, SlowFailed, SlowStatus, SlowRejected)
+        Fast = cPM.MeasureProcedure("cPM_Usage_Workload_BulkArray", 10, 2, _
+                                       cPM_MethodQPC, FastFailed, FastStatus, FastRejected)
 
 '------------------------------------------------------------------------------
 ' REPORT BOTH
 '------------------------------------------------------------------------------
+    'Reject incomplete evidence before summaries, comparisons or subtraction
+        Debug.Print "Slow failed/rejected/status: " & SlowFailed & " / " & _
+                    SlowRejected & " / " & CLng(SlowStatus)
+        Debug.Print "Fast failed/rejected/status: " & FastFailed & " / " & _
+                    FastRejected & " / " & CLng(FastStatus)
+        If SlowFailed <> 0 Or SlowRejected <> 0 Or _
+           FastFailed <> 0 Or FastRejected <> 0 Then
+            Debug.Print ">>> Incomplete measurement. No conclusion drawn."
+            GoTo CleanExit
+        End If
+
     'Show the full picture for each rather than a single number
         Debug.Print cPM.Stats_Text(Slow, "Cell by cell")
         Debug.Print cPM.Stats_Text(Fast, "Bulk array")
@@ -1920,6 +1957,8 @@ Public Sub Example_DispatchMatchedBaseline()
 '   None
 '
 ' BEHAVIOR
+'   - Reports failed reads and rejected samples before any harness statistics
+'   - Withholds conclusions if either evidence count is nonzero
 '   - Measures an empty procedure and a real workload through the same path
 '   - Reports both, then the net cost
 '
@@ -1939,7 +1978,7 @@ Public Sub Example_DispatchMatchedBaseline()
 '   The baseline is machine-specific and worth re-measuring on each host
 '
 ' UPDATED
-'   2026-10-21
+'   2026-11-08
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -1949,6 +1988,13 @@ Public Sub Example_DispatchMatchedBaseline()
     Dim Baseline()  As Double                 'Dispatch-only cost
     Dim Workload()  As Double                 'Dispatch plus real work
     Dim NetSeconds  As Double                 'Workload cost with dispatch removed
+
+    Dim BaselineFailed As Long                   'Failed native reads, including warm-up
+    Dim BaselineRejected As Long                 'Rejected measured cycles
+    Dim BaselineStatus As cPM_ReadStatus          'Last harness failure
+    Dim WorkloadFailed As Long                   'Failed native reads, including warm-up
+    Dim WorkloadRejected As Long                 'Rejected measured cycles
+    Dim WorkloadStatus As cPM_ReadStatus          'Last harness failure
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
@@ -1962,13 +2008,26 @@ Public Sub Example_DispatchMatchedBaseline()
 ' MEASURE THE BASELINE AND THE WORKLOAD
 '------------------------------------------------------------------------------
     'An empty procedure through the same dispatch path
-        Baseline = cPM.MeasureBaseline("cPM_Usage_BaselineEmpty", 20, 3)
+        Baseline = cPM.MeasureBaseline("cPM_Usage_BaselineEmpty", 20, 3, _
+                                       cPM_MethodQPC, BaselineFailed, BaselineStatus, BaselineRejected)
     'The real workload through that same path
-        Workload = cPM.MeasureProcedure("cPM_Usage_Workload_BulkArray", 20, 3)
+        Workload = cPM.MeasureProcedure("cPM_Usage_Workload_BulkArray", 20, 3, _
+                                       cPM_MethodQPC, WorkloadFailed, WorkloadStatus, WorkloadRejected)
 
 '------------------------------------------------------------------------------
 ' REPORT
 '------------------------------------------------------------------------------
+    'Reject incomplete evidence before summaries, comparisons or subtraction
+        Debug.Print "Baseline failed/rejected/status: " & BaselineFailed & " / " & _
+                    BaselineRejected & " / " & CLng(BaselineStatus)
+        Debug.Print "Workload failed/rejected/status: " & WorkloadFailed & " / " & _
+                    WorkloadRejected & " / " & CLng(WorkloadStatus)
+        If BaselineFailed <> 0 Or BaselineRejected <> 0 Or _
+           WorkloadFailed <> 0 Or WorkloadRejected <> 0 Then
+            Debug.Print ">>> Incomplete measurement. No conclusion drawn."
+            GoTo CleanExit
+        End If
+
     'Show what the harness itself costs on this machine
         Debug.Print "Dispatch baseline : " & _
                     Format$(cPM.Stats_Median(Baseline), "0.000000000") & " s"
@@ -2036,6 +2095,8 @@ Public Sub Example_ReadStatus_Diagnostics()
 '   None
 '
 ' BEHAVIOR
+'   - Reports failed reads and rejected samples before any harness statistics
+'   - Withholds conclusions if either evidence count is nonzero
 '   - Takes an ordinary measurement and reports its status
 '   - Runs the harness and reports how many of its reads failed
 '   - Explains why the two use different surfaces
@@ -2051,10 +2112,12 @@ Public Sub Example_ReadStatus_Diagnostics()
 ' NOTES
 '   LastReadStatus describes the reads made by THIS instance. The harness
 '   measures on an isolated worker that is released before the sample vector is
-'   returned, so its outcome arrives through the FailedReadsOut argument instead
+'   returned. FailedReadsOut includes failed warm-up reads; RejectedSamplesOut
+'   counts measured cycles discarded after start fallback. Both must be zero
+'   for this example to report a complete-run median
 '
 ' UPDATED
-'   2026-10-21
+'   2026-11-08
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2064,6 +2127,7 @@ Public Sub Example_ReadStatus_Diagnostics()
     Dim ElapsedS    As Double                 'Directly measured elapsed seconds
     Dim Samples()   As Double                 'Harness samples
     Dim FailedReads As Long                   'Harness reads that did not succeed
+    Dim RejectedSamples As Long               'Measured cycles rejected after fallback
     Dim LastStatus  As cPM_ReadStatus         'Status of the last harness failure
 
 '------------------------------------------------------------------------------
@@ -2098,17 +2162,19 @@ Public Sub Example_ReadStatus_Diagnostics()
     'The harness reports its own outcome, because it measures on a worker
     'instance that no longer exists by the time the samples come back
         Samples = cPM.MeasureProcedure("cPM_Usage_Workload_BulkArray", 10, 2, _
-                                       cPM_MethodQPC, FailedReads, LastStatus)
+                                       cPM_MethodQPC, FailedReads, LastStatus, RejectedSamples)
 
         Debug.Print "Harness samples    : " & cPM.Stats_Count(Samples)
         Debug.Print "Failed reads       : " & FailedReads
+        Debug.Print "Rejected samples   : " & RejectedSamples
 
-    'Only trust the statistics if every read produced a measurement
-        If FailedReads = 0 Then
+    'Require no failed reads and no rejected cycles before reporting statistics
+        If FailedReads = 0 And RejectedSamples = 0 Then
             Debug.Print "Median             : " & _
                         Format$(cPM.Stats_Median(Samples), "0.000000000") & " s"
         Else
-            Debug.Print ">>> " & FailedReads & " read(s) failed, last status " & _
+            Debug.Print ">>> " & FailedReads & " failed read(s), " & RejectedSamples & _
+                        " rejected sample(s), last status " & _
                         CLng(LastStatus) & ". The samples are not trustworthy."
         End If
 
@@ -2117,7 +2183,7 @@ Public Sub Example_ReadStatus_Diagnostics()
 '------------------------------------------------------------------------------
     'Make the distinction explicit rather than leaving it implied
         Debug.Print "Note: LastReadStatus covers this instance's own reads."
-        Debug.Print "      Harness reads are reported through FailedReadsOut."
+        Debug.Print "      Harness evidence: FailedReadsOut and RejectedSamplesOut."
 
 CleanExit:
 '------------------------------------------------------------------------------
