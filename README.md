@@ -22,7 +22,7 @@
 [![VBA source consistency](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/actions/workflows/static-checks.yml/badge.svg?branch=main)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/actions/workflows/static-checks.yml)
 [![GitHub release](https://img.shields.io/github/v/release/danielep71/VBA-PERFORMANCE_MANAGER?style=flat-square&label=release&color=217346)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases)
 [![Issues](https://img.shields.io/github/issues/danielep71/VBA-PERFORMANCE_MANAGER?style=flat-square&color=d73a49)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues)
-[![Stars](https://img.shields.io/github/stars/danielep71/VBA-PERFORMANCE_MANAGER?style=flat-square&color=bf8700)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/stargazers)
+[![Stars](https://img.shields.io/github/stars/danielep71/VBA-PERFORMANCE_MANAGER?style=flat-square&color=bf8700)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER)
 
 <br>
 
