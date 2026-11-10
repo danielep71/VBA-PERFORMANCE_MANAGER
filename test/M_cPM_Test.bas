@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 87    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 88    'Total number of executed regression cases
 
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -695,6 +695,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: validation disarms worker faults"
         Test_Measure_ValidationDisarmsWorkerFaults
+
+    'Validate TW instance keys across the Long boundary and at exhaustion (#35)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW instance keys beyond the Long boundary"
+        Test_TW_KeySeed_Boundaries
 
 Clean_Exit:
 '------------------------------------------------------------------------------
@@ -12662,4 +12667,141 @@ CleanFail:
 '------------------------------------------------------------------------------
         RecordUnexpectedError "Test_Measure_ValidationDisarmsWorkerFaults"
         Resume CleanExit
+End Sub
+
+
+Private Sub Test_TW_KeySeed_Boundaries()
+'
+'==============================================================================
+'                       TEST TW KEY SEED BOUNDARIES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that shared TW instance keys keep their format past the Long
+'   boundary, stay distinct for live registrations, are not rewound by
+'   PM_TW_EndAllSessions, and fail explicitly when the key space is exhausted
+'   (#35)
+'
+' WHY THIS EXISTS
+'   The key seed was a Long, so the key after 2,147,483,647 raised an
+'   unhandled overflow. The boundary lies billions of keys away, so the seed
+'   is positioned with PM_TW_Test_SetKeySeed
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-10
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM_A           As cPerformanceManager    'First instance keyed past the boundary
+    Dim cPM_B           As cPerformanceManager    'Second instance keyed past the boundary
+    Dim PreviousSeed    As Double                 'Seed to restore after the case
+    Dim SeedReplaced    As Boolean                'TRUE once the seed was positioned
+    Dim KeyText         As String                 'Key issued by the manager
+    Dim RaisedNumber    As Long                   'Error number raised at exhaustion
+    Dim RaisedSource    As String                 'Error source raised at exhaustion
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "TW instance keys continue past the Long boundary and fail explicitly at exhaustion"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Start from a clean shared baseline
+        PM_TW_EndAllSessions
+    'Position the seed one below the largest Long
+        PreviousSeed = PM_TW_Test_SetKeySeed(2147483646#)
+        SeedReplaced = True
+
+'------------------------------------------------------------------------------
+' KEYS ACROSS THE LONG BOUNDARY
+'------------------------------------------------------------------------------
+        Test_Assert_EqualString "cPM#2147483647", PM_TW_NewInstanceKey(), _
+                                "The largest Long seed issues its key in the usual format"
+        Test_Assert_EqualString "cPM#2147483648", PM_TW_NewInstanceKey(), _
+                                "Key issuance continues past the Long boundary"
+
+    'Two instances keyed past the boundary register as distinct sessions
+        Set cPM_A = New cPerformanceManager
+        cPM_A.StrictMode = False
+        cPM_A.TW_Turn_OFF
+        Set cPM_B = New cPerformanceManager
+        cPM_B.StrictMode = False
+        cPM_B.TW_Turn_OFF
+        Test_Assert_EqualLong 2, PM_TW_ActiveCount(), _
+                              "Instances keyed past the boundary register separately"
+        cPM_B.TW_Turn_ON
+        cPM_A.TW_Turn_ON
+        Test_Assert_EqualLong 0, PM_TW_ActiveCount(), _
+                              "Both sessions end cleanly"
+
+'------------------------------------------------------------------------------
+' EMERGENCY RECOVERY DOES NOT REWIND THE SEED
+'------------------------------------------------------------------------------
+    'The two instances took 2,147,483,649 and 2,147,483,650
+        PM_TW_EndAllSessions
+        Test_Assert_EqualString "cPM#2147483651", PM_TW_NewInstanceKey(), _
+                                "PM_TW_EndAllSessions does not rewind the key seed"
+
+'------------------------------------------------------------------------------
+' EXHAUSTION IS EXPLICIT
+'------------------------------------------------------------------------------
+    'The last key of the space is still issued in full digits
+        PM_TW_Test_SetKeySeed 999999999999999#
+        Test_Assert_EqualString "cPM#1000000000000000", PM_TW_NewInstanceKey(), _
+                                "The last key of the space is issued in full digits"
+
+    'The next request is refused with a named error, not an overflow
+        RaisedNumber = 0
+        RaisedSource = vbNullString
+        On Error Resume Next
+        KeyText = PM_TW_NewInstanceKey()
+        RaisedNumber = Err.Number
+        RaisedSource = Err.Source
+        Err.Clear
+        On Error GoTo CleanFail
+        Test_Assert_EqualLong CLng(ERR_TW_KEY_SPACE_EXHAUSTED), RaisedNumber, _
+                              "An exhausted key space raises ERR_TW_KEY_SPACE_EXHAUSTED"
+        Test_Assert_EqualString "M_cPM_TimeWasters.PM_TW_NewInstanceKey", RaisedSource, _
+                                "The exhaustion error names the issuing routine"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release the instances, then restore the seed: no key issued here is live
+        On Error Resume Next
+        If Not cPM_A Is Nothing Then
+            cPM_A.ResetEnvironment
+            Set cPM_A = Nothing
+        End If
+        If Not cPM_B Is Nothing Then
+            cPM_B.ResetEnvironment
+            Set cPM_B = Nothing
+        End If
+        PM_TW_EndAllSessions
+        If SeedReplaced Then PM_TW_Test_SetKeySeed PreviousSeed
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_TW_KeySeed_Boundaries"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
 End Sub

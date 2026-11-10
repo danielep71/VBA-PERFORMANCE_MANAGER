@@ -172,6 +172,7 @@ Attribute VB_Name = "M_cPM_TimeWasters"
         ERR_TW_END_BLANK_KEY = vbObjectError + 2201
         ERR_TW_ISACTIVE_BLANK_KEY = vbObjectError + 2202
         ERR_TW_CALCULATION_UNAVAILABLE = vbObjectError + 2203
+        ERR_TW_KEY_SPACE_EXHAUSTED = vbObjectError + 2204
 
         'Structured report output
         ERR_TW_REPORT_NO_INSTANCE = vbObjectError + 2600
@@ -200,8 +201,14 @@ Attribute VB_Name = "M_cPM_TimeWasters"
     '   item  = TRUE when that instance requested strict host semantics
         Private g_TW_StrictKeys             As Object
 
-    'Monotonic seed used to issue collision-proof instance keys
-        Private g_TW_KeySeed                As Long
+    'Monotonic seed used to issue collision-proof instance keys. A Double
+    'counts every whole number exactly up to PM_TW_MAX_KEY_SEED, where a Long
+    'would overflow after 2,147,483,647 keys (#35)
+        Private g_TW_KeySeed                As Double
+
+    'Largest key seed ever issued. Reaching it raises
+    'ERR_TW_KEY_SPACE_EXHAUSTED; the seed never wraps
+        Private Const PM_TW_MAX_KEY_SEED    As Double = 1E+15
 
     'TRUE once the baseline Application state has been captured
         Private g_TW_BaselineSaved          As Boolean
@@ -263,6 +270,10 @@ Public Function PM_TW_NewInstanceKey() As String
 '   clears both at once and the seed can never reissue a key that a surviving
 '   dictionary entry still holds
 '
+'   The seed never wraps. A class instance caches its key on first use and may
+'   register it later, so restarting the count could reissue a key that a live
+'   instance still holds even when no session is registered (#35)
+'
 ' INPUTS
 '   None.
 '
@@ -272,10 +283,13 @@ Public Function PM_TW_NewInstanceKey() As String
 '
 ' BEHAVIOR
 '   - Increments the shared key seed
-'   - Returns a prefixed string form of the new seed value
+'   - Returns a prefixed string form of the new seed value: "cPM#" and its
+'     digits, the same format as before
 '
 ' ERROR POLICY
-'   Does not raise errors
+'   Raises ERR_TW_KEY_SPACE_EXHAUSTED once PM_TW_MAX_KEY_SEED (1E+15) keys have
+'   been issued in one VBA project session, instead of overflowing or wrapping.
+'   The seed is not advanced, so nothing is issued twice
 '
 ' DEPENDENCIES
 '   - g_TW_KeySeed
@@ -286,8 +300,19 @@ Public Function PM_TW_NewInstanceKey() As String
 '   instance more than once
 '
 ' UPDATED
-'   2026-08-15
+'   2026-11-10
 '==============================================================================
+
+'------------------------------------------------------------------------------
+' GUARD THE KEY SPACE
+'------------------------------------------------------------------------------
+    'Refuse explicitly rather than overflow, wrap or reissue
+        If g_TW_KeySeed >= PM_TW_MAX_KEY_SEED Then
+            Err.Raise ERR_TW_KEY_SPACE_EXHAUSTED, _
+                      "M_cPM_TimeWasters.PM_TW_NewInstanceKey", _
+                      "The shared TW instance-key space is exhausted for this VBA " & _
+                      "project session. Reset the VBA project to start a new one."
+        End If
 
 '------------------------------------------------------------------------------
 ' ISSUE KEY
@@ -298,8 +323,9 @@ Public Function PM_TW_NewInstanceKey() As String
 '------------------------------------------------------------------------------
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
-    'Return the prefixed key
-        PM_TW_NewInstanceKey = "cPM#" & CStr(g_TW_KeySeed)
+    'Return the prefixed key. Format$ keeps every digit where CStr would switch
+    'to scientific notation
+        PM_TW_NewInstanceKey = "cPM#" & Format$(g_TW_KeySeed, "0")
 
 End Function
 
@@ -1738,3 +1764,49 @@ Public Sub PM_TW_Test_FailNextApply( _
         g_TW_TestApplyFailArmed = True
 
 End Sub
+
+
+Public Function PM_TW_Test_SetKeySeed( _
+    ByVal NewSeed As Double) _
+    As Double
+'
+'==============================================================================
+'                          PM_TW_TEST_SETKEYSEED
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Regression seam: positions the shared instance-key seed, so the next key
+'   issued is NewSeed + 1, and returns the seed it replaced
+'
+' WHY THIS EXISTS
+'   The Long boundary and the exhaustion guard of PM_TW_NewInstanceKey lie
+'   billions of keys away. Positioning the seed reaches them without allocating
+'   billions of instances (#35)
+'
+' INPUTS
+'   NewSeed
+'     The seed value the next issued key increments from
+'
+' RETURNS
+'   Double
+'     The previous seed, so the caller can restore it
+'
+' ERROR POLICY
+'   Does not raise errors
+'
+' NOTES
+'   Internal test infrastructure only, not supported API. Lowering the seed
+'   can reissue a key that a live instance still holds, so a caller restores
+'   the previous seed only once every instance it created is released.
+'
+' UPDATED
+'   2026-11-10
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' REPLACE THE SEED
+'------------------------------------------------------------------------------
+    'Return the previous seed and install the new one
+        PM_TW_Test_SetKeySeed = g_TW_KeySeed
+        g_TW_KeySeed = NewSeed
+
+End Function
