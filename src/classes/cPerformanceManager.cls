@@ -389,6 +389,11 @@ Attribute VB_Exposed = False
     'Finite-loop guard for tick-alignment polling
         Private Const CPM_ALIGN_MAX_SPINS               As Long = 1000000
 
+    'Largest timing magnitude, in seconds, that this class formats exactly
+    '(about 31.7 million years). Every whole second up to it is an exact
+    'Double, so decomposing it never loses a second (#30)
+        Private Const CPM_MAX_TIMING_SECONDS            As Double = 1E+15
+
     'Error numbers raised by this class.
     '
     'Public so callers can trap a specific condition by name rather than by a
@@ -1183,6 +1188,12 @@ Public Function ElapsedTime( _
 '     nanosecond display groups
 '   - Formats the whole-second duration manually so hours do not wrap at 24
 '
+' SUPPORTED DOMAIN
+'   0 to CPM_MAX_TIMING_SECONDS (1E+15 seconds, about 31.7 million years),
+'   formatted exactly with no Long arithmetic. Negative values are clamped to
+'   0 and larger values to 1E+15, so every Double input formats without an
+'   overflow error (#30)
+'
 ' ERROR POLICY
 '   Delegates timer/session validation to ElapsedSeconds() when measurement is
 '   requested
@@ -1194,22 +1205,25 @@ Public Function ElapsedTime( _
 '   - Nanosecond output is presentation precision only and does not imply actual
 '     measurement resolution
 '   - When ElapsedSecondsIn is supplied, no new timing sample is taken
+'   - Whole seconds and hours are Doubles. A Long would overflow above
+'     2,147,483,647 seconds (about 68 years)
 '
 ' UPDATED
-'   2026-08-15
+'   2026-11-10
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim Sec         As Double   'Elapsed seconds to format
-    Dim WholeS      As Long     'Whole seconds component (floor)
+    Dim WholeS      As Double   'Whole seconds component (floor)
+    Dim RestS       As Double   'Whole seconds within the last hour, 0 to 3599
     Dim Frac        As Double   'Fractional seconds component in [0,1)
     Dim NS_Total    As Long     'Fractional part scaled to nanoseconds
     Dim Ms          As Long     'Milliseconds component
     Dim Us          As Long     'Microseconds component
     Dim NN          As Long     'Nanoseconds component
-    Dim Hours       As Long     'Whole hours in the elapsed duration
+    Dim Hours       As Double   'Whole hours in the elapsed duration
     Dim Minutes     As Long     'Minute component
     Dim Seconds     As Long     'Second component
     Dim sMS         As String   'Zero-padded milliseconds text
@@ -1232,13 +1246,15 @@ Public Function ElapsedTime( _
 '------------------------------------------------------------------------------
     'Defensively clamp negative elapsed values
         If Sec < 0# Then Sec = 0#
+    'Clamp beyond the supported domain, where whole seconds stop being exact
+        If Sec > CPM_MAX_TIMING_SECONDS Then Sec = CPM_MAX_TIMING_SECONDS
 
 '------------------------------------------------------------------------------
 ' SPLIT WHOLE / FRACTIONAL SECONDS
 '------------------------------------------------------------------------------
-    'Extract whole seconds and the fractional remainder
-        WholeS = CLng(Fix(Sec))
-        Frac = Sec - CDbl(WholeS)
+    'Extract whole seconds and the fractional remainder, without narrowing
+        WholeS = Fix(Sec)
+        Frac = Sec - WholeS
     'Defensive clamp for negative fractional jitter
         If Frac < 0# Then Frac = 0#
 
@@ -1263,10 +1279,20 @@ Public Function ElapsedTime( _
 '------------------------------------------------------------------------------
 ' DECOMPOSE WHOLE-SECOND DURATION
 '------------------------------------------------------------------------------
-    'Compute duration hours/minutes/seconds without 24-hour wraparound
-        Hours = WholeS \ 3600
-        Minutes = (WholeS \ 60) Mod 60
-        Seconds = WholeS Mod 60
+    'Compute duration hours/minutes/seconds without 24-hour wraparound. The
+    'integer operators \ and Mod would narrow to Long, so Double arithmetic
+    'is used and the quotient corrected if the division rounded across an hour
+        Hours = Fix(WholeS / 3600#)
+        RestS = WholeS - Hours * 3600#
+        If RestS < 0# Then
+            Hours = Hours - 1#
+            RestS = RestS + 3600#
+        ElseIf RestS >= 3600# Then
+            Hours = Hours + 1#
+            RestS = RestS - 3600#
+        End If
+        Minutes = CLng(Fix(RestS / 60#))
+        Seconds = CLng(RestS - 60# * Minutes)
 
 '------------------------------------------------------------------------------
 ' FORMAT COMPONENTS
@@ -1280,7 +1306,7 @@ Public Function ElapsedTime( _
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
     'Return the final formatted duration string
-        ElapsedTime = CStr(Hours) & ":" & _
+        ElapsedTime = Format$(Hours, "0") & ":" & _
                       Right$("00" & CStr(Minutes), 2) & ":" & _
                       Right$("00" & CStr(Seconds), 2) & " - " & _
                       sMS & " milliseconds - " & _

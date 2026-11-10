@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 87    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 88    'Total number of executed regression cases
 
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -695,6 +695,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: validation disarms worker faults"
         Test_Measure_ValidationDisarmsWorkerFaults
+
+    'Validate ElapsedTime across and beyond the Long boundary (#30)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "ElapsedTime large durations"
+        Test_ElapsedTime_LargeDurations
 
 Clean_Exit:
 '------------------------------------------------------------------------------
@@ -2539,6 +2544,108 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_ElapsedTime_FormatExistingSeconds"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+
+Private Sub Test_ElapsedTime_LargeDurations()
+'
+'==============================================================================
+'                     TEST ELAPSED TIME LARGE DURATIONS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that ElapsedTime formats durations at and beyond the Long
+'   boundary exactly, clamps above its documented domain, and keeps its
+'   negative clamp and 24-hour-free decomposition (#30)
+'
+' WHY THIS EXISTS
+'   Whole seconds used to be narrowed with CLng(Fix(Sec)), so any supplied
+'   value above 2,147,483,647 seconds raised a VBA overflow instead of being
+'   formatted. Expected strings were computed independently with exact
+'   integer arithmetic
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-10
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Zeros           As String                 'Sub-second text for whole values
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "ElapsedTime formats durations across the Long boundary"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Formatting a supplied value needs no timing session
+        Set cPM = New cPerformanceManager
+        Zeros = " - 000 milliseconds - 000 microseconds - 000 nanoseconds"
+
+'------------------------------------------------------------------------------
+' AROUND THE LONG BOUNDARY
+'------------------------------------------------------------------------------
+    'The largest whole Long, with a half second that must survive
+        Test_Assert_EqualString _
+            "596523:14:07 - 500 milliseconds - 000 microseconds - 000 nanoseconds", _
+            cPM.ElapsedTime(, 2147483647.5), _
+            "2,147,483,647.5 s formats exactly"
+    'One second past it used to raise an overflow
+        Test_Assert_EqualString "596523:14:08" & Zeros, cPM.ElapsedTime(, 2147483648#), _
+                                "2,147,483,648 s formats without overflow"
+
+'------------------------------------------------------------------------------
+' FAR ABOVE IT, UP TO AND BEYOND THE DOMAIN LIMIT
+'------------------------------------------------------------------------------
+        Test_Assert_EqualString "277777777:46:40" & Zeros, cPM.ElapsedTime(, 1000000000000#), _
+                                "1E+12 s formats exactly"
+        Test_Assert_EqualString "277777777777:46:40" & Zeros, cPM.ElapsedTime(, 1E+15), _
+                                "1E+15 s, the domain limit, formats exactly"
+        Test_Assert_EqualString "277777777777:46:40" & Zeros, cPM.ElapsedTime(, 1E+16), _
+                                "Values above 1E+15 s are clamped to the domain limit"
+
+'------------------------------------------------------------------------------
+' EXISTING POLICIES ARE UNCHANGED
+'------------------------------------------------------------------------------
+        Test_Assert_EqualString "25:00:00" & Zeros, cPM.ElapsedTime(, 90000#), _
+                                "Hours do not wrap at 24"
+        Test_Assert_EqualString "0:00:00" & Zeros, cPM.ElapsedTime(, -5#), _
+                                "Negative values are still clamped to zero"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_ElapsedTime_LargeDurations"
     'Continue through centralized cleanup
         Resume CleanExit
 
