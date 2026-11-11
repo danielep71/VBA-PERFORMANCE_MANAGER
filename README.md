@@ -856,7 +856,23 @@ powershell -ExecutionPolicy Bypass -File tools\Invoke-ExcelRegression.ps1 `
 
 It writes a JSON record whose `result` follows the v1.4.0 execution-result
 schema. `-RedFile` and `-RedExpectedCase` repeat the run with one component
-replaced, to show that a regression case fails without its fix. Importing
+replaced, to show that a regression case fails without its fix.
+
+To run several commits in one unattended pass, for example the heads of open
+pull requests, list them in a JSON manifest outside the repository and run
+`tools\Invoke-ExcelBatch.ps1`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\Invoke-ExcelBatch.ps1 `
+    -Manifest ..\batch.json -OutDir ..\excel-evidence
+```
+
+Each entry runs in its own temporary Git worktree, so the current checkout is
+left alone, through that commit's own runner. An entry's red file is built
+from Git: `from_ref` takes the component as it is at another commit, and
+`find`/`replace` changes one exact text occurrence. The manifest is validated
+before Excel starts, and the script ends with a summary and a batch record.
+`tools/excel-batch.example.json` is a complete example. Importing
 modules needs Excel's *Trust access to the VBA project object model*.
 `-AllowVbomAccess` enables it for the current user only for the run, and
 restores the previous value afterwards. The runner is local and maintainer-run;
