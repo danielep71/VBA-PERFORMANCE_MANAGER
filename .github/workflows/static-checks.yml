@@ -11,7 +11,7 @@ name: Static checks
 # so a release can reference a verifiable run instead of a manual assertion.
 #
 # They cannot execute a single test. That is the job of the headless Excel
-# regression gate tracked in #11, which requires a self-hosted Windows runner.
+# regression gate tracked in #156, which requires a self-hosted Windows runner.
 # What these checks do cover are the defect classes found during development:
 # version drift, stale error sources, unbalanced procedure blocks,
 # reserved-word identifiers, committed conflict markers, compile-safety gaps

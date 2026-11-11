@@ -4,7 +4,7 @@ These launchers live in `tools/` and require Windows, Git and desktop Excel.
 Use a clean checkout of the reviewed candidate. Save your work and close all
 Excel windows first. No administrator rights or Python installation is needed.
 The tools are supervised: an Excel compile/password/repair dialog can require
-attention. They are not an unattended runner with a hard timeout (#11).
+attention. They are not an unattended runner with a hard timeout (#156).
 
 | Double-click launcher | Result |
 | --- | --- |
