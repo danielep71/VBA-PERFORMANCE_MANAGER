@@ -8,13 +8,15 @@ Issue #45 adds two independent results to `tools/vba_lint.py`:
 #45 brought the v1.4.1 gate to **15 checks**: the previous 13, including #51's
 provenance fixtures, plus these two. Published v1.4.0 evidence remains 12/12.
 Issue #64 hardens the assignment-declaration parser without adding a new gate
-result, so the count remained 15. Issue #46 later adds the workflow pin check,
-bringing the active gate to **16**.
+result, so the count remained 15. Issue #46 later added the workflow pin check,
+bringing the gate to 16 at that time. The current gate has **31 checks**; their
+list is `CHECKS` in `tools/gate_checks.py`.
 
 ## Supported source grammar
 
-The scanner recursively reads `.bas`, `.cls` and `.frm` exports in `src/`,
-`test/` and `demo/`. It normalizes line endings in memory without changing files.
+The scanner reads the tracked (`git ls-files`) `.bas`, `.cls` and `.frm`
+exports under `src/`, `test/` and `demo/`. It normalizes line endings in memory
+without changing files.
 Object-module scope is determined from the export path: `.cls` and `.frm` are
 object modules even when the exported header does not contain `VERSION ... CLASS`.
 
@@ -77,7 +79,8 @@ The ordinary linter runs the local fixture matrix as part of the respective
 two results, without adding a third check. Each single-defect fixture requires
 the other check to remain green. #64 expands the matrix from 41 to **47 fixtures**
 with Property Let/Set, Get-only, undeclared object-member and UserForm-scope cases.
-The optional integration test copies the source tree to a temporary directory and
+The integration test, run by unittest discovery in CI or locally with
+`--integration`, copies the source tree to a temporary directory and
 drives the real CLI in three cases: valid input, missing handler and undeclared
 assignment. Each negative case must return 1 and fail only its intended JSON
 result. The copy has no Git identity; this test proves CLI wiring, not

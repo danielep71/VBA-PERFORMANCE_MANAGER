@@ -1,5 +1,10 @@
 # Measurement-example evidence (#77)
 
+Outcome: merged into `main` in increment 16 ([#151](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/151)). On VBA
+identical to `307c703`: 93 cases, 861 assertions, 0 failures, and all four
+measurement examples passed; #77 is closed. See the
+[evidence record](EVIDENCE.md). The text below is the preparation record.
+
 ## Source review
 
 All six harness calls in the four measurement examples now request

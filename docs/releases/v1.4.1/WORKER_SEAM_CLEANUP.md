@@ -1,5 +1,9 @@
 # Worker seam cleanup — issue #75
 
+Outcome: merged into `main` in increment 13 ([#136](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/136)). Excel: 87
+cases, 771 assertions, 0 failures; #75 is closed. See the
+[evidence record](EVIDENCE.md). The text below is the preparation record.
+
 Status at preparation: real 64-bit Excel execution pending.
 
 `MeasureProcedure` now enables its existing error/cleanup handler before

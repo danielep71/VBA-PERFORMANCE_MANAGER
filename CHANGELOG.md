@@ -57,7 +57,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for change and evidence requirements and
 | Rule | Standard |
 |---|---|
 | Version | `MAJOR.MINOR.PATCH`, without the leading `v` in headings |
-| Release heading | `## [X.Y.Z] - YYYY-MM-DD` |
+| Release heading | `## [X.Y.Z] — YYYY-MM-DD` |
 | Date | Gregorian calendar date in ISO `YYYY-MM-DD` format |
 | Ordering | Unreleased first; released versions newest to oldest |
 | Comparison | Unreleased → latest tag; each release → preceding tag |
@@ -66,8 +66,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for change and evidence requirements and
 | Major | Incompatible public-contract change |
 | Pre-release | State maturity and compatibility boundaries explicitly |
 
-A repository may remain below `1.0.0` while its supported surface is still
-forming. Pre-release status does not excuse undocumented breaking changes.
+Pre-release status does not excuse undocumented breaking changes.
 
 <details>
 <summary><strong>Entry categories</strong></summary>
@@ -97,7 +96,7 @@ Use only the categories needed by a release.
 
 ## [Unreleased]
 
-### Support policy
+### Compatibility
 
 - **Office/VBA compatibility (#34):** retain pre-VBA7 legacy 32-bit, VBA7 Win32
   and VBA7 Win64 source families in v1.4.1; no new minimum or branch removal.
@@ -130,9 +129,54 @@ Use only the categories needed by a release.
 - Added regression coverage for the next-tick alignment branches that follow a
   successful initial read: a failed loop read and an exhausted spin guard, for
   QPC and method 4, in strict and non-strict mode. A new one-shot, test-only
-  seam fails the first loop read; behavior without armed seams is unchanged
-  (#44).
+  seam fails the first loop read; behavior without armed seams is unchanged.
+  Regression cases 88 and 89 cover it (#44).
 
+- Added `tools/Invoke-ExcelRegression.ps1`, which runs the regression suite in
+  desktop Excel from an exact, clean checkout: it imports the components into
+  a new workbook, compiles, runs the suite, reads each case from the log
+  worksheet and closes Excel without saving. Its JSON record carries a
+  `result` in the v1.4.0 execution-result schema. An optional red check
+  replaces one component and expects exactly one named case to fail.
+  `AccessVBOM` is enabled only with `-AllowVbomAccess`, for the current user
+  and the run, and restored on every path. `tools/test_excel_runner.py` keeps
+  the runner in step with the regression module, the README import order and
+  the frozen schema. The runner is local and maintainer-run (#11); the
+  automated CI gate is tracked in #156.
+
+- Added double-click launchers for supervised local Excel certification of the
+  checked-out commit. `tools/Certify-PerformanceManager.cmd` runs the full
+  suite through the local runner and reports PASS only for a completed, clean
+  64-bit run with every expected case and zero failures.
+  `tools/Certify-TimerRollback.cmd` adds a negative control in which only
+  case 86 may fail (#115, #31).
+
+- Added supervised local launchers for measurement-example certification with
+  a captured JSON transcript (`tools/Certify-MeasurementExamples.cmd`),
+  copy-only workbook VBA synchronization
+  (`tools/Sync-PerformanceManager-VBA.cmd`) and VBA export manifests
+  (`tools/Export-PerformanceManager-VBA.cmd`) (#138).
+
+- Added Dependabot for the pinned actions and the hash-locked Python
+  requirements, an OpenSSF Scorecard workflow for the default branch, and a
+  Markdown link check. A 19th static check resolves relative links and
+  anchors on every change, and a weekly workflow requests the external links
+  (#85).
+
+- Added six release-state checks: release changelog sections and comparison
+  links agree with the tags, README current-release claims agree with the
+  latest tag, the wiki input matches its pinned revision, the wiki badges
+  agree with the tags, and the current-status blocks agree with release
+  evidence. Checking never fetches the live wiki;
+  `tools/release_state.py --fetch-wiki` prepares the pinned revision. Root
+  `VERSION` joins the version-stamp check. The static gate now has 31 checks
+  (#50).
+
+- Added coverage of Pause method 3's coarse `Application.Wait` loop:
+  regression case 21, "Pause method 3", now also requests 2.5 seconds, which
+  enters that loop on a quiet host, and checks the pause against an independent
+  QPC measurement (2.45 to 2.75 seconds). The case count is unchanged; the case
+  has one more assertion (#74).
 
 ### Changed
 
@@ -167,16 +211,6 @@ Use only the categories needed by a release.
   security updates, and private vulnerability reporting. Labels are kept as data in `tools/labels.json`,
   with a sync workflow that creates and updates them (never deletes) and a
   weekly drift check. A workflow removes milestones from pull requests (#86).
-- `tools/Invoke-ExcelRegression.ps1` runs the regression suite in desktop Excel
-  from an exact, clean checkout: it imports the components into a new
-  workbook, compiles, runs the suite, reads each case from the log worksheet
-  and closes Excel without saving. Its JSON record carries a `result` in the
-  v1.4.0 execution-result schema. An optional red check replaces one component
-  and expects exactly one named case to fail. `AccessVBOM` is enabled only with
-  `-AllowVbomAccess`, for the current user and the run, and restored on every
-  path. `tools/test_excel_runner.py` keeps the runner in step with the
-  regression module, the README import order and the frozen schema. This is a
-  local, maintainer-run first step towards the automated gate (#11).
 - `tools/repository_settings.py` now manages Dependabot security updates
   through their own endpoint (`/automated-security-fixes`), after
   vulnerability alerts, and reads them from it. It falls back to
@@ -208,18 +242,14 @@ Use only the categories needed by a release.
   statements. The change is whitespace only; every string literal and comment
   is unchanged (#83).
 - The README's version, regression and static-check facts are rendered into
-  marked blocks by `tools/readme_facts.py`, and a static check (now the 25th) fails when
-  a block is stale. Source-derived facts (`VERSION`, the regression case
-  count, the gate's check list in `tools/gate_checks.py`) are kept apart from
+  marked blocks by `tools/readme_facts.py`, and a static check, "README facts
+  match their sources", fails when a block is stale. Source-derived facts
+  (`VERSION`, the regression case count, the gate's check list in
+  `tools/gate_checks.py`) are kept apart from
   certified, tag-bound evidence, which lives in `tools/certified-evidence.json`
   and is never rewritten by the renderer. The regression badge now names the
   tag it certifies, and the static-check badge, which still said 16, is
   derived (#89).
-- Added Dependabot for the pinned actions and the hash-locked Python
-  requirements, an OpenSSF Scorecard workflow for the default branch, and a
-  Markdown link check. A 19th static check resolves relative links and
-  anchors on every change, and a weekly workflow requests the external links
-  (#85).
 - Tracked binary files must be reviewed: an 18th static check accepts a
   binary (`text` unset in `.gitattributes`, or a NUL byte) only as a UserForm
   `.frx` beside its `.frm` or through an entry in `tools/binary-allowlist.json`
@@ -228,8 +258,8 @@ Use only the categories needed by a release.
   images are allowlisted (#84).
 - The static checks now cover every tracked VBA export under `src/`, `test/`
   and `demo/`, read from `git ls-files`, instead of a hand-kept file list, so
-  a new component cannot escape them. A 17th check, "tracked VBA components
-  are inventoried", fails on an export outside those directories, a missing
+  a new component cannot escape them. A check, "tracked VBA components are
+  inventoried", fails on an export outside those directories, a missing
   role file, or a release-provenance hash list that differs from the tracked
   components. The error-source check reads each component's `VB_Name` (#82).
 - The Python tooling is held to Ruff and strict mypy (`pyproject.toml`), and
@@ -243,11 +273,17 @@ Use only the categories needed by a release.
 - Hardened the workflows. Actions are pinned to their current releases
   (checkout v7.0.1, setup-python v7.1.0, upload-artifact v7.0.2), Python is
   pinned once in `.python-version`, and every job runs on a fixed
-  `ubuntu-24.04` image with a timeout. Checkouts drop credentials, and only
-  the label job may write. A non-required job reruns the tools on the
-  documented Python 3.11 floor. `tools/test_workflow_controls.py` enforces
-  these rules, with PyYAML installed from the hash-locked
-  `tools/requirements-ci.txt` (#80).
+  `ubuntu-24.04` image with a timeout. Checkouts drop credentials, and write
+  permissions are granted per job, only where needed (now the label-sync,
+  pull-request milestone and Scorecard jobs). A non-required job reruns the
+  tools on the documented Python 3.11 floor.
+  `tools/test_workflow_controls.py` enforces these rules, with PyYAML
+  installed from the hash-locked `tools/requirements-ci.txt` (#80).
+- Release provenance generation is strict and fails closed: the flags the
+  release procedure needs are required, every input is validated before any
+  Markdown or JSON is emitted, and there is no preview mode. A static check,
+  "release provenance strict fixtures", runs the tool's fixture matrix.
+  Provenance tool 2.0.0 (#51).
 - Release provenance no longer trusts `git status` alone to prove that tracked
   files are unmodified. It rejects `assume-unchanged` and `skip-worktree`
   index flags, naming the command that clears each, and re-hashes every file
@@ -255,11 +291,6 @@ Use only the categories needed by a release.
   blob. Entries it cannot verify fail closed. Provenance tool 2.2.0 (#71).
 - Hardened release provenance against residual identity/output edge cases: requested JSON is committed before publishable Markdown, documented SemVer pre-releases are accepted, release tags must be annotated, manifest output cannot alias protected inputs, and the requested version must match the tagged repository `VERSION` (#63).
 - Hardened compile-safety assignment analysis for object modules: Property Let/Set names are module-scoped assignable symbols and UserForm `.frm` exports no longer leak public members into standard-module scope. The deterministic compile-safety matrix is now 47 fixtures without adding a top-level static check (#64).
-- Pinned all workflow actions to immutable commits and upgraded
-  `actions/github-script` from v7 to v9.0.0 (#46).
-- Label color synchronization now reads the complete paginated label
-  inventory first and, if any declared label is missing, reports the full sorted
-  set and fails without changing any color. Labels are never auto-created (#46).
 - Clarified changelog maintenance, release headings and comparison-link policy;
   the previously introduced policy is now recorded in the unreleased ledger.
 - Required a fresh workbook build, packaged test and hash after a merge changes
@@ -304,10 +335,6 @@ Use only the categories needed by a release.
   and a message naming the supported maximum. Regression case 93 covers the
   bound and the former overflow.
 
-- Add supervised local launchers for measurement-example certification with a
-  captured JSON transcript, copy-only workbook VBA synchronization, and VBA
-  export manifests (#138).
-
 - Measurement usage examples now report failed reads and rejected samples, and
   withhold statistics, speedup and baseline conclusions when either count is
   nonzero (#77).
@@ -324,8 +351,9 @@ Use only the categories needed by a release.
   without armed internal test seams is unchanged.
 
 
-- Release-state gates bind changelog links, current-release claims and the wiki
-  to explicit revisions; root VERSION participates in source consistency (#50).
+- A red check of the local Excel runner now succeeds only when the red run's
+  Excel cleanup also completed. A red run whose Excel process had to be
+  forced to stop could previously be reported as expected (#112).
 
 - Markdown heading anchors retain inline-code text, including duplicate and
   Setext headings, while link extraction still excludes code spans (#108).

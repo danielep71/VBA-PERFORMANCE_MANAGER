@@ -9,12 +9,18 @@ attention. They are not an unattended runner with a hard timeout (#156).
 | Double-click launcher | Result |
 | --- | --- |
 | `Certify-PerformanceManager.cmd` | Existing full core regression, compile and JSON evidence. |
+| `Certify-TimerRollback.cmd` | Core regression plus a negative control with the timer-period rollback disabled, in which only case 86 may fail. |
 | `Certify-MeasurementExamples.cmd` | Core regression plus clean import/compile of the usage module and execution of all four measurement examples; JSON includes their output. |
 | `Sync-PerformanceManager-VBA.cmd` | Select an `.xlsm`; create a new copy outside the checkout, replace the six managed modules, compile, save and reopen to verify code readback. |
 | `Export-PerformanceManager-VBA.cmd` | Select an `.xlsm`; read all VBA components into a fresh directory with a SHA-256 manifest, without modifying the workbook. |
 
 Each launcher opens its output folder. Send the JSON/manifest for review.
 A failure keeps diagnostic output; do not distribute an incomplete sync copy.
+[Excel certification with a double click](EXCEL_CERTIFICATION.md) describes the
+two certification launchers step by step. To run several commits in one pass,
+use `tools/Invoke-ExcelBatch.ps1` with a JSON manifest
+(`tools/excel-batch.example.json`); see the README's
+[Regression testing](../README.md#regression-testing) section.
 
 ## Certifying the examples
 
