@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 88    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 92    'Total number of executed regression cases
 
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -695,6 +695,26 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: validation disarms worker faults"
         Test_Measure_ValidationDisarmsWorkerFaults
+
+    'Validate QPC alignment-loop read failure and spin-guard timeout (#44)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "QPC alignment loop failure and timeout"
+        Test_AlignLoop_QpcInjection
+
+    'Validate method-4 alignment-loop read failure and spin-guard timeout (#44)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Method-4 alignment loop failure and timeout"
+        Test_AlignLoop_SystemTimeInjection
+
+    'Validate ElapsedTime across and beyond the Long boundary (#30)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "ElapsedTime large durations"
+        Test_ElapsedTime_LargeDurations
+
+    'Validate TW instance keys across the Long boundary and at exhaustion (#35)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW instance keys beyond the Long boundary"
+        Test_TW_KeySeed_Boundaries
 
     'Validate the fallback action of demo buttons built without one (#73)
         CurrentStep = CurrentStep + 1
@@ -2544,6 +2564,108 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_ElapsedTime_FormatExistingSeconds"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+
+Private Sub Test_ElapsedTime_LargeDurations()
+'
+'==============================================================================
+'                     TEST ELAPSED TIME LARGE DURATIONS
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that ElapsedTime formats durations at and beyond the Long
+'   boundary exactly, clamps above its documented domain, and keeps its
+'   negative clamp and 24-hour-free decomposition (#30)
+'
+' WHY THIS EXISTS
+'   Whole seconds used to be narrowed with CLng(Fix(Sec)), so any supplied
+'   value above 2,147,483,647 seconds raised a VBA overflow instead of being
+'   formatted. Expected strings were computed independently with exact
+'   integer arithmetic
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-10
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Zeros           As String                 'Sub-second text for whole values
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "ElapsedTime formats durations across the Long boundary"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Formatting a supplied value needs no timing session
+        Set cPM = New cPerformanceManager
+        Zeros = " - 000 milliseconds - 000 microseconds - 000 nanoseconds"
+
+'------------------------------------------------------------------------------
+' AROUND THE LONG BOUNDARY
+'------------------------------------------------------------------------------
+    'The largest whole Long, with a half second that must survive
+        Test_Assert_EqualString _
+            "596523:14:07 - 500 milliseconds - 000 microseconds - 000 nanoseconds", _
+            cPM.ElapsedTime(, 2147483647.5), _
+            "2,147,483,647.5 s formats exactly"
+    'One second past it used to raise an overflow
+        Test_Assert_EqualString "596523:14:08" & Zeros, cPM.ElapsedTime(, 2147483648#), _
+                                "2,147,483,648 s formats without overflow"
+
+'------------------------------------------------------------------------------
+' FAR ABOVE IT, UP TO AND BEYOND THE DOMAIN LIMIT
+'------------------------------------------------------------------------------
+        Test_Assert_EqualString "277777777:46:40" & Zeros, cPM.ElapsedTime(, 1000000000000#), _
+                                "1E+12 s formats exactly"
+        Test_Assert_EqualString "277777777777:46:40" & Zeros, cPM.ElapsedTime(, 1E+15), _
+                                "1E+15 s, the domain limit, formats exactly"
+        Test_Assert_EqualString "277777777777:46:40" & Zeros, cPM.ElapsedTime(, 1E+16), _
+                                "Values above 1E+15 s are clamped to the domain limit"
+
+'------------------------------------------------------------------------------
+' EXISTING POLICIES ARE UNCHANGED
+'------------------------------------------------------------------------------
+        Test_Assert_EqualString "25:00:00" & Zeros, cPM.ElapsedTime(, 90000#), _
+                                "Hours do not wrap at 24"
+        Test_Assert_EqualString "0:00:00" & Zeros, cPM.ElapsedTime(, -5#), _
+                                "Negative values are still clamped to zero"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release the instance on a best-effort basis
+        On Error Resume Next
+        If Not cPM Is Nothing Then
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_ElapsedTime_LargeDurations"
     'Continue through centralized cleanup
         Resume CleanExit
 
@@ -7663,9 +7785,9 @@ Private Sub Test_FaultInject_QpcStartFailure_Strict()
 '   QPC_TryGetNextTick, a different function with its own early exit, so the
 '   unaligned assertions do not speak for it.
 '
-'   Scope boundary: only the initial tick read is forced to fail. The seam is
-'   one-shot, so the loop's second read and the spin-guard timeout are not
-'   reachable from here and remain outside this case.
+'   Scope boundary: only the initial tick read is forced to fail (#2). The
+'   loop's later read and the spin-guard timeout are covered by
+'   Test_AlignLoop_QpcInjection and Test_AlignLoop_SystemTimeInjection (#44).
 '
 '   StartTimer is transactional. A failed start capture must not disturb state
 '   the caller may still be relying on. Without fault injection this contract
@@ -7860,9 +7982,9 @@ Private Sub Test_FaultInject_QpcStartFailure_NonStrict()
 '   QPC_TryGetNextTick, a different function with its own early exit, so the
 '   unaligned assertions do not speak for it.
 '
-'   Scope boundary: only the initial tick read is forced to fail. The seam is
-'   one-shot, so the loop's second read and the spin-guard timeout are not
-'   reachable from here and remain outside this case.
+'   Scope boundary: only the initial tick read is forced to fail (#2). The
+'   loop's later read and the spin-guard timeout are covered by
+'   Test_AlignLoop_QpcInjection and Test_AlignLoop_SystemTimeInjection (#44).
 '
 ' INPUTS
 '   None
@@ -12667,6 +12789,375 @@ CleanFail:
 '------------------------------------------------------------------------------
         RecordUnexpectedError "Test_Measure_ValidationDisarmsWorkerFaults"
         Resume CleanExit
+End Sub
+
+
+Private Sub Test_AlignLoop_QpcInjection()
+'
+'==============================================================================
+'                     TEST ALIGN LOOP QPC INJECTION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates the QPC next-tick alignment branches that follow a successful
+'   initial read: a failed loop read and an exhausted spin guard, each in
+'   strict and non-strict mode (#44)
+'
+' WHY THIS EXISTS
+'   The initial-read failure is covered by the #2 fault-injection cases. The
+'   later branches were unreachable until the one-shot loop-read and timeout
+'   seams existed
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+    'Start the regression case
+        Case_Begin "QPC alignment: loop-read failure and spin-guard timeout, strict and non-strict"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+
+    'Loop-read failure: strict raises the read error; non-strict falls back to method 2
+        AlignInjection_Check cPM_MethodQPC, True, True, ERR_CPM_QPC_READ_FAILED, vbNullString, _
+                             cPM_MethodQPC, cPM_ReadOK, "QPC loop-read failure, strict"
+        AlignInjection_Check cPM_MethodQPC, True, False, 0, vbNullString, _
+                             cPM_MethodTickCount, cPM_ReadFallbackToMethod2, _
+                             "QPC loop-read failure, non-strict"
+    'Timeout: strict raises from the QPC helper; non-strict keeps the valid initial tick
+        AlignInjection_Check cPM_MethodQPC, False, True, ERR_CPM_ALIGN_TICK_TIMEOUT, _
+                             "cPerformanceManager.QPC_TryGetNextTick", _
+                             cPM_MethodQPC, cPM_ReadOK, "QPC timeout, strict"
+        AlignInjection_Check cPM_MethodQPC, False, False, 0, vbNullString, _
+                             cPM_MethodQPC, cPM_ReadOK, "QPC timeout, non-strict"
+
+CleanExit:
+    'Finalize the current case
+        Case_Finalize
+    Exit Sub
+
+CleanFail:
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_AlignLoop_QpcInjection"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+
+Private Sub Test_AlignLoop_SystemTimeInjection()
+'
+'==============================================================================
+'                 TEST ALIGN LOOP SYSTEM TIME INJECTION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates the method-4 (timeGetSystemTime) next-tick alignment branches
+'   that follow a successful initial read: a failed loop read and an exhausted
+'   spin guard, each in strict and non-strict mode (#44)
+'
+' WHY THIS EXISTS
+'   As for QPC: the initial-read failure is covered by #2, and the later
+'   branches need the one-shot loop-read and timeout seams
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+    'Start the regression case
+        Case_Begin "Method-4 alignment: loop-read failure and spin-guard timeout, strict and non-strict"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+
+    'Loop-read failure: strict raises the read error; non-strict falls back to method 2
+        AlignInjection_Check cPM_MethodSystemTime, True, True, ERR_CPM_TIMEGETSYSTEMTIME_FAILED, _
+                             vbNullString, cPM_MethodSystemTime, cPM_ReadOK, _
+                             "Method-4 loop-read failure, strict"
+        AlignInjection_Check cPM_MethodSystemTime, True, False, 0, vbNullString, _
+                             cPM_MethodTickCount, cPM_ReadFallbackToMethod2, _
+                             "Method-4 loop-read failure, non-strict"
+    'Timeout: strict raises from the generic helper; non-strict settles on a current timestamp
+        AlignInjection_Check cPM_MethodSystemTime, False, True, ERR_CPM_ALIGN_TICK_TIMEOUT, _
+                             "cPerformanceManager.Timestamp_TryGetNextSeconds", _
+                             cPM_MethodSystemTime, cPM_ReadOK, "Method-4 timeout, strict"
+        AlignInjection_Check cPM_MethodSystemTime, False, False, 0, vbNullString, _
+                             cPM_MethodSystemTime, cPM_ReadOK, "Method-4 timeout, non-strict"
+
+CleanExit:
+    'Finalize the current case
+        Case_Finalize
+    Exit Sub
+
+CleanFail:
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_AlignLoop_SystemTimeInjection"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+
+Private Sub AlignInjection_Check( _
+    ByVal Method As cPM_TimerMethod, _
+    ByVal InjectLoopRead As Boolean, _
+    ByVal StrictRun As Boolean, _
+    ByVal ExpectedNumber As Long, _
+    ByVal ExpectedSource As String, _
+    ByVal ExpectedMethod As cPM_TimerMethod, _
+    ByVal ExpectedStatus As cPM_ReadStatus, _
+    ByVal Context As String)
+'
+'==============================================================================
+'                         ALIGN INJECTION CHECK
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Runs one injected aligned start against a protected session and asserts the
+'   outcome, then proves every seam self-cleared (#44)
+'
+' WHY THIS EXISTS
+'   The eight QPC and method-4 scenarios share one contract. Named without the
+'   Test_ prefix, so the case-wiring check does not count it as a case
+'
+' INPUTS
+'   Method          Backend of the injected aligned start
+'   InjectLoopRead  TRUE => fail the first loop read; FALSE => force a timeout
+'   StrictRun       Strict mode of the injected start
+'   ExpectedNumber  Strict only: the error the start must raise
+'   ExpectedSource  Strict only: the error source, or blank to skip that check
+'   ExpectedMethod  Non-strict only: the backend the new session binds
+'   ExpectedStatus  Non-strict only: the LastReadStatus it publishes
+'   Context         Prefix for assertion messages
+'
+' RETURNS
+'   None. Unexpected errors propagate to the calling case.
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim T1Before        As Double                 'Start of the protected session
+    Dim RaisedNumber    As Long                   'Error number of the injected start
+    Dim RaisedSource    As String                 'Error source of the injected start
+    Dim RaisedText      As String                 'Error description of the injected start
+
+'------------------------------------------------------------------------------
+' COMMIT A SESSION TO PROTECT
+'------------------------------------------------------------------------------
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = True
+        cPM.StartTimer cPM_MethodTickCount, False, "Protected"
+        T1Before = cPM.T1
+
+'------------------------------------------------------------------------------
+' INJECT AND START
+'------------------------------------------------------------------------------
+        cPM.StrictMode = StrictRun
+        If InjectLoopRead Then
+            cPM.Test_ForceNextAlignmentLoopReadFailure
+        Else
+            cPM.Test_ForceNextAlignmentTimeout
+        End If
+        On Error Resume Next
+        cPM.StartTimer Method, True, "Injected"
+        RaisedNumber = Err.Number
+        RaisedSource = Err.Source
+        RaisedText = Err.Description
+        Err.Clear
+        On Error GoTo 0
+
+'------------------------------------------------------------------------------
+' ASSERT THE OUTCOME
+'------------------------------------------------------------------------------
+        If StrictRun Then
+            Test_Assert_EqualLong ExpectedNumber, RaisedNumber, Context & ": raises the expected error"
+            If Len(ExpectedSource) > 0 Then
+                Test_Assert_EqualString ExpectedSource, RaisedSource, _
+                                        Context & ": the error names the helper that timed out"
+                Test_Assert_ContainsString RaisedText, "spin guard", _
+                                           Context & ": the description names the spin guard"
+            End If
+            'The previous session survives, so no failed or sentinel start was committed
+            Test_Assert_EqualBoolean True, cPM.HasActiveSession, Context & ": the previous session is active"
+            Test_Assert_EqualLong CLng(cPM_MethodTickCount), CLng(cPM.ActiveMethodID), _
+                                  Context & ": the previous backend binding is unchanged"
+            Test_Assert_ApproxDouble T1Before, cPM.T1, 0.000000001, Context & ": the previous start is unchanged"
+            Test_Assert_EqualString "Protected", cPM.RunLabel, Context & ": the previous run label is unchanged"
+        Else
+            Test_Assert_EqualLong 0, RaisedNumber, Context & ": does not raise"
+            Test_Assert_EqualLong CLng(ExpectedMethod), CLng(cPM.ActiveMethodID), _
+                                  Context & ": binds the documented backend"
+            Test_Assert_EqualLong CLng(ExpectedStatus), CLng(cPM.LastReadStatus), _
+                                  Context & ": publishes the documented status"
+            Test_Assert_EqualString "Injected", cPM.RunLabel, Context & ": commits the new session"
+            Test_Assert_True cPM.T1 > 0#, Context & ": commits a real start timestamp, not a sentinel"
+        End If
+
+'------------------------------------------------------------------------------
+' EVERY SEAM SELF-CLEARED
+'------------------------------------------------------------------------------
+        cPM.StrictMode = True
+        cPM.StartTimer Method, True, "Ordinary"
+        Test_Assert_EqualLong CLng(Method), CLng(cPM.ActiveMethodID), _
+                              Context & ": an ordinary aligned start binds its backend afterwards"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
+                              Context & ": an ordinary aligned start reads cleanly afterwards"
+
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+        cPM.ResetEnvironment
+        Set cPM = Nothing
+
+End Sub
+
+
+Private Sub Test_TW_KeySeed_Boundaries()
+'
+'==============================================================================
+'                       TEST TW KEY SEED BOUNDARIES
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that shared TW instance keys keep their format past the Long
+'   boundary, stay distinct for live registrations, are not rewound by
+'   PM_TW_EndAllSessions, and fail explicitly when the key space is exhausted
+'   (#35)
+'
+' WHY THIS EXISTS
+'   The key seed was a Long, so the key after 2,147,483,647 raised an
+'   unhandled overflow. The boundary lies billions of keys away, so the seed
+'   is positioned with PM_TW_Test_SetKeySeed
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-10
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM_A           As cPerformanceManager    'First instance keyed past the boundary
+    Dim cPM_B           As cPerformanceManager    'Second instance keyed past the boundary
+    Dim PreviousSeed    As Double                 'Seed to restore after the case
+    Dim SeedReplaced    As Boolean                'TRUE once the seed was positioned
+    Dim KeyText         As String                 'Key issued by the manager
+    Dim RaisedNumber    As Long                   'Error number raised at exhaustion
+    Dim RaisedSource    As String                 'Error source raised at exhaustion
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "TW instance keys continue past the Long boundary and fail explicitly at exhaustion"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Start from a clean shared baseline
+        PM_TW_EndAllSessions
+    'Position the seed one below the largest Long
+        PreviousSeed = PM_TW_Test_SetKeySeed(2147483646#)
+        SeedReplaced = True
+
+'------------------------------------------------------------------------------
+' KEYS ACROSS THE LONG BOUNDARY
+'------------------------------------------------------------------------------
+        Test_Assert_EqualString "cPM#2147483647", PM_TW_NewInstanceKey(), _
+                                "The largest Long seed issues its key in the usual format"
+        Test_Assert_EqualString "cPM#2147483648", PM_TW_NewInstanceKey(), _
+                                "Key issuance continues past the Long boundary"
+
+    'Two instances keyed past the boundary register as distinct sessions
+        Set cPM_A = New cPerformanceManager
+        cPM_A.StrictMode = False
+        cPM_A.TW_Turn_OFF
+        Set cPM_B = New cPerformanceManager
+        cPM_B.StrictMode = False
+        cPM_B.TW_Turn_OFF
+        Test_Assert_EqualLong 2, PM_TW_ActiveCount(), _
+                              "Instances keyed past the boundary register separately"
+        cPM_B.TW_Turn_ON
+        cPM_A.TW_Turn_ON
+        Test_Assert_EqualLong 0, PM_TW_ActiveCount(), _
+                              "Both sessions end cleanly"
+
+'------------------------------------------------------------------------------
+' EMERGENCY RECOVERY DOES NOT REWIND THE SEED
+'------------------------------------------------------------------------------
+    'The two instances took 2,147,483,649 and 2,147,483,650
+        PM_TW_EndAllSessions
+        Test_Assert_EqualString "cPM#2147483651", PM_TW_NewInstanceKey(), _
+                                "PM_TW_EndAllSessions does not rewind the key seed"
+
+'------------------------------------------------------------------------------
+' EXHAUSTION IS EXPLICIT
+'------------------------------------------------------------------------------
+    'The last key of the space is still issued in full digits
+        PM_TW_Test_SetKeySeed 999999999999999#
+        Test_Assert_EqualString "cPM#1000000000000000", PM_TW_NewInstanceKey(), _
+                                "The last key of the space is issued in full digits"
+
+    'The next request is refused with a named error, not an overflow
+        RaisedNumber = 0
+        RaisedSource = vbNullString
+        On Error Resume Next
+        KeyText = PM_TW_NewInstanceKey()
+        RaisedNumber = Err.Number
+        RaisedSource = Err.Source
+        Err.Clear
+        On Error GoTo CleanFail
+        Test_Assert_EqualLong CLng(ERR_TW_KEY_SPACE_EXHAUSTED), RaisedNumber, _
+                              "An exhausted key space raises ERR_TW_KEY_SPACE_EXHAUSTED"
+        Test_Assert_EqualString "M_cPM_TimeWasters.PM_TW_NewInstanceKey", RaisedSource, _
+                                "The exhaustion error names the issuing routine"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release the instances, then restore the seed: no key issued here is live
+        On Error Resume Next
+        If Not cPM_A Is Nothing Then
+            cPM_A.ResetEnvironment
+            Set cPM_A = Nothing
+        End If
+        If Not cPM_B Is Nothing Then
+            cPM_B.ResetEnvironment
+            Set cPM_B = Nothing
+        End If
+        PM_TW_EndAllSessions
+        If SeedReplaced Then PM_TW_Test_SetKeySeed PreviousSeed
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_TW_KeySeed_Boundaries"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
 End Sub
 
 
