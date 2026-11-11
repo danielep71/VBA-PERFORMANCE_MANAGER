@@ -389,6 +389,11 @@ Attribute VB_Exposed = False
     'Finite-loop guard for tick-alignment polling
         Private Const CPM_ALIGN_MAX_SPINS               As Long = 1000000
 
+    'Largest timing magnitude, in seconds, that this class formats exactly
+    '(about 31.7 million years). Every whole second up to it is an exact
+    'Double, so decomposing it never loses a second (#30)
+        Private Const CPM_MAX_TIMING_SECONDS            As Double = 1E+15
+
     'Error numbers raised by this class.
     '
     'Public so callers can trap a specific condition by name rather than by a
@@ -527,6 +532,9 @@ Attribute VB_Exposed = False
         'One-shot forced exhaustion of the next next-tick alignment spin guard,
         'shared by every aligned-start helper (#31, #44)
         Private m_TestForceNextAlignTimeout As Boolean
+        'One-shot forced failure of the first read inside the next next-tick
+        'alignment loop, after its initial read has succeeded (#44)
+        Private m_TestForceNextAlignLoopReadFailure As Boolean
         'Measured-cycle worker seams. Start and endpoint are counted separately
         'because they arm at different moments and prove different things: a
         'start failure produces a fallback the harness must reject, an endpoint
@@ -1183,6 +1191,12 @@ Public Function ElapsedTime( _
 '     nanosecond display groups
 '   - Formats the whole-second duration manually so hours do not wrap at 24
 '
+' SUPPORTED DOMAIN
+'   0 to CPM_MAX_TIMING_SECONDS (1E+15 seconds, about 31.7 million years),
+'   formatted exactly with no Long arithmetic. Negative values are clamped to
+'   0 and larger values to 1E+15, so every Double input formats without an
+'   overflow error (#30)
+'
 ' ERROR POLICY
 '   Delegates timer/session validation to ElapsedSeconds() when measurement is
 '   requested
@@ -1194,22 +1208,25 @@ Public Function ElapsedTime( _
 '   - Nanosecond output is presentation precision only and does not imply actual
 '     measurement resolution
 '   - When ElapsedSecondsIn is supplied, no new timing sample is taken
+'   - Whole seconds and hours are Doubles. A Long would overflow above
+'     2,147,483,647 seconds (about 68 years)
 '
 ' UPDATED
-'   2026-08-15
+'   2026-11-10
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim Sec         As Double   'Elapsed seconds to format
-    Dim WholeS      As Long     'Whole seconds component (floor)
+    Dim WholeS      As Double   'Whole seconds component (floor)
+    Dim RestS       As Double   'Whole seconds within the last hour, 0 to 3599
     Dim Frac        As Double   'Fractional seconds component in [0,1)
     Dim NS_Total    As Long     'Fractional part scaled to nanoseconds
     Dim Ms          As Long     'Milliseconds component
     Dim Us          As Long     'Microseconds component
     Dim NN          As Long     'Nanoseconds component
-    Dim Hours       As Long     'Whole hours in the elapsed duration
+    Dim Hours       As Double   'Whole hours in the elapsed duration
     Dim Minutes     As Long     'Minute component
     Dim Seconds     As Long     'Second component
     Dim sMS         As String   'Zero-padded milliseconds text
@@ -1232,13 +1249,15 @@ Public Function ElapsedTime( _
 '------------------------------------------------------------------------------
     'Defensively clamp negative elapsed values
         If Sec < 0# Then Sec = 0#
+    'Clamp beyond the supported domain, where whole seconds stop being exact
+        If Sec > CPM_MAX_TIMING_SECONDS Then Sec = CPM_MAX_TIMING_SECONDS
 
 '------------------------------------------------------------------------------
 ' SPLIT WHOLE / FRACTIONAL SECONDS
 '------------------------------------------------------------------------------
-    'Extract whole seconds and the fractional remainder
-        WholeS = CLng(Fix(Sec))
-        Frac = Sec - CDbl(WholeS)
+    'Extract whole seconds and the fractional remainder, without narrowing
+        WholeS = Fix(Sec)
+        Frac = Sec - WholeS
     'Defensive clamp for negative fractional jitter
         If Frac < 0# Then Frac = 0#
 
@@ -1263,10 +1282,20 @@ Public Function ElapsedTime( _
 '------------------------------------------------------------------------------
 ' DECOMPOSE WHOLE-SECOND DURATION
 '------------------------------------------------------------------------------
-    'Compute duration hours/minutes/seconds without 24-hour wraparound
-        Hours = WholeS \ 3600
-        Minutes = (WholeS \ 60) Mod 60
-        Seconds = WholeS Mod 60
+    'Compute duration hours/minutes/seconds without 24-hour wraparound. The
+    'integer operators \ and Mod would narrow to Long, so Double arithmetic
+    'is used and the quotient corrected if the division rounded across an hour
+        Hours = Fix(WholeS / 3600#)
+        RestS = WholeS - Hours * 3600#
+        If RestS < 0# Then
+            Hours = Hours - 1#
+            RestS = RestS + 3600#
+        ElseIf RestS >= 3600# Then
+            Hours = Hours + 1#
+            RestS = RestS - 3600#
+        End If
+        Minutes = CLng(Fix(RestS / 60#))
+        Seconds = CLng(RestS - 60# * Minutes)
 
 '------------------------------------------------------------------------------
 ' FORMAT COMPONENTS
@@ -1280,7 +1309,7 @@ Public Function ElapsedTime( _
 ' ASSIGN RESULT
 '------------------------------------------------------------------------------
     'Return the final formatted duration string
-        ElapsedTime = CStr(Hours) & ":" & _
+        ElapsedTime = Format$(Hours, "0") & ":" & _
                       Right$("00" & CStr(Minutes), 2) & ":" & _
                       Right$("00" & CStr(Seconds), 2) & " - " & _
                       sMS & " milliseconds - " & _
@@ -4345,6 +4374,7 @@ Private Function Timestamp_TryGetNextSeconds( _
                     Exit Function
                 End If
                 If Align_TestTimeoutArmed() Then GoTo SpinGuardExhausted
+                If Align_TestLoopReadFailureArmed() Then m_TestFailNextSystemTimeRead = True
 
                 Do
                     SpinCount = SpinCount + 1
@@ -4428,6 +4458,42 @@ Private Function Align_TestTimeoutArmed() As Boolean
 End Function
 
 
+Private Function Align_TestLoopReadFailureArmed() As Boolean
+'
+'==============================================================================
+'                    ALIGN TEST LOOP READ FAILURE ARMED
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Consumes the one-shot forced loop-read failure armed by the regression
+'   suite.
+'
+' WHY THIS EXISTS
+'   The existing read seams fail the next native read, which in an aligned
+'   start is the initial read. A read that fails later, inside the alignment
+'   loop, takes a different branch that no seam could reach (#44). The QPC and
+'   method-4 helpers call this right after their initial read; when it returns
+'   TRUE they arm their backend's one-shot read failure, so exactly the first
+'   loop read fails.
+'
+' RETURNS
+'   TRUE once after Test_ForceNextAlignmentLoopReadFailure, then FALSE.
+'
+' NOTES
+'   Production behaviour is unchanged: only the test-only seam sets the flag.
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+    'Consume the one-shot flag
+        If m_TestForceNextAlignLoopReadFailure Then
+            m_TestForceNextAlignLoopReadFailure = False
+            Align_TestLoopReadFailureArmed = True
+        End If
+
+End Function
+
+
 Private Function QPC_TryGetNextTick( _
     ByRef TickOut As Currency) _
     As Boolean
@@ -4485,6 +4551,7 @@ Private Function QPC_TryGetNextTick( _
 '------------------------------------------------------------------------------
     'Spin until the counter advances strictly beyond the initial read
         If Align_TestTimeoutArmed() Then GoTo SpinGuardExhausted
+        If Align_TestLoopReadFailureArmed() Then m_TestFailNextQpcRead = True
         Do
             SpinCount = SpinCount + 1
 
@@ -6621,7 +6688,14 @@ Private Sub Stats_RequireSamples( _
 '   Every statistics routine needs the same guard, so it lives here once.
 '
 ' SUPPORTED DOMAIN
-'   Finite, non-negative timing observations.
+'   Non-negative timing observations up to CPM_MAX_TIMING_SECONDS (1E+15
+'   seconds, about 31.7 million years).
+'
+'   The bound is what makes every public Stats_* routine safe without special
+'   arithmetic: a sum of n accepted values stays below n * 1E+15, a squared
+'   deviation below 1E+30, and a midpoint below 1E+15, all far from Double
+'   overflow. A larger value used to pass validation and could overflow
+'   Stats_StdDev (#32).
 '
 '   The statistics exist to describe elapsed times, which cannot be negative.
 '   A negative value means the vector is not a timing vector, and every figure
@@ -6643,8 +6717,10 @@ Private Sub Stats_RequireSamples( _
 '
 ' ERROR POLICY
 '   - Raises ERR_CPM_STATS_NO_SAMPLES on an empty or uninitialized vector
-'   - Raises ERR_CPM_STATS_OUT_OF_DOMAIN on a negative or non-finite value,
-'     naming the offending index and value
+'   - Raises ERR_CPM_STATS_OUT_OF_DOMAIN on NaN, a negative value or a value
+'     above CPM_MAX_TIMING_SECONDS, naming the offending index and value.
+'     Infinity is rejected as above the maximum; a large finite value is
+'     never described as non-finite
 '
 ' DEPENDENCIES
 '   - Stats_Count
@@ -6655,14 +6731,13 @@ Private Sub Stats_RequireSamples( _
 '   number in the thousands at most, that cost is not worth optimizing away with
 '   a validity cache that could go stale.
 '
-'   The non-finite test is a proxy rather than a rigorous IEEE classification.
 '   VBA raises on arithmetic overflow instead of producing infinities, and offers
 '   no IsFinite, so NaN and Inf can only arrive through deliberate construction
-'   or an API round-trip. The check costs nothing inside a scan that is already
-'   happening, and is worth having for that reason alone.
+'   or an API round-trip. NaN is caught by the self-inequality test; infinity
+'   is caught by the upper bound.
 '
 ' UPDATED
-'   2026-08-16
+'   2026-11-11
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -6704,12 +6779,13 @@ Private Sub Stats_RequireSamples( _
                               "Statistics accept finite, non-negative timing observations."
                 End If
 
-            'Proxy for infinity: no real elapsed time approaches this magnitude
-                If v > 1E+300 Then
+            'Above the supported timing magnitude (this also rejects infinity)
+                If v > CPM_MAX_TIMING_SECONDS Then
                     Err.Raise ERR_CPM_STATS_OUT_OF_DOMAIN, _
                               "cPerformanceManager." & SourceProc, _
-                              "Sample " & CStr(i) & " is not finite. Statistics " & _
-                              "accept finite, non-negative timing observations."
+                              "Sample " & CStr(i) & " (" & CStr(v) & ") exceeds the " & _
+                              "supported maximum of 1E+15 seconds. Statistics accept " & _
+                              "non-negative timing observations up to that bound."
                 End If
         Next i
 
@@ -7811,6 +7887,48 @@ Friend Sub Test_ForceNextAlignmentTimeout()
 
     'Arm a single forced alignment timeout
         m_TestForceNextAlignTimeout = True
+
+End Sub
+
+
+Friend Sub Test_ForceNextAlignmentLoopReadFailure()
+'
+'==============================================================================
+'                TEST FORCE NEXT ALIGNMENT LOOP READ FAILURE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms a ONE-SHOT forced failure of the first read inside the next QPC or
+'   method-4 next-tick alignment loop, after its initial read has succeeded.
+'
+' WHY THIS EXISTS
+'   Test_ForceNextQPCReadFailure and Test_ForceNextSystemTimeReadFailure fail
+'   the initial aligned read (#2). The later loop read has its own early exit,
+'   which this seam reaches (#44).
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   None.
+'
+' BEHAVIOR
+'   The next QPC or method-4 aligned helper consumes the flag after its
+'   initial read and arms its backend's one-shot read failure, which the first
+'   loop read then consumes. Both flags are clear once the helper returns.
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' NOTES
+'   One-shot and self-clearing, like the other read seams. Declared Friend, so
+'   it is reachable from the regression suite but invisible outside the project.
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+    'Arm a single forced alignment-loop read failure
+        m_TestForceNextAlignLoopReadFailure = True
 
 End Sub
 
