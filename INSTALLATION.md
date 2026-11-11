@@ -47,17 +47,14 @@ from the same tag. The optional `PERFORMANCE.MANAGER.xlsm` workbook and
 and the exact tag target.
 
 Source compatibility and execution certification are separate claims. v1.4.0
-was certified on Microsoft 365 Excel **64-bit** (80 cases, 643 assertions,
-0 failures). Real Office **32-bit remains unverified**, with evidence tracked
-in [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29);
-v1.4.1 retains pre-VBA7 legacy 32-bit, VBA7 Win32 and VBA7 Win64 source
-compatibility, with no new Office 2010/VBA7 minimum. Pre-VBA7 is best-effort and
-execution-unverified; no numeric oldest Office release is certified. This is
-not a guarantee for every older Office version. Follow the
-[Office/VBA support policy](README.md#officevba-support-policy-v141) and the
-[legacy-host evidence procedure](RELEASING.md#legacy-host-evidence). A successful
-VBA7 32-bit run cannot certify pre-VBA7. Removing a retained family requires an
-explicit compatibility/versioning decision outside this patch.
+is execution-certified on Microsoft 365 Excel **64-bit** only, as recorded in
+[README execution evidence](README.md#execution-evidence); real Office
+**32-bit remains unverified**
+([#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)). The
+retained source families, and what is and is not certified for older hosts,
+are set by the [Office/VBA support policy](README.md#officevba-support-policy-v141)
+and the [legacy-host evidence procedure](RELEASING.md#legacy-host-evidence).
+
 Read [README.md](README.md), [CHANGELOG.md](CHANGELOG.md), and the selected
 release notes before installation. Historical evidence describes only its own tag.
 
@@ -65,15 +62,13 @@ release notes before installation. Historical evidence describes only its own ta
 
 ## 🎯 Deployment model
 
-A short result vector, rejected sample, failed clock read, or undefined overhead is diagnostic behavior—not a zero-duration observation. Preserve those distinctions when validating an installation.
-
 Choose one supported model and keep its source identity explicit:
 
 | Model | Use when | Trust boundary |
 |---|---|---|
 | Embedded source | The component must travel with a workbook or add-in | Destination project contains the reviewed source |
 | Tagged source | You build or integrate the component yourself | Tag/commit and exported files define identity |
-| Published binary | The project explicitly ships a workbook/add-in asset | Hash, tag binding, and package smoke evidence are required |
+| Published binary | The project ships a workbook asset (no official add-in yet, [#48](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/48)) | Hash, tag binding, and package smoke evidence are required |
 | Development source | Focused testing or contribution work | Not a supported release unless the project says otherwise |
 
 Do not combine files from different tags, commits, release assets, local exports,
@@ -81,7 +76,9 @@ or copied workbooks.
 
 ### Release workbook package
 
-From v1.4.1 the optional workbook is published only inside
+From v1.4.1 (not yet released;
+[#72](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/72)) the
+optional workbook will be published only inside
 `VBA-Performance-Manager-vX.Y.Z.zip`. The package holds exactly
 `PERFORMANCE MANAGER.xlsm`, `LICENSE` and `NOTICE`. To verify a download:
 
@@ -117,11 +114,6 @@ Optional material is not part of the normal runtime unless stated otherwise:
 | `demo/M_cPM_DEMO.bas` | Demonstration construction |
 | `demo/M_cPM_USAGE_EXAMPLES.bas` | Curated examples |
 
-> [!CAUTION]
-> A `.frm` and its `.frx` companion are one logical component. Keep them in
-> the same directory during import, never import the `.frx` separately, and
-> never process it as text.
-
 ---
 
 ## 🚀 Fresh installation
@@ -137,7 +129,7 @@ Optional material is not part of the normal runtime unless stated otherwise:
 
 1. Open the destination workbook or add-in and press `Alt+F11`.
 2. Select the intended project in Project Explorer.
-3. Use **File → Import File…** for exported modules, classes, and forms.
+3. Use **File → Import File…** for the exported module and class.
 4. Confirm component names match the repository source.
 5. Run **Debug → Compile VBAProject**.
 6. Save in a macro-capable format such as `.xlsm`, `.xlsb`, or `.xlam`
@@ -145,8 +137,8 @@ Optional material is not part of the normal runtime unless stated otherwise:
 7. Close and reopen the host before the clean-session smoke test.
 
 Do not paste source into arbitrarily named modules when an exported component is
-available. VBE attributes, component identity, form resources, and line endings
-are part of a reproducible source installation.
+available. VBE attributes, component identity, and line endings are part of a
+reproducible source installation.
 
 ---
 
@@ -156,11 +148,28 @@ are part of a reproducible source installation.
 
 A successful import is not sufficient evidence that the installation is correct.
 
-- Run `Run_cPerformanceManager_RegressionSuite` with the matching test/demo support source.
+Run the regression suite in a disposable workbook, not in the production host:
+it writes a results worksheet and needs the demo helper module.
+
+1. In a new macro-enabled workbook, import `src/modules/M_cPM_TIMEWASTERS.bas`,
+   `src/classes/cPerformanceManager.cls`, `demo/M_DEMO_BUILDER.bas` and
+   `test/M_cPM_Test.bas` from the same tag or commit.
+2. Compile, then run `Run_cPerformanceManager_RegressionSuite`.
+
+On Windows with Git and desktop Excel, `tools/Certify-PerformanceManager.cmd`
+does the same from a clean checkout in a new workbook that is closed without
+saving, and writes JSON evidence. See
+[README regression testing](README.md#regression-testing) and
+[local Excel tools](docs/LOCAL_EXCEL_TOOLS.md).
+
 - Require zero failures, a completed verdict, and valid cleanup.
 - Exercise each changed timing backend, rollover/backwards-clock handling, strict/non-strict paths, and overlapping managers.
 - Validate statistics independently when arithmetic or percentile behavior changes.
 - Record Excel version/build, Office bitness, backend, cases, assertions, failures, and exact source SHA.
+
+A short result vector, rejected sample, failed clock read, or undefined
+overhead is diagnostic behavior, not a zero-duration observation. Preserve
+those distinctions when validating an installation.
 
 ### Minimum installation evidence
 
@@ -189,7 +198,8 @@ Before upgrading:
 
 1. read the complete version-to-version changelog;
 2. back up the host and export any local modifications;
-3. stop or clean up active component state;
+3. call `ResetEnvironment` on every live manager, or `PM_TW_EndAllSessions`
+   when no legitimate session should remain;
 4. identify every required production component;
 5. decide whether stored configuration or generated assets are compatible.
 
@@ -215,10 +225,9 @@ the local behavior survived.
 |---|---|
 | Compile error or missing procedure | Confirm every required component was imported from one version and optional dependencies are present. |
 | Ambiguous name | Remove duplicate/legacy modules; do not paste new source beside old components. |
-| Form missing controls or corrupt UI | Re-import the `.frm` with its exact adjacent `.frx`. |
-| Behavior differs by workbook | Check caller, active-object, settings namespace, references, locale, and date-system assumptions. |
+| Behavior differs by workbook | Check caller, active-workbook and locale assumptions. |
 | 32/64-bit failure | Confirm the tested Office bitness and conditional WinAPI declarations. |
-| Excel left altered after failure | Run the documented recovery/cleanup path; do not blindly force global state. |
+| Excel left altered after failure | Call `ResetEnvironment` on each live manager; if none remains, run `PM_TW_EndAllSessions` (see the [README cleanup contract](README.md#cleanup-contract)). Do not blindly force global state. |
 | Security warning | Verify source origin, signature/hash where provided, trusted location policy, and macro settings. |
 | Output differs from reference | Confirm exact version, inputs, parameterization, tolerance, environment, and reference independence. |
 
@@ -231,7 +240,9 @@ Report suspected vulnerabilities privately under [SECURITY.md](SECURITY.md).
 
 ## 🗑️ Removal
 
-1. End active manager sessions and release shared Excel-state ownership.
+1. End active manager sessions and release shared Excel-state ownership: call
+   `ResetEnvironment` on every live manager, or `PM_TW_EndAllSessions` when no
+   legitimate session should remain.
 2. Remove the class and support module plus optional demo/test source.
 3. Compile and reopen the host; confirm calculation, events, screen updating, status bar, and timer-resolution state are normal.
 
