@@ -18,7 +18,8 @@ Attribute VB_Name = "M_DEMO_BUILDER"
 '     - named ranges
 '     - validation lists
 '     - helper-list storage
-'     - placeholder demo buttons
+'     - demo buttons, with DEMO_DemoButton_NotAssigned as the action of a
+'       button built without one
 '     - table / log setup
 '     - shape-button visual states and click feedback (Btn_ApplyState,
 '       Btn_Click)
@@ -41,7 +42,9 @@ Attribute VB_Name = "M_DEMO_BUILDER"
 '   - Formatting helpers are kept generic enough to be reusable outside one
 '     specific demo sheet.
 '   - Button creation supports an optional action macro so the helper is not
-'     hard-wired to one single placeholder routine.
+'     hard-wired to one single routine. A button built without one runs
+'     DEMO_DemoButton_NotAssigned, which only tells the user that no action is
+'     assigned.
 '   - Fast-mode helpers centralize temporary Application-state changes used
 '     during sheet-building operations.
 '
@@ -2101,7 +2104,7 @@ Public Sub DEMO_Add_DemoButton( _
 '
 ' WHY THIS EXISTS
 '   Shape-based buttons are portable, easy to style, and easy to assign to a
-'   placeholder or real macro during workbook-layout generation.
+'   real macro during workbook-layout generation.
 '
 ' INPUTS
 '   WS
@@ -2126,7 +2129,8 @@ Public Sub DEMO_Add_DemoButton( _
 '     Button height.
 '
 '   ActionMacro (optional)
-'     Macro name to assign to the shape's OnAction property.
+'     Macro name to assign to the shape's OnAction property. Omitted or blank,
+'     the button runs DEMO_DemoButton_NotAssigned.
 '
 ' RETURNS
 '   None.
@@ -2211,6 +2215,99 @@ Public Sub DEMO_Add_DemoButton( _
             .TextFrame2.TextRange.ParagraphFormat.Alignment = msoAlignCenter
         End With
 End Sub
+
+
+Public Sub DEMO_DemoButton_NotAssigned()
+'
+'==============================================================================
+'                       DEMO DEMO BUTTON NOT ASSIGNED
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Fallback action of a demo button built without an action macro: tells the
+'   user that no action is assigned to it.
+'
+' WHY THIS EXISTS
+'   DEMO_Add_DemoButton and DEMO_Add_ButtonGrid assign this macro when the
+'   caller gives no action. It used not to exist, so clicking such a button
+'   raised Excel's "Cannot run the macro" error (#73).
+'
+' INPUTS
+'   None. Excel calls it from the clicked shape.
+'
+' RETURNS
+'   None.
+'
+' BEHAVIOR
+'   Shows an information message that names the clicked button. Changes no
+'   workbook, worksheet or Application state.
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim CallerName  As Variant   'Application.Caller value
+    Dim ButtonName  As String    'Name of the clicked shape, if any
+
+'------------------------------------------------------------------------------
+' IDENTIFY THE BUTTON
+'------------------------------------------------------------------------------
+    'A shape passes its name; any other caller passes an error value
+        CallerName = Application.Caller
+        If VarType(CallerName) = vbString Then ButtonName = CStr(CallerName)
+
+'------------------------------------------------------------------------------
+' INFORM THE USER
+'------------------------------------------------------------------------------
+    'Report the missing action without touching any state
+        MsgBox DEMO_DemoButton_NotAssignedText(ButtonName), vbInformation, "Demo button"
+
+End Sub
+
+
+Public Function DEMO_DemoButton_NotAssignedText( _
+    ByVal ButtonName As String) _
+    As String
+'
+'==============================================================================
+'                     DEMO DEMO BUTTON NOT ASSIGNED TEXT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the message DEMO_DemoButton_NotAssigned shows.
+'
+' WHY THIS EXISTS
+'   The message box itself is modal, so the regression suite checks the text
+'   through this function instead (#73).
+'
+' INPUTS
+'   ButtonName
+'     Name of the clicked shape, or blank when unknown.
+'
+' RETURNS
+'   String
+'     The message, naming the button when its name is known.
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+    'Name the button when Excel identified it
+        If Len(ButtonName) > 0 Then
+            DEMO_DemoButton_NotAssignedText = "The demo button """ & ButtonName & _
+                                              """ has no action assigned."
+        Else
+            DEMO_DemoButton_NotAssignedText = "This demo button has no action assigned."
+        End If
+
+End Function
 
 Public Sub DEMO_Hide_HelperColumns( _
     ByVal WS As Worksheet, _
