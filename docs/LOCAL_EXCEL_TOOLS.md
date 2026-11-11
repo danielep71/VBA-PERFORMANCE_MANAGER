@@ -44,8 +44,12 @@ input first and modifies only the copy. It replaces these named components:
 Other modules, document modules, sheets and controls are retained. Conflicting
 component types and protected VBA projects are refused; passwords are never
 removed. Module code is read back before saving and after reopening, ignoring
-export metadata, line endings and trailing whitespace. Source and output hashes
-are recorded. This is a development workbook with demo/test modules; it does
+export metadata, line endings and trailing whitespace. Identifier case is
+also ignored, because the VBE keeps one spelling per identifier across the
+project and recases imported code to it; the manifest lists each component
+that differed only in case under `case_normalized`. Any other difference fails.
+Source and output hashes are recorded. This is a development workbook with
+demo/test modules; it does
 not replace the two-file production installation or #47's workbook rebuild.
 It does not rebuild sheets, fix button assignments, refresh Ribbon XML, run
 workbook startup, or validate arbitrary pre-existing code. Recompilation can

@@ -27,7 +27,7 @@ $bundle = $null; $vbomTouched = $false; $vbomExisted = $false; $vbomBefore = $nu
 $exitCode = 1
 $record = [ordered]@{ mode = $Mode; state = 'not started'; commit_sha = $null
     input_sha256 = $null; original_unchanged = $false; files = @(); components = @()
-    compiled = $false; reopened_verified = $false; cleanup = 'not started'; error = $null }
+    compiled = $false; reopened_verified = $false; case_normalized = @(); cleanup = 'not started'; error = $null }
 function Release-Com($obj) {
     if ($null -ne $obj) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($obj) }
 }
@@ -51,6 +51,15 @@ function Component-Name([string] $path) {
     if (-not $match.Success) { throw "Missing VB_Name in $path" }
     return $match.Groups[1].Value
 }
+function Compare-Readback([string] $actual, [string] $expected) {
+    # The VBE keeps one spelling per identifier across the whole project, so
+    # importing a later module can recase identifiers in an earlier one (a
+    # local v becomes V). VBA is case-insensitive: such a difference is
+    # reported as 'case', anything else as 'differs'.
+    if ([string]::Equals($actual, $expected, [StringComparison]::Ordinal)) { return 'exact' }
+    if ([string]::Equals($actual, $expected, [StringComparison]::OrdinalIgnoreCase)) { return 'case' }
+    return 'differs'
+}
 function Verify-Modules($project) {
     foreach ($relative in $components) {
         $path = Join-Path $repo $relative
@@ -60,7 +69,11 @@ function Verify-Modules($project) {
             $part = $project.VBComponents.Item($name)
             $code = $part.CodeModule
             $actual = if ($code.CountOfLines -gt 0) { [string]$code.Lines(1, $code.CountOfLines) } else { '' }
-            if ((Normalize-Code $actual) -cne (Source-Code $path)) { throw "Code readback differs: $name" }
+            $outcome = Compare-Readback (Normalize-Code $actual) (Source-Code $path)
+            if ($outcome -eq 'differs') { throw "Code readback differs: $name" }
+            if ($outcome -eq 'case' -and $record.case_normalized -notcontains $name) {
+                $record.case_normalized += $name
+            }
         } finally { Release-Com $code; Release-Com $part }
     }
 }
