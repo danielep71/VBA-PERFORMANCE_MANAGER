@@ -122,6 +122,12 @@ Use only the categories needed by a release.
 - Added a root `VERSION` marker at `1.4.0`, aligned with the latest published
   release and the existing source-version contract.
 
+- Added regression coverage for the next-tick alignment branches that follow a
+  successful initial read: a failed loop read and an exhausted spin guard, for
+  QPC and method 4, in strict and non-strict mode. A new one-shot, test-only
+  seam fails the first loop read; behavior without armed seams is unchanged
+  (#44).
+
 
 ### Changed
 
@@ -265,7 +271,7 @@ Use only the categories needed by a release.
   68 years) formats instead of raising a VBA overflow. The supported domain is
   0 to 1E+15 seconds, formatted exactly; larger values are clamped to 1E+15,
   as negative values are clamped to 0. Sub-second formatting is unchanged.
-  Regression case 88 covers it.
+  Regression case 90 covers it.
 
 - **Regression error specificity (#76):** strict QPC/read/validation tests now
   assert their documented error codes instead of accepting any nonzero error;
