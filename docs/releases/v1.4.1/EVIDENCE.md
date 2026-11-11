@@ -32,6 +32,19 @@ executable VBA change without an Excel run.
 | 2 | [#79](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/79) | `b32d7af7` | Pin-scanner and provenance fixes, the Release package, the comment audit (#69–#72) |
 | 3 | [#100](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/100) | `cac3a4cc` | Template-parity tooling and governance (#80–#86, #89) |
 | 4 | [#106](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/106) | `19a8a208` | #33's sticky Calculation exemption, the local Excel runner (#11 part 1), planning in issues (#90), the settings-script fix (#103) |
+| 5 | [#114](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/114) | `7c38d5ad` | The local Excel runner releases every COM reference before Excel quits and reports its cleanup (#11); no VBA change |
+| 6 | [#117](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/117) | `4aa9b366` | #33's lifecycle coverage (cases 82–85) and the double-click certification launcher (#115, #116). Excel at `2dd25f1`: 85 cases, 696 assertions, 0 failures |
+| 7 | [#118](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/118) | `107454a2` | #31's timer-period rollback (case 86). Excel: 86 cases, 714 assertions, 0 failures, with a negative control |
+| 8 | [#121](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/121) | `931aee4d` | A red check passes only when Excel cleanup completed, with runner verdict fixtures (#112); no VBA change |
+| 9 | [#123](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/123) | `e0a95c15` | Demo sheets skip the printer-dependent pagination reset (#119). Excel: 86 cases, 714 assertions, 0 failures |
+| 10 | [#127](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/127) | `1230b821` | Continued comments and inline `Rem` in the source rules (#111), issue planning line endings (#110), milestone cleanup for PRs in every state (#109); no VBA change |
+| 11 | [#130](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/130) | `30ff335e` | Pinned source/wiki release-state checks (#50) and inline code in Markdown heading anchors (#108); no VBA change |
+| 12 | [#133](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/133) | `f430f0ae` | The Office/VBA support policy (#34) and coverage of Pause method 3's coarse wait (#74). Excel at `ca66242`: 86 cases, 715 assertions, 0 failures |
+| 13 | [#136](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/136) | `eb455d7d` | Worker fault seams disarmed on validation errors (#75) and strict tests requiring documented error codes (#76), case 87. Excel: 87 cases, 771 assertions, 0 failures |
+| 14 | [#141](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/141) | `471b9021` | CodeQL `upload-sarif` 4.39.3 (#139), quality-tool pins (#140) and the Stars badge; no VBA change |
+| 15 | [#148](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/148) | `beb7e69c` | #44, #30, #35, #73 and #32 (cases 88–93). Excel at `3d61981`, tree-identical: 93 cases, 861 assertions, 0 failures; each fix also passed its own red check |
+| 16 | [#151](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/151) | `8e1f0125` | #77's measurement examples, #138's local workbook tools, #11's batch runner and wiki pin `66527bb` (#150). VBA identical to `307c703`: 93 cases, 861 assertions, 0 failures, four examples passed |
+| 17 | [#153](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/153) | `ac139907` | Wiki pin `36accf1` (#152); no VBA change |
 
 #33's runtime change was withdrawn for increments 2 and 3 and restored on
 `release/v1.4.1`. It reaches `main` in increment 4. Before that, the
