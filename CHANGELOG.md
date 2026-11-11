@@ -266,6 +266,13 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- **ElapsedTime large durations (#30):** whole seconds and hours are no longer
+  narrowed to `Long`, so a supplied value above 2,147,483,647 seconds (about
+  68 years) formats instead of raising a VBA overflow. The supported domain is
+  0 to 1E+15 seconds, formatted exactly; larger values are clamped to 1E+15,
+  as negative values are clamped to 0. Sub-second formatting is unchanged.
+  Regression case 90 covers it.
+
 - **Regression error specificity (#76):** strict QPC/read/validation tests now
   assert their documented error codes instead of accepting any nonzero error;
   negative-sample helpers require the domain error. Runtime behavior is unchanged.
