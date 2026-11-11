@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 91    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 92    'Total number of executed regression cases
 
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -715,6 +715,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "TW instance keys beyond the Long boundary"
         Test_TW_KeySeed_Boundaries
+
+    'Validate the fallback action of demo buttons built without one (#73)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Demo button fallback action"
+        Test_Demo_ButtonFallbackAction
 
 Clean_Exit:
 '------------------------------------------------------------------------------
@@ -13150,6 +13155,111 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_TW_KeySeed_Boundaries"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+
+Private Sub Test_Demo_ButtonFallbackAction()
+'
+'==============================================================================
+'                     TEST DEMO BUTTON FALLBACK ACTION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that every demo-builder path that creates a button without an
+'   action macro assigns DEMO_DemoButton_NotAssigned, and that its message
+'   names the button (#73)
+'
+' WHY THIS EXISTS
+'   The builder assigned a fallback macro that did not exist, so such a
+'   button raised Excel's "Cannot run the macro" error. Clicking a button is
+'   interactive and the fallback shows a modal message, so this case checks
+'   the assignment and the message text; the click itself stays a manual
+'   check
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim WS              As Worksheet              'Sheet that hosts the test buttons
+    Dim ShapeName       As Variant                'Each test button name
+    Dim Fallback        As String                 'Expected fallback macro name
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Demo buttons built without an action run DEMO_DemoButton_NotAssigned"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+    'Use the suite's own log sheet; the buttons are removed afterwards
+        Set WS = Suite_GetOrCreateLogSheet()
+        Fallback = "DEMO_DemoButton_NotAssigned"
+
+'------------------------------------------------------------------------------
+' BUILD BUTTONS THROUGH EVERY FALLBACK PATH
+'------------------------------------------------------------------------------
+    'Omitted action macro: the optional parameter's default
+        DEMO_Add_DemoButton WS, "cPM_Test_FallbackDefault", "Default", 10, 10, 60, 20
+    'Blank action macro
+        DEMO_Add_DemoButton WS, "cPM_Test_FallbackBlank", "Blank", 80, 10, 60, 20, vbNullString
+    'Grid specification without a third element
+        DEMO_Add_ButtonGrid WS, WS.Range("A1"), Array(Array("cPM_Test_FallbackGrid", "Grid"))
+
+    'Each button runs the fallback macro, however Excel qualifies the name
+        For Each ShapeName In Array("cPM_Test_FallbackDefault", "cPM_Test_FallbackBlank", _
+                                    "cPM_Test_FallbackGrid")
+            Test_Assert_EqualString Fallback, _
+                                    Right$(WS.Shapes(CStr(ShapeName)).OnAction, Len(Fallback)), _
+                                    CStr(ShapeName) & " runs the fallback macro"
+        Next ShapeName
+
+'------------------------------------------------------------------------------
+' THE MESSAGE NAMES THE BUTTON
+'------------------------------------------------------------------------------
+        Test_Assert_EqualString _
+            "The demo button ""cPM_Test_FallbackBlank"" has no action assigned.", _
+            DEMO_DemoButton_NotAssignedText("cPM_Test_FallbackBlank"), _
+            "The fallback message names the clicked button"
+        Test_Assert_EqualString "This demo button has no action assigned.", _
+                                DEMO_DemoButton_NotAssignedText(vbNullString), _
+                                "The fallback message still reads well without a name"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Remove the test buttons from the log sheet
+        On Error Resume Next
+        If Not WS Is Nothing Then
+            For Each ShapeName In Array("cPM_Test_FallbackDefault", "cPM_Test_FallbackBlank", _
+                                        "cPM_Test_FallbackGrid")
+                WS.Shapes(CStr(ShapeName)).Delete
+            Next ShapeName
+        End If
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Demo_ButtonFallbackAction"
     'Continue through centralized cleanup
         Resume CleanExit
 

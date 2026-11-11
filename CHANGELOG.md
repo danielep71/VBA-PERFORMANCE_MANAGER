@@ -281,6 +281,15 @@ Use only the categories needed by a release.
   `PM_TW_EndAllSessions` still never rewinds the seed. Regression case 91
   covers the boundary through a test-only seed seam.
 
+- **Demo button fallback (#73):** a demo button built without an action macro,
+  through `DEMO_Add_DemoButton` (omitted or blank `ActionMacro`) or
+  `DEMO_Add_ButtonGrid` (a spec without a third element), used to run a
+  `DEMO_DemoButton_NotAssigned` that did not exist, so clicking it raised
+  Excel's "Cannot run the macro" error. `M_DEMO_BUILDER` now defines it. It
+  shows a message naming the button and changes no state. Demo module only;
+  the production class and module are unchanged. Regression case 92 covers
+  the three assignment paths and the message.
+
 - **Regression error specificity (#76):** strict QPC/read/validation tests now
   assert their documented error codes instead of accepting any nonzero error;
   negative-sample helpers require the domain error. Runtime behavior is unchanged.
