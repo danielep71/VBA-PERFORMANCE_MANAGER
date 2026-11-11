@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "runs": [
+    {
+      "label": "PR #143 (#30)",
+      "sha": "75b9c8f6e8578b3c95c41735bc5306d19386cf77",
+      "red": {
+        "component": "src\\classes\\cPerformanceManager.cls",
+        "expected_case": 88,
+        "from_ref": "471b90211fb4399faa12771374541908f5cbdd9d"
+      }
+    },
+    {
+      "label": "PR #144 (#35)",
+      "sha": "50ddbe67994ed8173d8a56bbb8a8756a607182b1",
+      "red": {
+        "component": "src\\modules\\M_cPM_TIMEWASTERS.bas",
+        "expected_case": 88,
+        "find": "        Private g_TW_KeySeed                As Double",
+        "replace": "        Private g_TW_KeySeed                As Long"
+      }
+    },
+    {
+      "label": "PR #145 (#73)",
+      "sha": "20b3a453e1083e9eb93d3470edfbfd707df3a011"
+    },
+    {
+      "label": "PR #146 (#32)",
+      "sha": "e667d508c6a73f783f3d513204599056e5254ab3",
+      "red": {
+        "component": "src\\classes\\cPerformanceManager.cls",
+        "expected_case": 88,
+        "from_ref": "471b90211fb4399faa12771374541908f5cbdd9d"
+      }
+    }
+  ]
+}
