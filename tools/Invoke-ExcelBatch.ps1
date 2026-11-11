@@ -32,7 +32,8 @@
         }
 
     tools\excel-batch.example.json is a complete example. The whole manifest is
-    validated before Excel starts. Missing commits are fetched once.
+    validated before Excel starts. Commits missing locally are fetched from
+    origin by SHA, which also reaches pull-request heads outside refs/heads.
 
     Limits: the same as the runner's. There is no timeout, and a modal Excel
     error dialog waits for the maintainer.
@@ -169,10 +170,13 @@ if (Get-Process -Name EXCEL -ErrorAction SilentlyContinue) {
     throw 'Excel is already running. Save your work, close every Excel window, then run again.'
 }
 $needed = @($entries | ForEach-Object { $_.sha; if ($_.red -and $_.red.from_ref) { $_.red.from_ref } } | Select-Object -Unique)
-if (@($needed | Where-Object { -not (Test-Commit $_) }).Count -gt 0) {
-    Write-Host 'Fetching origin for commits not present locally...'
-    & git -C $Repo fetch --quiet origin
-    if ($LASTEXITCODE -ne 0) { throw 'git fetch origin failed.' }
+$missing = @($needed | Where-Object { -not (Test-Commit $_) })
+if ($missing.Count -gt 0) {
+    # A pull request's head, a fork's in particular, can be reachable only from
+    # refs/pull/*, which the default fetch refspec does not map: fetch by SHA.
+    Write-Host "Fetching $($missing.Count) commit(s) not present locally from origin..."
+    & git -C $Repo fetch --quiet origin @missing
+    if ($LASTEXITCODE -ne 0) { throw "git fetch origin $($missing -join ' ') failed." }
     $missing = @($needed | Where-Object { -not (Test-Commit $_) })
     if ($missing.Count -gt 0) { throw "Commits not found after fetching: $($missing -join ', ')" }
 }

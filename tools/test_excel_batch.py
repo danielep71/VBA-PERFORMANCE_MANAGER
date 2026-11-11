@@ -70,6 +70,13 @@ class BatchContractTests(unittest.TestCase):
         self.assertLess(text.index("$entries = @(Read-Manifest $Manifest)"),
                         text.index("worktree add --detach --quiet"))
 
+    def test_missing_commits_are_fetched_by_sha(self) -> None:
+        # A PR head can be reachable only from refs/pull/*, which a plain
+        # `git fetch origin` does not map (review finding on #149).
+        text = batch()
+        self.assertIn("fetch --quiet origin @missing", text)
+        self.assertNotRegex(text, r"fetch --quiet origin\r?$")
+
     def test_readme_documents_the_batch(self) -> None:
         readme = README.read_text(encoding="utf-8")
         self.assertIn("tools\\Invoke-ExcelBatch.ps1", readme)
