@@ -1294,12 +1294,11 @@ working code does.
   averages retained samples and can raise, but it still reports no distribution.
   Prefer `MeasureOverhead_Samples` with `Stats_Text` for anything you will act
   on.
-- `ElapsedTime` formats ordinary durations beyond 24 hours, but its current
-  `Long`-based decomposition is not safe for every large finite `Double`
-  ([#30](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/30)).
-- Statistics are intended for practical timing vectors; arithmetic hardening
-  for extreme but formally in-domain values remains tracked in
-  [#32](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/32).
+- `ElapsedTime` formats exactly only from 0 to 1E+15 seconds; a supplied value
+  outside that range is clamped to it, not reported as an error.
+- Statistics accept timing observations up to 1E+15 seconds only. That bound
+  keeps every statistic free of overflow, but a larger value is rejected rather
+  than computed.
 
 ### Excel and Windows state
 
@@ -1307,9 +1306,6 @@ working code does.
 - `Application.Run` targets are trusted executable input, not data.
 - `timeBeginPeriod(1)` affects timer resolution beyond this class while the
   request is held. `ResetEnvironment` balances the request during normal cleanup.
-- A failed aligned method-3 start can leave a successful `timeBeginPeriod(1)`
-  request owned until later cleanup rather than rolling it back immediately
-  ([#31](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/31)).
 - A hard VBA `End` bypasses `Class_Terminate`.
 - Calculation suppression assumes a stable open-workbook set for the lifetime
   of the shared scope.
