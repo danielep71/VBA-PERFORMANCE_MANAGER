@@ -43,10 +43,18 @@ function Source-Code([string] $path) {
     $text = [regex]::Replace($text, '(?m)^Attribute .*(\r?\n|$)', '')
     return Normalize-Code $text
 }
+function Component-Name([string] $path) {
+    # VBA names a component by its exported VB_Name, which can differ from the
+    # file name in case (M_cPM_TIMEWASTERS.bas holds M_cPM_TimeWasters).
+    $text = [IO.File]::ReadAllText($path)
+    $match = [regex]::Match($text, '(?m)^Attribute VB_Name = "([^"]+)"\r?$')
+    if (-not $match.Success) { throw "Missing VB_Name in $path" }
+    return $match.Groups[1].Value
+}
 function Verify-Modules($project) {
     foreach ($relative in $components) {
         $path = Join-Path $repo $relative
-        $name = [IO.Path]::GetFileNameWithoutExtension($path)
+        $name = Component-Name $path
         $part = $null; $code = $null
         try {
             $part = $project.VBComponents.Item($name)
@@ -121,7 +129,7 @@ public static class CpmWorkbookWin32 {
     if ($Mode -eq 'Sync') {
         foreach ($relative in $components) {
             $path = Join-Path $repo $relative
-            $name = [IO.Path]::GetFileNameWithoutExtension($path)
+            $name = Component-Name $path
             $expectedType = if ($path.EndsWith('.cls')) { 2 } else { 1 }
             $part = $null
             try {

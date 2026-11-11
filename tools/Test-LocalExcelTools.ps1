@@ -17,6 +17,7 @@ function Import-PureFunction([string] $File, [string] $Name) {
 . ([scriptblock]::Create((Import-PureFunction 'Invoke-ExcelRegression.ps1' 'Test-ExampleTranscript')))
 . ([scriptblock]::Create((Import-PureFunction 'Manage-PerformanceManagerVBA.ps1' 'Normalize-Code')))
 . ([scriptblock]::Create((Import-PureFunction 'Manage-PerformanceManagerVBA.ps1' 'Source-Code')))
+. ([scriptblock]::Create((Import-PureFunction 'Manage-PerformanceManagerVBA.ps1' 'Component-Name')))
 $names = @('Example_Benchmark_WithStatistics', 'Example_Compare_TwoImplementations',
            'Example_DispatchMatchedBaseline', 'Example_ReadStatus_Diagnostics')
 $good = "PASS`n"
@@ -34,12 +35,19 @@ try {
     [IO.File]::WriteAllText($temp, $source)
     $expected = "Option Explicit`nPublic Sub Example()`nEnd Sub"
     if ((Source-Code $temp) -cne $expected) { throw 'Exported class metadata normalization failed' }
+    if ((Component-Name $temp) -cne 'Fixture') { throw 'Component name not read from VB_Name' }
+    # The file name and the VB_Name differ in case; sync must use the VB_Name
+    $timeWasters = Join-Path (Split-Path -Parent $PSScriptRoot) 'src\modules\M_cPM_TIMEWASTERS.bas'
+    if ((Component-Name $timeWasters) -cne 'M_cPM_TimeWasters') { throw 'VB_Name case not preserved' }
     if ((Normalize-Code "Option Explicit  `r`nPublic Sub Example()`r`nEnd Sub`r`n") -cne $expected) { throw 'Line-ending normalization failed' }
     if ((Normalize-Code ($expected.Replace('Example','Changed'))) -ceq (Source-Code $temp)) { throw 'Changed code accepted' }
     [IO.File]::WriteAllText($temp, 'no exported identity')
     $rejected = $false
     try { [void](Source-Code $temp) } catch { $rejected = $true }
     if (-not $rejected) { throw 'Missing exported identity accepted' }
+    $rejected = $false
+    try { [void](Component-Name $temp) } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Missing component name accepted' }
 } finally { Remove-Item -LiteralPath $temp -Force }
 Write-Host 'PASS: PowerShell parsing, transcript failures and code readback fixtures'
 exit 0
