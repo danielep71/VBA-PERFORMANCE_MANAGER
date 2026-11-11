@@ -859,7 +859,7 @@ restores the previous value afterwards. The runner is local and maintainer-run;
 the automated CI gate is tracked in #11.
 
 <!-- facts:source-cases -->
-The regression module in the current source invokes **90 cases**, and
+The regression module in the current source invokes **91 cases**, and
 `TotalSteps` must equal that count. Assertion counts are not derived from the
 source: they come from an Excel run, recorded below for each published tag.
 <!-- /facts:source-cases -->
