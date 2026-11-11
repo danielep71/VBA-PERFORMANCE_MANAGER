@@ -856,7 +856,23 @@ powershell -ExecutionPolicy Bypass -File tools\Invoke-ExcelRegression.ps1 `
 
 It writes a JSON record whose `result` follows the v1.4.0 execution-result
 schema. `-RedFile` and `-RedExpectedCase` repeat the run with one component
-replaced, to show that a regression case fails without its fix. Importing
+replaced, to show that a regression case fails without its fix.
+
+To run several commits in one unattended pass, for example the heads of open
+pull requests, list them in a JSON manifest outside the repository and run
+`tools\Invoke-ExcelBatch.ps1`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\Invoke-ExcelBatch.ps1 `
+    -Manifest ..\batch.json -OutDir ..\excel-evidence
+```
+
+Each entry runs in its own temporary Git worktree, so the current checkout is
+left alone, through that commit's own runner. An entry's red file is built
+from Git: `from_ref` takes the component as it is at another commit, and
+`find`/`replace` changes one exact text occurrence. The manifest is validated
+before Excel starts, and the script ends with a summary and a batch record.
+`tools/excel-batch.example.json` is a complete example. Importing
 modules needs Excel's *Trust access to the VBA project object model*.
 `-AllowVbomAccess` enables it for the current user only for the run, and
 restores the previous value afterwards. The runner is local and maintainer-run;
@@ -1294,12 +1310,11 @@ working code does.
   averages retained samples and can raise, but it still reports no distribution.
   Prefer `MeasureOverhead_Samples` with `Stats_Text` for anything you will act
   on.
-- `ElapsedTime` formats ordinary durations beyond 24 hours, but its current
-  `Long`-based decomposition is not safe for every large finite `Double`
-  ([#30](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/30)).
-- Statistics are intended for practical timing vectors; arithmetic hardening
-  for extreme but formally in-domain values remains tracked in
-  [#32](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/32).
+- `ElapsedTime` formats exactly only from 0 to 1E+15 seconds; a supplied value
+  outside that range is clamped to it, not reported as an error.
+- Statistics accept timing observations up to 1E+15 seconds only. That bound
+  keeps every statistic free of overflow, but a larger value is rejected rather
+  than computed.
 
 ### Excel and Windows state
 
@@ -1307,9 +1322,6 @@ working code does.
 - `Application.Run` targets are trusted executable input, not data.
 - `timeBeginPeriod(1)` affects timer resolution beyond this class while the
   request is held. `ResetEnvironment` balances the request during normal cleanup.
-- A failed aligned method-3 start can leave a successful `timeBeginPeriod(1)`
-  request owned until later cleanup rather than rolling it back immediately
-  ([#31](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/31)).
 - A hard VBA `End` bypasses `Class_Terminate`.
 - Calculation suppression assumes a stable open-workbook set for the lifetime
   of the shared scope.
@@ -1503,3 +1515,9 @@ for the attribution notice that redistributions must carry.
 Releases up to and including v1.4.0 were published under the MIT License, and
 copies obtained under those terms remain MIT-licensed. Later changes are
 licensed under Apache 2.0.
+
+## Local Excel launchers
+
+Use the [local Excel tools](docs/LOCAL_EXCEL_TOOLS.md) to certify the core suite
+and measurement examples, synchronize VBA into a new workbook copy, or export
+workbook modules with a hash manifest. The launchers are in `tools/`.

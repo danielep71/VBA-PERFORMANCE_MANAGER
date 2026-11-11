@@ -122,6 +122,11 @@ Use only the categories needed by a release.
 - Added a root `VERSION` marker at `1.4.0`, aligned with the latest published
   release and the existing source-version contract.
 
+- Added `tools/Invoke-ExcelBatch.ps1`, which runs the local Excel runner for
+  several commits in one unattended pass from a JSON manifest. Each commit runs
+  in a temporary worktree with its own runner, and red files are built from Git
+  instead of being supplied by hand (#11).
+
 - Added regression coverage for the next-tick alignment branches that follow a
   successful initial read: a failed loop read and an exhausted spin guard, for
   QPC and method 4, in strict and non-strict mode. A new one-shot, test-only
@@ -298,6 +303,14 @@ Use only the categories needed by a release.
   above it, infinity included, is rejected with `ERR_CPM_STATS_OUT_OF_DOMAIN`
   and a message naming the supported maximum. Regression case 93 covers the
   bound and the former overflow.
+
+- Add supervised local launchers for measurement-example certification with a
+  captured JSON transcript, copy-only workbook VBA synchronization, and VBA
+  export manifests (#138).
+
+- Measurement usage examples now report failed reads and rejected samples, and
+  withhold statistics, speedup and baseline conclusions when either count is
+  nonzero (#77).
 
 - **Regression error specificity (#76):** strict QPC/read/validation tests now
   assert their documented error codes instead of accepting any nonzero error;

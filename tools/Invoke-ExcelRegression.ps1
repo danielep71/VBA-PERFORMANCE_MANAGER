@@ -54,6 +54,7 @@ param(
     [string] $RedFile,
     [string] $RedComponent = 'src\modules\M_cPM_TIMEWASTERS.bas',
     [int] $RedExpectedCase = 0,
+    [switch] $MeasurementExamples,
     [switch] $AllowVbomAccess
 )
 
@@ -67,6 +68,7 @@ $Components = @(
     'demo\M_DEMO_BUILDER.bas',
     'test\M_cPM_Test.bas'
 )
+if ($MeasurementExamples) { $Components += 'demo\M_cPM_USAGE_EXAMPLES.bas' }
 $EntryPoint = 'Run_cPerformanceManager_RegressionSuite'
 $LogSheet = 'REGRESSION_cPM'
 $FirstSummaryRow = 6            # the suite writes one row per case from row 6
@@ -133,11 +135,25 @@ function Release-Com($object) {
     }
 }
 
+function Test-ExampleTranscript([string] $Transcript) {
+    if (-not $Transcript.StartsWith("PASS`n")) { return $false }
+    if ($Transcript -match '(?m)^Error ') { return $false }
+    $names = @('Example_Benchmark_WithStatistics', 'Example_Compare_TwoImplementations',
+               'Example_DispatchMatchedBaseline', 'Example_ReadStatus_Diagnostics')
+    foreach ($name in $names) {
+        if (([regex]::Matches($Transcript, "(?m)^BEGIN $name`$")).Count -ne 1 -or
+            ([regex]::Matches($Transcript, "(?m)^END $name`$")).Count -ne 1) { return $false }
+        if ($Transcript.IndexOf("BEGIN $name") -ge $Transcript.IndexOf("END $name")) { return $false }
+    }
+    return $true
+}
+
 function Invoke-Suite([string] $Label, [string] $ReplacedComponent, [string] $ReplacementFile) {
     $result = [ordered]@{
         run = $Label; started = (Get-Date).ToUniversalTime().ToString('o')
         state = 'not started'; imported = @(); compiled = $false
         excel = $null; cases = 0; assertions = 0; failures = 0
+        examples = $null
         failed_cases = @(); cleanup = $null; error = $null
     }
     $excel = $null; $workbook = $null; $project = $null; $control = $null; $sheet = $null; $excelPid = $null
@@ -201,6 +217,17 @@ function Invoke-Suite([string] $Label, [string] $ReplacedComponent, [string] $Re
                 }
             }
             $row += 1
+        }
+        if ($MeasurementExamples) {
+            $result.state = 'running measurement examples'
+            $dataSheet = $workbook.Worksheets.Add()
+            try { $dataSheet.Name = 'DATA_cPM' } finally { Release-Com $dataSheet; $dataSheet = $null }
+            $transcript = [string]$excel.Run("'$($workbook.Name)'!Certify_MeasurementUsageExamples")
+            $result.examples = [ordered]@{ transcript = $transcript; passed = $false }
+            if (-not (Test-ExampleTranscript $transcript)) {
+                throw 'Measurement examples failed or did not all complete; see transcript.'
+            }
+            $result.examples.passed = $true
         }
         $result.state = 'completed'
     } catch {
@@ -280,7 +307,8 @@ try {
 # --------------------------------------------------------------------------- #
 
 $source = $runs[0]
-$sourcePass = ($source.state -eq 'completed' -and $source.cases -eq $expectedCases -and
+$examplesPass = (-not $MeasurementExamples) -or ($null -ne $source.examples -and $source.examples.passed -eq $true)
+$sourcePass = ($examplesPass -and $source.state -eq 'completed' -and $source.cases -eq $expectedCases -and
                $source.failures -eq 0 -and $source.cleanup -eq 'completed')
 $verdicts = [ordered]@{ source = $(if ($sourcePass) { 'PASS' } else { 'FAIL' }) }
 if ($RedFile) {
@@ -311,6 +339,7 @@ $record = [ordered]@{
     }
     details = [ordered]@{
         tool = 'tools/Invoke-ExcelRegression.ps1'; branch = $branch; clean = $true
+        measurement_examples = [bool]$MeasurementExamples
         expected_cases = $expectedCases; vbom_changed = [bool]$AllowVbomAccess
         verdicts = $verdicts; runs = $runs
     }

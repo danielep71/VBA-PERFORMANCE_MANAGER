@@ -13328,7 +13328,7 @@ Private Sub Test_Stats_TimingDomainLimit()
                                  "Mean at the bound is exact"
         Test_Assert_ApproxDouble 500000000000000#, cPM.Stats_Median(Edge), 0#, _
                                  "Even-count median at the bound is exact"
-        Test_Assert_ApproxDouble 707106781186547.5, cPM.Stats_StdDev(Edge), 1#, _
+        Test_Assert_ApproxDouble 1E+15 / Sqr(2#), cPM.Stats_StdDev(Edge), 1#, _
                                  "Sample standard deviation at the bound does not overflow"
         Test_Assert_ApproxDouble 1.4142135623731, cPM.Stats_CoefficientOfVariation(Edge), 0.000000001, _
                                  "Coefficient of variation inherits the corrected arithmetic"
