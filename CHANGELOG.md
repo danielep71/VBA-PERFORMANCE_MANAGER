@@ -122,6 +122,12 @@ Use only the categories needed by a release.
 - Added a root `VERSION` marker at `1.4.0`, aligned with the latest published
   release and the existing source-version contract.
 
+- Added regression coverage for the next-tick alignment branches that follow a
+  successful initial read: a failed loop read and an exhausted spin guard, for
+  QPC and method 4, in strict and non-strict mode. A new one-shot, test-only
+  seam fails the first loop read; behavior without armed seams is unchanged
+  (#44).
+
 
 ### Changed
 
@@ -259,6 +265,39 @@ Use only the categories needed by a release.
 - Standardized the pull-request review contract around exact-candidate evidence, compatibility, risk and recovery, security and provenance, and project-specific validation gates.
 
 ### Fixed
+
+- **ElapsedTime large durations (#30):** whole seconds and hours are no longer
+  narrowed to `Long`, so a supplied value above 2,147,483,647 seconds (about
+  68 years) formats instead of raising a VBA overflow. The supported domain is
+  0 to 1E+15 seconds, formatted exactly; larger values are clamped to 1E+15,
+  as negative values are clamped to 0. Sub-second formatting is unchanged.
+  Regression case 90 covers it.
+
+- **TW instance-key issuance (#35):** the shared key seed no longer overflows
+  after 2,147,483,647 keys. It counts exactly up to 1E+15 keys in the same
+  `cPM#<n>` format, and beyond that raises the new
+  `ERR_TW_KEY_SPACE_EXHAUSTED` (`vbObjectError + 2204`) instead of wrapping,
+  because a live instance can hold a cached key that a wrap would reissue.
+  `PM_TW_EndAllSessions` still never rewinds the seed. Regression case 91
+  covers the boundary through a test-only seed seam.
+
+- **Demo button fallback (#73):** a demo button built without an action macro,
+  through `DEMO_Add_DemoButton` (omitted or blank `ActionMacro`) or
+  `DEMO_Add_ButtonGrid` (a spec without a third element), used to run a
+  `DEMO_DemoButton_NotAssigned` that did not exist, so clicking it raised
+  Excel's "Cannot run the macro" error. `M_DEMO_BUILDER` now defines it. It
+  shows a message naming the button and changes no state. Demo module only;
+  the production class and module are unchanged. Regression case 92 covers
+  the three assignment paths and the message.
+
+- **Statistics domain bound (#32):** the statistics validator accepted values up
+  to 1E+300 and called anything larger "not finite", so `[0, 1E+200]` passed
+  and then overflowed `Stats_StdDev`. The supported domain is now non-negative
+  timing observations up to 1E+15 seconds (about 31.7 million years), the same
+  bound `ElapsedTime` formats. Within it no statistic can overflow. A value
+  above it, infinity included, is rejected with `ERR_CPM_STATS_OUT_OF_DOMAIN`
+  and a message naming the supported maximum. Regression case 93 covers the
+  bound and the former overflow.
 
 - Add supervised local launchers for measurement-example certification with a
   captured JSON transcript, copy-only workbook VBA synchronization, and VBA
