@@ -94,7 +94,10 @@ jobs:
 
       - name: Exercise Excel runner verdicts without Excel
         shell: pwsh
-        run: ./tools/Test-ExcelRunnerVerdicts.ps1
+        run: |
+          ./tools/Test-ExcelRunnerVerdicts.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/Test-LocalExcelTools.ps1
 
       - name: Run the tool tests by discovery
         run: python -m unittest discover -s tools -p "test_*.py" -v

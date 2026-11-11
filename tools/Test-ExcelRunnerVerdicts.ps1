@@ -16,6 +16,9 @@ $scenarios = @(
     @{ name = 'missing red'; source = 'completed'; expected = 1 },
     @{ name = 'forced source'; cleanup = 'completed'; source = 'forced'; expected = 1 },
     @{ name = 'wrong failed case'; cleanup = 'completed'; source = 'completed'; wrongCase = $true; expected = 1 },
+    @{ name = 'examples pass'; source = 'completed'; sourceOnly = $true; examples = $true; examplePass = $true; expected = 0 },
+    @{ name = 'examples fail'; source = 'completed'; sourceOnly = $true; examples = $true; examplePass = $false; expected = 1 },
+    @{ name = 'examples missing'; source = 'completed'; sourceOnly = $true; examples = $true; expected = 1 },
     @{ name = 'clean source only'; source = 'completed'; sourceOnly = $true; expected = 0 },
     @{ name = 'forced source only'; source = 'forced'; sourceOnly = $true; expected = 1 }
 )
@@ -26,6 +29,7 @@ try {
             failures = 0; failed_cases = @(); cleanup = $scenario.source
             excel = $null; error = $null; finished = '2026-11-08T00:00:00Z'
         }
+        if ($scenario.ContainsKey('examplePass')) { $source.examples = @{ passed = $scenario.examplePass } }
         $red = [ordered]@{
             run = 'red check'; state = 'completed'; cases = 86; assertions = 714
             failures = 1; failed_cases = @(@{ case = $(if ($scenario.wrongCase) { 85 } else { 86 }); name = 'fixture' })
@@ -41,6 +45,7 @@ try {
 `$runs = ConvertFrom-Json '$($json.Replace("'", "''"))'
 `$sha = '0123456789012345678901234567890123456789'
 `$branch = 'test-fixture'
+`$MeasurementExamples = [bool]::Parse('$([bool]$scenario.examples)')
 `$expectedCases = 86
 `$RedFile = '$redFileValue'
 `$RedExpectedCase = 86

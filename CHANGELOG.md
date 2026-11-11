@@ -304,6 +304,14 @@ Use only the categories needed by a release.
   and a message naming the supported maximum. Regression case 93 covers the
   bound and the former overflow.
 
+- Add supervised local launchers for measurement-example certification with a
+  captured JSON transcript, copy-only workbook VBA synchronization, and VBA
+  export manifests (#138).
+
+- Measurement usage examples now report failed reads and rejected samples, and
+  withhold statistics, speedup and baseline conclusions when either count is
+  nonzero (#77).
+
 - **Regression error specificity (#76):** strict QPC/read/validation tests now
   assert their documented error codes instead of accepting any nonzero error;
   negative-sample helpers require the domain error. Runtime behavior is unchanged.
