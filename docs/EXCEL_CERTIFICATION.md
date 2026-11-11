@@ -22,7 +22,7 @@ The existing runner temporarily enables VBA project access for the current
 user and restores the previous value afterwards. It does not alter macro policy;
 an organizational policy can still prevent execution. Do not run as administrator.
 
-This is a supervised local runner, not the automated CI gate tracked in #11.
+This is a supervised local runner (#11), not the automated CI gate tracked in #156.
 If a compile/runtime dialog appears, capture the error before dismissing it;
 the underlying runner has no timeout for modal dialogs. A forced Excel cleanup
 is a failed certification. No new Excel execution is claimed by adding this

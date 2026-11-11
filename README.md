@@ -875,8 +875,8 @@ before Excel starts, and the script ends with a summary and a batch record.
 `tools/excel-batch.example.json` is a complete example. Importing
 modules needs Excel's *Trust access to the VBA project object model*.
 `-AllowVbomAccess` enables it for the current user only for the run, and
-restores the previous value afterwards. The runner is local and maintainer-run;
-the automated CI gate is tracked in #11.
+restores the previous value afterwards. The runner is local and maintainer-run
+(#11); the automated CI gate is tracked in #156.
 
 <!-- facts:source-cases -->
 The regression module in the current source invokes **93 cases**, and
@@ -1133,8 +1133,9 @@ being skipped. Run its fixtures with `python tools/test_workflow_pins.py`.
 > Static source analysis does **not** establish VBE import success, VBA
 > compilation, Excel object-model behavior, Windows API runtime behavior,
 > Office-bitness behavior, regression execution, or workbook packaging
-> correctness. A real Excel execution gate is tracked in
-> [#11](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/11).
+> correctness. Local real-Excel runs come from the maintainer runner (#11); an
+> automated CI execution gate is tracked in
+> [#156](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/156).
 
 ---
 
@@ -1448,9 +1449,9 @@ controls do not constitute a new Excel certification. Remaining work includes:
 - contributor-dependent real Office 32-bit evidence when a suitable host is
   available.
 
-The official add-in artifact remains a v1.5.0 goal. A real Excel regression
-gate needs a secured self-hosted Windows runner and is tracked in
-[#11](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/11).
+The official add-in artifact remains a v1.5.0 goal. An automated Excel
+regression gate needs a secured self-hosted Windows runner and is tracked in
+[#156](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/156).
 
 ---
 
