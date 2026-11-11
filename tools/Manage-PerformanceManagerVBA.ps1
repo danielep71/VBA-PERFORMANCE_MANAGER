@@ -74,6 +74,14 @@ function First-Difference([string] $actual, [string] $expected) {
     }
     return 'no line differs'
 }
+function Test-ComponentName([string] $name) {
+    # A VBA identifier: a letter, then letters, digits or underscores. Letters
+    # may be non-ASCII (a localized Modulo1 or Hoja1), so \p{L} is used. The
+    # pattern admits no dot, separator or space, and Windows device names are
+    # refused, so the name is always a safe file name.
+    if ($name -notmatch '^\p{L}[\p{L}\p{Nd}_]*$') { return $false }
+    return ($name -notmatch '^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$')
+}
 function Verify-Modules($project) {
     foreach ($relative in $components) {
         $path = Join-Path $repo $relative
@@ -198,7 +206,7 @@ public static class CpmWorkbookWin32 {
             $part = $project.VBComponents.Item($i)
             try {
                 $extension = switch ($part.Type) { 1 { '.bas' } 2 { '.cls' } 3 { '.frm' } 100 { '.cls' } default { throw 'Unsupported VBA component type.' } }
-                if ($part.Name -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') { throw 'Unsafe component filename.' }
+                if (-not (Test-ComponentName $part.Name)) { throw "Unsafe component filename: $($part.Name)" }
                 $file = Join-Path $bundle ($part.Name + $extension)
                 $part.Export($file)
                 $record.components += [ordered]@{ name = $part.Name; type = [int]$part.Type; file = [IO.Path]::GetFileName($file) }

@@ -20,6 +20,14 @@ function Import-PureFunction([string] $File, [string] $Name) {
 . ([scriptblock]::Create((Import-PureFunction 'Manage-PerformanceManagerVBA.ps1' 'Component-Name')))
 . ([scriptblock]::Create((Import-PureFunction 'Manage-PerformanceManagerVBA.ps1' 'Compare-Readback')))
 . ([scriptblock]::Create((Import-PureFunction 'Manage-PerformanceManagerVBA.ps1' 'First-Difference')))
+. ([scriptblock]::Create((Import-PureFunction 'Manage-PerformanceManagerVBA.ps1' 'Test-ComponentName')))
+# Localized component names are valid VBA identifiers and export safely
+foreach ($name in @('Sheet1', 'Foglio1', 'M_cPM_TimeWasters', ('M' + [char]0x00F3 + 'dulo1'), ('Tabelle' + [char]0x00FC))) {
+    if (-not (Test-ComponentName $name)) { throw "Valid component name refused: $name" }
+}
+foreach ($name in @('', '1Module', '_Module', 'a.b', 'a b', '..\x', 'a/b', 'CON', 'nul', 'COM1')) {
+    if (Test-ComponentName $name) { throw "Unsafe component name accepted: $name" }
+}
 $names = @('Example_Benchmark_WithStatistics', 'Example_Compare_TwoImplementations',
            'Example_DispatchMatchedBaseline', 'Example_ReadStatus_Diagnostics')
 $good = "PASS`n"
