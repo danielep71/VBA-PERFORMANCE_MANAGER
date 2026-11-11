@@ -290,6 +290,15 @@ Use only the categories needed by a release.
   the production class and module are unchanged. Regression case 92 covers
   the three assignment paths and the message.
 
+- **Statistics domain bound (#32):** the statistics validator accepted values up
+  to 1E+300 and called anything larger "not finite", so `[0, 1E+200]` passed
+  and then overflowed `Stats_StdDev`. The supported domain is now non-negative
+  timing observations up to 1E+15 seconds (about 31.7 million years), the same
+  bound `ElapsedTime` formats. Within it no statistic can overflow. A value
+  above it, infinity included, is rejected with `ERR_CPM_STATS_OUT_OF_DOMAIN`
+  and a message naming the supported maximum. Regression case 93 covers the
+  bound and the former overflow.
+
 - **Regression error specificity (#76):** strict QPC/read/validation tests now
   assert their documented error codes instead of accepting any nonzero error;
   negative-sample helpers require the domain error. Runtime behavior is unchanged.

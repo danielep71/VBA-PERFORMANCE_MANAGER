@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 92    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 93    'Total number of executed regression cases
 
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -720,6 +720,11 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Demo button fallback action"
         Test_Demo_ButtonFallbackAction
+
+    'Validate the statistics domain bound and its arithmetic (#32)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Stats timing-domain limit"
+        Test_Stats_TimingDomainLimit
 
 Clean_Exit:
 '------------------------------------------------------------------------------
@@ -13260,6 +13265,129 @@ CleanFail:
 '------------------------------------------------------------------------------
     'Record the unexpected case-level error
         RecordUnexpectedError "Test_Demo_ButtonFallbackAction"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+
+Private Sub Test_Stats_TimingDomainLimit()
+'
+'==============================================================================
+'                     TEST STATS TIMING DOMAIN LIMIT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates that every statistics routine computes exactly at the upper
+'   bound of the timing domain, and that a value above it is rejected as out
+'   of domain rather than overflowing or being called non-finite (#32)
+'
+' WHY THIS EXISTS
+'   The validator accepted values up to 1E+300, so [0, 1E+200] passed and then
+'   overflowed when Stats_StdDev squared a deviation. The supported domain is
+'   now 0 to 1E+15 seconds. Expected values were computed independently
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim Edge(0 To 1)    As Double                 'Vector at the domain bound
+    Dim Above(0 To 1)   As Double                 'Vector just beyond it
+    Dim Huge(0 To 1)    As Double                 'Vector that used to overflow
+    Dim RaisedNumber    As Long                   'Error number raised on rejection
+    Dim RaisedText      As String                 'Error description raised on rejection
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Start the regression case
+        Case_Begin "Statistics compute at the 1E+15 s bound and reject values above it"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+        Set cPM = New cPerformanceManager
+        Edge(0) = 0#
+        Edge(1) = 1E+15
+        Above(0) = 0#
+        Above(1) = 1E+15 + 1#
+        Huge(0) = 0#
+        Huge(1) = 1E+200
+
+'------------------------------------------------------------------------------
+' AT THE BOUND EVERY ROUTINE HAS A DEFINED RESULT
+'------------------------------------------------------------------------------
+        Test_Assert_ApproxDouble 500000000000000#, cPM.Stats_Mean(Edge), 0#, _
+                                 "Mean at the bound is exact"
+        Test_Assert_ApproxDouble 500000000000000#, cPM.Stats_Median(Edge), 0#, _
+                                 "Even-count median at the bound is exact"
+        Test_Assert_ApproxDouble 707106781186547.5, cPM.Stats_StdDev(Edge), 1#, _
+                                 "Sample standard deviation at the bound does not overflow"
+        Test_Assert_ApproxDouble 1.4142135623731, cPM.Stats_CoefficientOfVariation(Edge), 0.000000001, _
+                                 "Coefficient of variation inherits the corrected arithmetic"
+        Test_Assert_ApproxDouble 1E+15, cPM.Stats_Max(Edge), 0#, _
+                                 "The bound itself is accepted"
+        Test_Assert_True Len(cPM.Stats_Text(Edge)) > 0, _
+                         "Stats_Text summarizes a vector at the bound"
+
+'------------------------------------------------------------------------------
+' ABOVE THE BOUND IS OUT OF DOMAIN, NOT AN OVERFLOW
+'------------------------------------------------------------------------------
+    'One second past the bound
+        RaisedNumber = 0
+        RaisedText = vbNullString
+        On Error Resume Next
+        cPM.Stats_Mean Above
+        RaisedNumber = Err.Number
+        RaisedText = Err.Description
+        Err.Clear
+        On Error GoTo CleanFail
+        Test_Assert_EqualLong CLng(ERR_CPM_STATS_OUT_OF_DOMAIN), RaisedNumber, _
+                              "A value one second above the bound is out of domain"
+        Test_Assert_ContainsString RaisedText, "exceeds the supported maximum", _
+                                   "The rejection names the supported maximum"
+
+    'The vector that used to pass validation and overflow Stats_StdDev
+        RaisedNumber = 0
+        RaisedText = vbNullString
+        On Error Resume Next
+        cPM.Stats_StdDev Huge
+        RaisedNumber = Err.Number
+        RaisedText = Err.Description
+        Err.Clear
+        On Error GoTo CleanFail
+        Test_Assert_EqualLong CLng(ERR_CPM_STATS_OUT_OF_DOMAIN), RaisedNumber, _
+                              "[0, 1E+200] is rejected as out of domain instead of overflowing"
+        Test_Assert_True InStr(1, RaisedText, "not finite", vbTextCompare) = 0, _
+                         "A large finite value is not described as non-finite"
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release the instance on a best-effort basis
+        On Error Resume Next
+        Set cPM = Nothing
+        On Error GoTo 0
+
+    'Finalize the current case
+        Case_Finalize
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_Stats_TimingDomainLimit"
     'Continue through centralized cleanup
         Resume CleanExit
 
