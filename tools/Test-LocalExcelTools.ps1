@@ -19,6 +19,7 @@ function Import-PureFunction([string] $File, [string] $Name) {
 . ([scriptblock]::Create((Import-PureFunction 'Manage-PerformanceManagerVBA.ps1' 'Source-Code')))
 . ([scriptblock]::Create((Import-PureFunction 'Manage-PerformanceManagerVBA.ps1' 'Component-Name')))
 . ([scriptblock]::Create((Import-PureFunction 'Manage-PerformanceManagerVBA.ps1' 'Compare-Readback')))
+. ([scriptblock]::Create((Import-PureFunction 'Manage-PerformanceManagerVBA.ps1' 'First-Difference')))
 $names = @('Example_Benchmark_WithStatistics', 'Example_Compare_TwoImplementations',
            'Example_DispatchMatchedBaseline', 'Example_ReadStatus_Diagnostics')
 $good = "PASS`n"
@@ -41,6 +42,9 @@ try {
     if ((Compare-Readback $expected $expected) -ne 'exact') { throw 'Identical code not exact' }
     if ((Compare-Readback $expected.Replace('Example', 'EXAMPLE') $expected) -ne 'case') { throw 'Recased code not reported as case' }
     if ((Compare-Readback $expected.Replace('Example', 'Changed') $expected) -ne 'differs') { throw 'Changed code accepted' }
+    $where = First-Difference $expected.Replace('Example', 'Changed') $expected
+    if ($where -cne "code line 2: source 'Public Sub Example()', read back 'Public Sub Changed()'") { throw "First difference misreported: $where" }
+    if ((First-Difference $expected $expected) -cne 'no line differs') { throw 'Identical code reported as different' }
     # The file name and the VB_Name differ in case; sync must use the VB_Name
     $timeWasters = Join-Path (Split-Path -Parent $PSScriptRoot) 'src\modules\M_cPM_TIMEWASTERS.bas'
     if ((Component-Name $timeWasters) -cne 'M_cPM_TimeWasters') { throw 'VB_Name case not preserved' }

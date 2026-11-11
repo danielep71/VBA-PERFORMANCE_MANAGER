@@ -60,6 +60,20 @@ function Compare-Readback([string] $actual, [string] $expected) {
     if ([string]::Equals($actual, $expected, [StringComparison]::OrdinalIgnoreCase)) { return 'case' }
     return 'differs'
 }
+function First-Difference([string] $actual, [string] $expected) {
+    # Names the first differing line, so a failed readback can be diagnosed
+    # without the workbook (the VBE canonicalizes some literals, for example).
+    $a = $actual -split "`n"; $e = $expected -split "`n"
+    for ($i = 0; $i -lt [Math]::Max($a.Count, $e.Count); $i++) {
+        $left = if ($i -lt $e.Count) { $e[$i].Trim() } else { '<end>' }
+        $right = if ($i -lt $a.Count) { $a[$i].Trim() } else { '<end>' }
+        if ($left -cne $right) {
+            $cut = { param($s) if ($s.Length -gt 100) { $s.Substring(0, 100) + '...' } else { $s } }
+            return "code line $($i + 1): source '$(& $cut $left)', read back '$(& $cut $right)'"
+        }
+    }
+    return 'no line differs'
+}
 function Verify-Modules($project) {
     foreach ($relative in $components) {
         $path = Join-Path $repo $relative
@@ -69,8 +83,12 @@ function Verify-Modules($project) {
             $part = $project.VBComponents.Item($name)
             $code = $part.CodeModule
             $actual = if ($code.CountOfLines -gt 0) { [string]$code.Lines(1, $code.CountOfLines) } else { '' }
-            $outcome = Compare-Readback (Normalize-Code $actual) (Source-Code $path)
-            if ($outcome -eq 'differs') { throw "Code readback differs: $name" }
+            $readback = Normalize-Code $actual
+            $source = Source-Code $path
+            $outcome = Compare-Readback $readback $source
+            if ($outcome -eq 'differs') {
+                throw "Code readback differs: $name, $(First-Difference $readback.ToLowerInvariant() $source.ToLowerInvariant())"
+            }
             if ($outcome -eq 'case' -and $record.case_normalized -notcontains $name) {
                 $record.case_normalized += $name
             }
