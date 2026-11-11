@@ -311,7 +311,7 @@ CI runner.
 - Run it only on a checkout you trust: the imported VBA runs with your user's
   rights.
 
-The isolated runner and trust model for an automated gate remain #11's scope.
+The isolated runner and trust model for an automated gate are tracked in #156.
 
 ---
 
