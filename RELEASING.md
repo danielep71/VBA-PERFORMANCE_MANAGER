@@ -9,7 +9,7 @@
 This maintainer guide turns a reviewed commit into a traceable VBA Performance Manager release. Source identity, validation, packaging, provenance, and publication must describe the same candidate.
 
 > [!IMPORTANT]
-> A release is invalid if the packaged workbook cannot be tied to the exact tagged source or if provenance output contains TODO, missing, or inconsistent evidence.
+> A release is invalid if the packaged workbook cannot be tied to the exact tagged source or if `tools/release_provenance.py` does not exit 0 on the exact tag.
 
 ## 🧭 Release profile
 
@@ -63,7 +63,11 @@ Use `MAJOR.MINOR.PATCH` without a leading `v` inside `VERSION`.
 - **MAJOR**: incompatible public API, behavior, file-format, or migration change.
 - **MINOR**: backward-compatible capability.
 - **PATCH**: backward-compatible correction or package/documentation fix included in the release.
-- Use pre-release identifiers only when their support meaning is documented.
+- Do not use pre-release identifiers. `tools/release_provenance.py` accepts a
+  version such as `1.4.1-rc.1`, but the static gate requires `VERSION`, every
+  changelog release heading and every release tag to be plain `X.Y.Z` /
+  `vX.Y.Z`. Use one only after `tools/release_state.py` and
+  `tools/readme_facts.py` accept it.
 
 The Git tag adds the lower-case prefix: version `1.2.3` becomes annotated tag `v1.2.3`. Do not use upper-case `V`, moving tags, or a tag that differs from `VERSION`.
 
@@ -81,12 +85,15 @@ The Git tag adds the lower-case prefix: version `1.2.3` becomes annotated tag `v
 
 ## 1. Freeze and identify the candidate
 
-1. Update refs and start from current protected `main`.
-2. Create the release-preparation branch required by repository policy.
+1. Update refs. Release work already lives on `release/vX.Y.Z`, which is
+   recreated from `main` after each alignment (see
+   [CONTRIBUTING.md](CONTRIBUTING.md#maintainer-workflow)).
+2. Freeze that branch: merge or explicitly defer every planned item and stop
+   feature work. The candidate reaches `main` through the final
+   "Align main with release/vX.Y.Z" pull request (step 8).
 3. Record the base and candidate full commit SHAs.
-4. Stop feature work on that branch.
-5. Review the complete diff from the previous release tag.
-6. Confirm that generated and binary changes are intentional.
+4. Review the complete diff from the previous release tag.
+5. Confirm that generated and binary changes are intentional.
 
 ```bash
 git fetch --tags --prune
@@ -103,12 +110,38 @@ Update every applicable surface in one reviewable change:
 
 - `VERSION`
 - `CHANGELOG.md`
-- `cPerformanceManager.cls`
-- `M_cPM_TIMEWASTERS.bas`
+- `src/classes/cPerformanceManager.cls`
+- `src/modules/M_cPM_TIMEWASTERS.bas`
 - test and demo version stamps
-- README release examples
+- README release examples, and the README facts blocks rendered by
+  `python3 tools/readme_facts.py --write` (the Version badge follows `VERSION`)
+- `INSTALLATION.md`'s current published package and release date
 
 Search for the prior version and retain only intentional historical references. Never rewrite historical changelog sections or immutable evidence.
+
+### Release-state claims and the wiki pin
+
+The candidate itself must carry the claims that the new tag will make true,
+because the static gate compares them with the highest local `vX.Y.Z` tag and
+with the wiki revision pinned in `tools/release-state.json`. Follow
+[Release-state consistency](docs/RELEASE_STATE.md) and update them in this
+order:
+
+1. Edit and publish the wiki first: Home's `Release` badge, Version History's
+   `Current` badge and the `<!-- release-state -->` blocks on Home, Testing
+   and Validation, and Version History name `vX.Y.Z`.
+2. Put the resulting full wiki commit in `tools/release-state.json`.
+3. In the source, make README's latest-release note
+   ("The latest tagged release is **vX.Y.Z**"), its
+   "## vX.Y.Z — latest tagged release" heading and its `<!-- release-state -->`
+   block name `vX.Y.Z`, and give the changelog its comparison links (step 3).
+
+Until the tag exists, four checks fail by design: `release comparison links
+form the tag chain`, `README current-release claims agree with tags`, `wiki
+current-release badges agree with tags` and `current-status blocks agree with
+release evidence`. Step 5 explains how to verify them before the tag is
+published. Never bypass the gate, keep the old claims in the candidate, or pin
+an obsolete wiki to make it pass.
 
 ## 3. Finalize the changelog
 
@@ -119,7 +152,8 @@ Move relevant entries from **Unreleased** into a dated `[MAJOR.MINOR.PATCH] - YY
 - Link issues or pull requests when they improve traceability.
 - Do not claim an artifact, platform, or guarantee that was not certified.
 - Keep an empty Unreleased section for future work.
-- Add or verify the comparison link for the new version.
+- Add `[X.Y.Z]: …/compare/v<previous>...vX.Y.Z` and move `[Unreleased]` to
+  `…/compare/vX.Y.Z...main`. Both fail the gate until the tag exists (step 5).
 
 ## 4. Verify documentation and installation
 
@@ -131,19 +165,49 @@ Move relevant entries from **Unreleased** into a dated `[MAJOR.MINOR.PATCH] - YY
 
 ## 5. Run static gates
 
-- Run the repository VBA lint gate, including `tools/vba_lint.py`.
-- Validate exported-source integrity, version consistency, and documentation links.
+Run from a clean checkout of the candidate, with all tags fetched:
+
+```bash
+git fetch --tags
+python3 tools/release_state.py --fetch-wiki --wiki-root <new directory outside the checkout>
+python3 tools/vba_lint.py --wiki-root <same directory> --json vba-lint-results.json
+python3 -m unittest discover -s tools -p "test_*.py"
+git diff --check
+```
+
+- The gate's checks cover exported-source integrity, version stamps,
+  relative Markdown links and anchors, and release state.
+- External links are checked only by the **Link check** workflow, which runs
+  weekly and never blocks a merge. Dispatch it manually for the candidate.
 - Scan for credentials, generated noise, and unresolved release markers.
 
-Capture commands, tool versions, timestamps, and complete results. Rerun affected gates after any change.
+Before the tag exists, expect exactly the four release-state failures listed in
+step 2. To verify them, create the annotated tag of step 9 locally on the
+candidate, without pushing it, and rerun `tools/vba_lint.py`: every check
+must pass. Delete the local tag again if the candidate then changes. The
+hosted Static checks run on the candidate shows the same four failures until
+the tag is pushed; rerun it afterwards.
+
+Capture commands, tool versions, timestamps, check count and complete results, including `vba-lint-results.json`. Rerun affected gates after any change.
 
 ## 6. Certify in Excel
 
 - Run **Debug → Compile VBAProject** on the exact candidate.
 - Run `Run_cPerformanceManager_RegressionSuite`.
-- On Windows, `tools/Invoke-ExcelRegression.ps1 -ExpectedSha <candidate SHA>`
-  performs the import, compile and regression run from the clean candidate
-  checkout, and writes the v1.4.0-schema `result` record to keep as evidence.
+- On Windows, run the local runner from the clean candidate checkout. It
+  performs the import, compile and regression run, and writes the
+  v1.4.0-schema `result` record to keep as evidence:
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File tools\Invoke-ExcelRegression.ps1 `
+      -ExpectedSha <candidate SHA> -AllowVbomAccess -OutDir <folder outside the checkout>
+  ```
+
+  Windows blocks unsigned scripts by default, hence `-ExecutionPolicy Bypass`.
+  `-OutDir` is mandatory and must lie outside the repository. The one-click
+  alternative is `tools\Certify-PerformanceManager.cmd`; add
+  `tools\Certify-MeasurementExamples.cmd` for the usage examples. See
+  [Local Excel tools](docs/LOCAL_EXCEL_TOOLS.md).
 - Exercise timing backends, nested scopes, error recovery, and Excel-state restoration.
 - Record each Excel environment actually run, including Office bitness.
 - A release may claim execution certification only for environments actually run.
@@ -186,7 +250,10 @@ policy. For each candidate and runtime family:
 1. Record full source SHA, Excel product/version/build, VBA runtime family,
    Windows version and Office process bitness.
 2. Freshly import the candidate's runtime and regression dependencies into a
-   clean workbook and record a successful VBA compile.
+   clean workbook and record a successful VBA compile. Call
+   `tools\Invoke-ExcelRegression.ps1` directly: the double-click
+   `Certify-*.cmd` launchers accept only a 64-bit run. Its `result` record
+   includes `office_bitness`.
 3. Run the full suite, including backend-2 native binding, unsigned conversion,
    rollover and applicable timing/lifecycle paths. Record cases, assertions,
    failures and completion/cleanup state. Retain the established JSON evidence
@@ -260,17 +327,20 @@ Where policy requires a pull request, make these items easy to verify:
 - compatibility, migration, and security notes;
 - remaining limitations.
 
-Require configured checks and record the resulting full `main` SHA. Compare it
-with the SHA used for steps 5–7, even when the exported VBA files are unchanged.
+Require the **Static checks** workflow to pass, apart from the four expected
+release-state failures of step 5. The `Protect main` ruleset requires a pull
+request but no status check, so this is the maintainer's responsibility.
+Record the resulting full `main` SHA.
 
-- If the SHA is unchanged (a fast-forward), retain the matching certification,
-  packaged-test result and hashes.
-- If the SHA changed (including a merge or squash commit), treat steps 5–7 as
-  pre-merge candidate evidence only. From a clean checkout of the resulting
-  `main` SHA, rerun static and Excel certification, rebuild the workbook from
-  that checkout's exports, reopen and test the packaged workbook, and record
-  its new size and SHA-256. Supersede the earlier artifact and evidence; do not
-  relabel a pre-merge workbook or reuse its hash as final release evidence.
+Every merge into `main` creates a new commit. Squash is the project's
+convention, and merge and rebase merges also rewrite commits, so the `main`
+SHA always differs from the SHA used for steps 5–7, even when the exported VBA
+files are unchanged. Treat steps 5–7 as pre-merge candidate evidence only. From
+a clean checkout of the resulting `main` SHA, rerun static and Excel
+certification, rebuild the workbook from that checkout's exports, reopen and
+test the packaged workbook, and record its new size and SHA-256. Supersede the
+earlier artifact and evidence; do not relabel a pre-merge workbook or reuse its
+hash as final release evidence.
 
 Retain evidence in one directory per certified full SHA. Freeze that final
 source and workbook before step 9. Provenance generation hashes an existing
@@ -289,7 +359,7 @@ git show --no-patch --decorate vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-Before pushing, confirm the tag equals `VERSION`, targets the certified commit, and has a matching dated changelog section. Never delete and recreate a public tag to hide a mistake.
+Before pushing, confirm the tag equals `VERSION`, targets the certified commit, and has a matching dated changelog section, and that every static check passes with the tag present (step 5). After pushing, rerun the hosted Static checks on that commit. Never delete and recreate a public tag to hide a mistake.
 
 ### Generate the provenance manifest
 
@@ -302,6 +372,8 @@ python tools/release_provenance.py --version X.Y.Z --tag vX.Y.Z \
     --bitness 64-bit --cases 80 --assertions 643 --failures 0 \
     --out release-manifest.json
 ```
+
+The values shown are v1.4.0's and stay as they are, because a fixture keeps this block identical to the tool's own documentation. Use the candidate's Excel build, bitness and counts from its runner record.
 
 There is one strict path and no preview mode. Every flag above except `--out` is required by the tool; `--out` is optional to the tool but required by this procedure, because the manifest is a published artifact. Everything is validated before any Markdown is constructed or any JSON is serialized:
 
@@ -336,9 +408,10 @@ python tools/release_provenance.py ... > provenance.md
 Retain at least:
 
 - candidate commit SHA
-- static and lint output
+- static and lint output, with the check count and `vba-lint-results.json`
+- the pinned wiki commit from `tools/release-state.json`
 - Excel version and bitness
-- regression-suite result
+- regression-suite result and the Excel runner's JSON record
 - `tools/release_provenance.py` output
 - package and package-member SHA-256 hashes
 - version and tag
@@ -390,6 +463,37 @@ between tagging and upload.
 
 Do not announce broad availability until these checks pass.
 
+## 12. Record the certified evidence
+
+The certified record can only follow the tag, because it names the tag's
+commit. Make these changes in the first pull request into the next release
+branch, once step 13 has created it:
+
+1. Add the release's record at the top of `releases` in
+   `tools/certified-evidence.json`: `tag`, `commit` (the tag target),
+   `certified`, `excel`, `bitness`, `cases`, `assertions`, `failures`,
+   `static_checks`, `workbook`, `workbook_sha256` and `manifest_sha256`.
+   The gate fails if `commit` differs from the tag's target.
+2. Add `<!-- facts:evidence:vX.Y.Z -->` and `<!-- facts:summary:vX.Y.Z -->`
+   blocks, each closed by its `<!-- /facts:… -->` marker, to README where the
+   release's evidence belongs, then run
+   `python3 tools/readme_facts.py --write`. The README's regression badge
+   follows the newest record.
+3. Leave the released `[X.Y.Z]` changelog section untouched: from now on the
+   gate compares it with its content at the tag.
+
+## 13. Start the next cycle
+
+1. Create the next release branch, `release/vA.B.C` for the next planned
+   version, from `main`.
+2. Change both `target-branch` entries in `.github/dependabot.yml` to the new
+   branch.
+3. Confirm that `CHANGELOG.md` has an empty `[Unreleased]` section whose link
+   runs `…/compare/vX.Y.Z...main` (set in step 3).
+4. Create the next milestone with a due date, move any open issue off the
+   released milestone, then close it. The issue-triage workflow fails for an
+   open issue without an open milestone.
+
 ## 🧯 Recovery
 
 ### Before tag publication
@@ -415,10 +519,10 @@ Do not silently replace assets or move the tag.
 | # | Gate | Done |
 | ---: | --- | :---: |
 | 1 | Scope frozen and diff reviewed | ☐ |
-| 2 | Version surfaces synchronized | ☐ |
+| 2 | Version surfaces, README facts and release-state claims synchronized; wiki published and pinned | ☐ |
 | 3 | Changelog finalized | ☐ |
 | 4 | Installation verified cleanly | ☐ |
-| 5 | Static checks pass | ☐ |
+| 5 | Static checks pass (every check, with the tag present locally) | ☐ |
 | 6 | Excel certification passes | ☐ |
 | 7 | Package built (workbook, `LICENSE`, `NOTICE`) and packaged-tested | ☐ |
 | 8 | Hashes and evidence recorded | ☐ |
@@ -426,6 +530,8 @@ Do not silently replace assets or move the tag.
 | 10 | Annotated tag targets certified main SHA | ☐ |
 | 11 | GitHub Release published | ☐ |
 | 12 | Post-publication checks pass | ☐ |
+| 13 | Certified evidence recorded and README facts rendered | ☐ |
+| 14 | Next release branch, Dependabot target, `[Unreleased]` link and milestone ready | ☐ |
 
 ## 📚 Related documents
 
@@ -437,11 +543,9 @@ Do not silently replace assets or move the tag.
 - [VERSION](VERSION) — authoritative version
 - [LICENSE](LICENSE) — Apache 2.0 license
 - [NOTICE](NOTICE) — attribution notice carried with every release
+- [docs/RELEASE_STATE.md](docs/RELEASE_STATE.md) — paired source and wiki release-state checks
+- [docs/LOCAL_EXCEL_TOOLS.md](docs/LOCAL_EXCEL_TOOLS.md) — local Excel certification launchers
 
 ---
 
 **Release principle:** certify one exact source revision, build from it once, and publish only evidence-backed artifacts derived from it.
-
-## Paired source and wiki checks
-
-Follow [Release-state consistency](docs/RELEASE_STATE.md) to prepare the pinned wiki input, update the two repositories in order, and record both final commit identities.
