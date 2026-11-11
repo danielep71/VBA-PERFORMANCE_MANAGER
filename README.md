@@ -500,9 +500,13 @@ through `MeasureBaseline` on the same host and compare medians.
 
 ## Statistics contract
 
-All statistics accept a one-dimensional `Double()` vector of finite,
-non-negative timing observations. A negative or non-finite value is rejected at
-the shared validation gate, with the offending index identified.
+All statistics accept a one-dimensional `Double()` vector of non-negative
+timing observations up to 1E+15 seconds (about 31.7 million years). NaN, a
+negative value or a value above that bound is rejected at the shared
+validation gate with `ERR_CPM_STATS_OUT_OF_DOMAIN`, naming the offending index.
+Within the bound no statistic can overflow: the mean, the median's midpoint,
+the standard deviation's squared deviations and the coefficient of variation
+all stay far inside the `Double` range.
 
 | Member | Result |
 |---|---|
@@ -856,7 +860,7 @@ restores the previous value afterwards. The runner is local and maintainer-run;
 the automated CI gate is tracked in #11.
 
 <!-- facts:source-cases -->
-The regression module in the current source invokes **87 cases**, and
+The regression module in the current source invokes **88 cases**, and
 `TotalSteps` must equal that count. Assertion counts are not derived from the
 source: they come from an Excel run, recorded below for each published tag.
 <!-- /facts:source-cases -->

@@ -389,6 +389,11 @@ Attribute VB_Exposed = False
     'Finite-loop guard for tick-alignment polling
         Private Const CPM_ALIGN_MAX_SPINS               As Long = 1000000
 
+    'Largest timing magnitude, in seconds, that this class formats exactly
+    '(about 31.7 million years). Every whole second up to it is an exact
+    'Double, so decomposing it never loses a second (#30)
+        Private Const CPM_MAX_TIMING_SECONDS            As Double = 1E+15
+
     'Error numbers raised by this class.
     '
     'Public so callers can trap a specific condition by name rather than by a
@@ -6621,7 +6626,14 @@ Private Sub Stats_RequireSamples( _
 '   Every statistics routine needs the same guard, so it lives here once.
 '
 ' SUPPORTED DOMAIN
-'   Finite, non-negative timing observations.
+'   Non-negative timing observations up to CPM_MAX_TIMING_SECONDS (1E+15
+'   seconds, about 31.7 million years).
+'
+'   The bound is what makes every public Stats_* routine safe without special
+'   arithmetic: a sum of n accepted values stays below n * 1E+15, a squared
+'   deviation below 1E+30, and a midpoint below 1E+15, all far from Double
+'   overflow. A larger value used to pass validation and could overflow
+'   Stats_StdDev (#32).
 '
 '   The statistics exist to describe elapsed times, which cannot be negative.
 '   A negative value means the vector is not a timing vector, and every figure
@@ -6643,8 +6655,10 @@ Private Sub Stats_RequireSamples( _
 '
 ' ERROR POLICY
 '   - Raises ERR_CPM_STATS_NO_SAMPLES on an empty or uninitialized vector
-'   - Raises ERR_CPM_STATS_OUT_OF_DOMAIN on a negative or non-finite value,
-'     naming the offending index and value
+'   - Raises ERR_CPM_STATS_OUT_OF_DOMAIN on NaN, a negative value or a value
+'     above CPM_MAX_TIMING_SECONDS, naming the offending index and value.
+'     Infinity is rejected as above the maximum; a large finite value is
+'     never described as non-finite
 '
 ' DEPENDENCIES
 '   - Stats_Count
@@ -6655,14 +6669,13 @@ Private Sub Stats_RequireSamples( _
 '   number in the thousands at most, that cost is not worth optimizing away with
 '   a validity cache that could go stale.
 '
-'   The non-finite test is a proxy rather than a rigorous IEEE classification.
 '   VBA raises on arithmetic overflow instead of producing infinities, and offers
 '   no IsFinite, so NaN and Inf can only arrive through deliberate construction
-'   or an API round-trip. The check costs nothing inside a scan that is already
-'   happening, and is worth having for that reason alone.
+'   or an API round-trip. NaN is caught by the self-inequality test; infinity
+'   is caught by the upper bound.
 '
 ' UPDATED
-'   2026-08-16
+'   2026-11-11
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -6704,12 +6717,13 @@ Private Sub Stats_RequireSamples( _
                               "Statistics accept finite, non-negative timing observations."
                 End If
 
-            'Proxy for infinity: no real elapsed time approaches this magnitude
-                If v > 1E+300 Then
+            'Above the supported timing magnitude (this also rejects infinity)
+                If v > CPM_MAX_TIMING_SECONDS Then
                     Err.Raise ERR_CPM_STATS_OUT_OF_DOMAIN, _
                               "cPerformanceManager." & SourceProc, _
-                              "Sample " & CStr(i) & " is not finite. Statistics " & _
-                              "accept finite, non-negative timing observations."
+                              "Sample " & CStr(i) & " (" & CStr(v) & ") exceeds the " & _
+                              "supported maximum of 1E+15 seconds. Statistics accept " & _
+                              "non-negative timing observations up to that bound."
                 End If
         Next i
 
