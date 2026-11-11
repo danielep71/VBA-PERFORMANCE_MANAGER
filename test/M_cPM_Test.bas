@@ -85,7 +85,7 @@ Option Explicit     'Force explicit declaration of all variables
 ' PRIVATE CONSTANTS
 '------------------------------------------------------------------------------
     Private Const cPM_SHEET_LOG     As String = "REGRESSION_cPM"
-    Private Const TotalSteps        As Long = 87    'Total number of executed regression cases
+    Private Const TotalSteps        As Long = 89    'Total number of executed regression cases
 
 '------------------------------------------------------------------------------
 ' PRIVATE TYPES
@@ -695,6 +695,16 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
         CurrentStep = CurrentStep + 1
         Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: validation disarms worker faults"
         Test_Measure_ValidationDisarmsWorkerFaults
+
+    'Validate QPC alignment-loop read failure and spin-guard timeout (#44)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "QPC alignment loop failure and timeout"
+        Test_AlignLoop_QpcInjection
+
+    'Validate method-4 alignment-loop read failure and spin-guard timeout (#44)
+        CurrentStep = CurrentStep + 1
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Method-4 alignment loop failure and timeout"
+        Test_AlignLoop_SystemTimeInjection
 
 Clean_Exit:
 '------------------------------------------------------------------------------
@@ -7658,9 +7668,9 @@ Private Sub Test_FaultInject_QpcStartFailure_Strict()
 '   QPC_TryGetNextTick, a different function with its own early exit, so the
 '   unaligned assertions do not speak for it.
 '
-'   Scope boundary: only the initial tick read is forced to fail. The seam is
-'   one-shot, so the loop's second read and the spin-guard timeout are not
-'   reachable from here and remain outside this case.
+'   Scope boundary: only the initial tick read is forced to fail (#2). The
+'   loop's later read and the spin-guard timeout are covered by
+'   Test_AlignLoop_QpcInjection and Test_AlignLoop_SystemTimeInjection (#44).
 '
 '   StartTimer is transactional. A failed start capture must not disturb state
 '   the caller may still be relying on. Without fault injection this contract
@@ -7855,9 +7865,9 @@ Private Sub Test_FaultInject_QpcStartFailure_NonStrict()
 '   QPC_TryGetNextTick, a different function with its own early exit, so the
 '   unaligned assertions do not speak for it.
 '
-'   Scope boundary: only the initial tick read is forced to fail. The seam is
-'   one-shot, so the loop's second read and the spin-guard timeout are not
-'   reachable from here and remain outside this case.
+'   Scope boundary: only the initial tick read is forced to fail (#2). The
+'   loop's later read and the spin-guard timeout are covered by
+'   Test_AlignLoop_QpcInjection and Test_AlignLoop_SystemTimeInjection (#44).
 '
 ' INPUTS
 '   None
@@ -12662,4 +12672,236 @@ CleanFail:
 '------------------------------------------------------------------------------
         RecordUnexpectedError "Test_Measure_ValidationDisarmsWorkerFaults"
         Resume CleanExit
+End Sub
+
+
+Private Sub Test_AlignLoop_QpcInjection()
+'
+'==============================================================================
+'                     TEST ALIGN LOOP QPC INJECTION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates the QPC next-tick alignment branches that follow a successful
+'   initial read: a failed loop read and an exhausted spin guard, each in
+'   strict and non-strict mode (#44)
+'
+' WHY THIS EXISTS
+'   The initial-read failure is covered by the #2 fault-injection cases. The
+'   later branches were unreachable until the one-shot loop-read and timeout
+'   seams existed
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+    'Start the regression case
+        Case_Begin "QPC alignment: loop-read failure and spin-guard timeout, strict and non-strict"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+
+    'Loop-read failure: strict raises the read error; non-strict falls back to method 2
+        AlignInjection_Check cPM_MethodQPC, True, True, ERR_CPM_QPC_READ_FAILED, vbNullString, _
+                             cPM_MethodQPC, cPM_ReadOK, "QPC loop-read failure, strict"
+        AlignInjection_Check cPM_MethodQPC, True, False, 0, vbNullString, _
+                             cPM_MethodTickCount, cPM_ReadFallbackToMethod2, _
+                             "QPC loop-read failure, non-strict"
+    'Timeout: strict raises from the QPC helper; non-strict keeps the valid initial tick
+        AlignInjection_Check cPM_MethodQPC, False, True, ERR_CPM_ALIGN_TICK_TIMEOUT, _
+                             "cPerformanceManager.QPC_TryGetNextTick", _
+                             cPM_MethodQPC, cPM_ReadOK, "QPC timeout, strict"
+        AlignInjection_Check cPM_MethodQPC, False, False, 0, vbNullString, _
+                             cPM_MethodQPC, cPM_ReadOK, "QPC timeout, non-strict"
+
+CleanExit:
+    'Finalize the current case
+        Case_Finalize
+    Exit Sub
+
+CleanFail:
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_AlignLoop_QpcInjection"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+
+Private Sub Test_AlignLoop_SystemTimeInjection()
+'
+'==============================================================================
+'                 TEST ALIGN LOOP SYSTEM TIME INJECTION
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Validates the method-4 (timeGetSystemTime) next-tick alignment branches
+'   that follow a successful initial read: a failed loop read and an exhausted
+'   spin guard, each in strict and non-strict mode (#44)
+'
+' WHY THIS EXISTS
+'   As for QPC: the initial-read failure is covered by #2, and the later
+'   branches need the one-shot loop-read and timeout seams
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+    'Start the regression case
+        Case_Begin "Method-4 alignment: loop-read failure and spin-guard timeout, strict and non-strict"
+    'Enable case-level unexpected-error handling
+        On Error GoTo CleanFail
+
+    'Loop-read failure: strict raises the read error; non-strict falls back to method 2
+        AlignInjection_Check cPM_MethodSystemTime, True, True, ERR_CPM_TIMEGETSYSTEMTIME_FAILED, _
+                             vbNullString, cPM_MethodSystemTime, cPM_ReadOK, _
+                             "Method-4 loop-read failure, strict"
+        AlignInjection_Check cPM_MethodSystemTime, True, False, 0, vbNullString, _
+                             cPM_MethodTickCount, cPM_ReadFallbackToMethod2, _
+                             "Method-4 loop-read failure, non-strict"
+    'Timeout: strict raises from the generic helper; non-strict settles on a current timestamp
+        AlignInjection_Check cPM_MethodSystemTime, False, True, ERR_CPM_ALIGN_TICK_TIMEOUT, _
+                             "cPerformanceManager.Timestamp_TryGetNextSeconds", _
+                             cPM_MethodSystemTime, cPM_ReadOK, "Method-4 timeout, strict"
+        AlignInjection_Check cPM_MethodSystemTime, False, False, 0, vbNullString, _
+                             cPM_MethodSystemTime, cPM_ReadOK, "Method-4 timeout, non-strict"
+
+CleanExit:
+    'Finalize the current case
+        Case_Finalize
+    Exit Sub
+
+CleanFail:
+    'Record the unexpected case-level error
+        RecordUnexpectedError "Test_AlignLoop_SystemTimeInjection"
+    'Continue through centralized cleanup
+        Resume CleanExit
+
+End Sub
+
+
+Private Sub AlignInjection_Check( _
+    ByVal Method As cPM_TimerMethod, _
+    ByVal InjectLoopRead As Boolean, _
+    ByVal StrictRun As Boolean, _
+    ByVal ExpectedNumber As Long, _
+    ByVal ExpectedSource As String, _
+    ByVal ExpectedMethod As cPM_TimerMethod, _
+    ByVal ExpectedStatus As cPM_ReadStatus, _
+    ByVal Context As String)
+'
+'==============================================================================
+'                         ALIGN INJECTION CHECK
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Runs one injected aligned start against a protected session and asserts the
+'   outcome, then proves every seam self-cleared (#44)
+'
+' WHY THIS EXISTS
+'   The eight QPC and method-4 scenarios share one contract. Named without the
+'   Test_ prefix, so the case-wiring check does not count it as a case
+'
+' INPUTS
+'   Method          Backend of the injected aligned start
+'   InjectLoopRead  TRUE => fail the first loop read; FALSE => force a timeout
+'   StrictRun       Strict mode of the injected start
+'   ExpectedNumber  Strict only: the error the start must raise
+'   ExpectedSource  Strict only: the error source, or blank to skip that check
+'   ExpectedMethod  Non-strict only: the backend the new session binds
+'   ExpectedStatus  Non-strict only: the LastReadStatus it publishes
+'   Context         Prefix for assertion messages
+'
+' RETURNS
+'   None. Unexpected errors propagate to the calling case.
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM             As cPerformanceManager    'Class under test
+    Dim T1Before        As Double                 'Start of the protected session
+    Dim RaisedNumber    As Long                   'Error number of the injected start
+    Dim RaisedSource    As String                 'Error source of the injected start
+    Dim RaisedText      As String                 'Error description of the injected start
+
+'------------------------------------------------------------------------------
+' COMMIT A SESSION TO PROTECT
+'------------------------------------------------------------------------------
+        Set cPM = New cPerformanceManager
+        cPM.StrictMode = True
+        cPM.StartTimer cPM_MethodTickCount, False, "Protected"
+        T1Before = cPM.T1
+
+'------------------------------------------------------------------------------
+' INJECT AND START
+'------------------------------------------------------------------------------
+        cPM.StrictMode = StrictRun
+        If InjectLoopRead Then
+            cPM.Test_ForceNextAlignmentLoopReadFailure
+        Else
+            cPM.Test_ForceNextAlignmentTimeout
+        End If
+        On Error Resume Next
+        cPM.StartTimer Method, True, "Injected"
+        RaisedNumber = Err.Number
+        RaisedSource = Err.Source
+        RaisedText = Err.Description
+        Err.Clear
+        On Error GoTo 0
+
+'------------------------------------------------------------------------------
+' ASSERT THE OUTCOME
+'------------------------------------------------------------------------------
+        If StrictRun Then
+            Test_Assert_EqualLong ExpectedNumber, RaisedNumber, Context & ": raises the expected error"
+            If Len(ExpectedSource) > 0 Then
+                Test_Assert_EqualString ExpectedSource, RaisedSource, _
+                                        Context & ": the error names the helper that timed out"
+                Test_Assert_ContainsString RaisedText, "spin guard", _
+                                           Context & ": the description names the spin guard"
+            End If
+            'The previous session survives, so no failed or sentinel start was committed
+            Test_Assert_EqualBoolean True, cPM.HasActiveSession, Context & ": the previous session is active"
+            Test_Assert_EqualLong CLng(cPM_MethodTickCount), CLng(cPM.ActiveMethodID), _
+                                  Context & ": the previous backend binding is unchanged"
+            Test_Assert_ApproxDouble T1Before, cPM.T1, 0.000000001, Context & ": the previous start is unchanged"
+            Test_Assert_EqualString "Protected", cPM.RunLabel, Context & ": the previous run label is unchanged"
+        Else
+            Test_Assert_EqualLong 0, RaisedNumber, Context & ": does not raise"
+            Test_Assert_EqualLong CLng(ExpectedMethod), CLng(cPM.ActiveMethodID), _
+                                  Context & ": binds the documented backend"
+            Test_Assert_EqualLong CLng(ExpectedStatus), CLng(cPM.LastReadStatus), _
+                                  Context & ": publishes the documented status"
+            Test_Assert_EqualString "Injected", cPM.RunLabel, Context & ": commits the new session"
+            Test_Assert_True cPM.T1 > 0#, Context & ": commits a real start timestamp, not a sentinel"
+        End If
+
+'------------------------------------------------------------------------------
+' EVERY SEAM SELF-CLEARED
+'------------------------------------------------------------------------------
+        cPM.StrictMode = True
+        cPM.StartTimer Method, True, "Ordinary"
+        Test_Assert_EqualLong CLng(Method), CLng(cPM.ActiveMethodID), _
+                              Context & ": an ordinary aligned start binds its backend afterwards"
+        Test_Assert_EqualLong CLng(cPM_ReadOK), CLng(cPM.LastReadStatus), _
+                              Context & ": an ordinary aligned start reads cleanly afterwards"
+
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+        cPM.ResetEnvironment
+        Set cPM = Nothing
+
 End Sub

@@ -527,6 +527,9 @@ Attribute VB_Exposed = False
         'One-shot forced exhaustion of the next next-tick alignment spin guard,
         'shared by every aligned-start helper (#31, #44)
         Private m_TestForceNextAlignTimeout As Boolean
+        'One-shot forced failure of the first read inside the next next-tick
+        'alignment loop, after its initial read has succeeded (#44)
+        Private m_TestForceNextAlignLoopReadFailure As Boolean
         'Measured-cycle worker seams. Start and endpoint are counted separately
         'because they arm at different moments and prove different things: a
         'start failure produces a fallback the harness must reject, an endpoint
@@ -4345,6 +4348,7 @@ Private Function Timestamp_TryGetNextSeconds( _
                     Exit Function
                 End If
                 If Align_TestTimeoutArmed() Then GoTo SpinGuardExhausted
+                If Align_TestLoopReadFailureArmed() Then m_TestFailNextSystemTimeRead = True
 
                 Do
                     SpinCount = SpinCount + 1
@@ -4428,6 +4432,42 @@ Private Function Align_TestTimeoutArmed() As Boolean
 End Function
 
 
+Private Function Align_TestLoopReadFailureArmed() As Boolean
+'
+'==============================================================================
+'                    ALIGN TEST LOOP READ FAILURE ARMED
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Consumes the one-shot forced loop-read failure armed by the regression
+'   suite.
+'
+' WHY THIS EXISTS
+'   The existing read seams fail the next native read, which in an aligned
+'   start is the initial read. A read that fails later, inside the alignment
+'   loop, takes a different branch that no seam could reach (#44). The QPC and
+'   method-4 helpers call this right after their initial read; when it returns
+'   TRUE they arm their backend's one-shot read failure, so exactly the first
+'   loop read fails.
+'
+' RETURNS
+'   TRUE once after Test_ForceNextAlignmentLoopReadFailure, then FALSE.
+'
+' NOTES
+'   Production behaviour is unchanged: only the test-only seam sets the flag.
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+    'Consume the one-shot flag
+        If m_TestForceNextAlignLoopReadFailure Then
+            m_TestForceNextAlignLoopReadFailure = False
+            Align_TestLoopReadFailureArmed = True
+        End If
+
+End Function
+
+
 Private Function QPC_TryGetNextTick( _
     ByRef TickOut As Currency) _
     As Boolean
@@ -4485,6 +4525,7 @@ Private Function QPC_TryGetNextTick( _
 '------------------------------------------------------------------------------
     'Spin until the counter advances strictly beyond the initial read
         If Align_TestTimeoutArmed() Then GoTo SpinGuardExhausted
+        If Align_TestLoopReadFailureArmed() Then m_TestFailNextQpcRead = True
         Do
             SpinCount = SpinCount + 1
 
@@ -7811,6 +7852,48 @@ Friend Sub Test_ForceNextAlignmentTimeout()
 
     'Arm a single forced alignment timeout
         m_TestForceNextAlignTimeout = True
+
+End Sub
+
+
+Friend Sub Test_ForceNextAlignmentLoopReadFailure()
+'
+'==============================================================================
+'                TEST FORCE NEXT ALIGNMENT LOOP READ FAILURE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Arms a ONE-SHOT forced failure of the first read inside the next QPC or
+'   method-4 next-tick alignment loop, after its initial read has succeeded.
+'
+' WHY THIS EXISTS
+'   Test_ForceNextQPCReadFailure and Test_ForceNextSystemTimeReadFailure fail
+'   the initial aligned read (#2). The later loop read has its own early exit,
+'   which this seam reaches (#44).
+'
+' INPUTS
+'   None.
+'
+' RETURNS
+'   None.
+'
+' BEHAVIOR
+'   The next QPC or method-4 aligned helper consumes the flag after its
+'   initial read and arms its backend's one-shot read failure, which the first
+'   loop read then consumes. Both flags are clear once the helper returns.
+'
+' ERROR POLICY
+'   Does not raise.
+'
+' NOTES
+'   One-shot and self-clearing, like the other read seams. Declared Friend, so
+'   it is reachable from the regression suite but invisible outside the project.
+'
+' UPDATED
+'   2026-11-11
+'==============================================================================
+
+    'Arm a single forced alignment-loop read failure
+        m_TestForceNextAlignLoopReadFailure = True
 
 End Sub
 
