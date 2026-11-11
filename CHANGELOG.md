@@ -122,6 +122,12 @@ Use only the categories needed by a release.
 - Added a root `VERSION` marker at `1.4.0`, aligned with the latest published
   release and the existing source-version contract.
 
+- Added regression coverage for the next-tick alignment branches that follow a
+  successful initial read: a failed loop read and an exhausted spin guard, for
+  QPC and method 4, in strict and non-strict mode. A new one-shot, test-only
+  seam fails the first loop read; behavior without armed seams is unchanged
+  (#44).
+
 
 ### Changed
 
