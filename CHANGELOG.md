@@ -122,6 +122,12 @@ Use only the categories needed by a release.
 - Added a root `VERSION` marker at `1.4.0`, aligned with the latest published
   release and the existing source-version contract.
 
+- Added regression coverage for the next-tick alignment branches that follow a
+  successful initial read: a failed loop read and an exhausted spin guard, for
+  QPC and method 4, in strict and non-strict mode. A new one-shot, test-only
+  seam fails the first loop read; behavior without armed seams is unchanged
+  (#44).
+
 
 ### Changed
 
@@ -260,12 +266,19 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- **ElapsedTime large durations (#30):** whole seconds and hours are no longer
+  narrowed to `Long`, so a supplied value above 2,147,483,647 seconds (about
+  68 years) formats instead of raising a VBA overflow. The supported domain is
+  0 to 1E+15 seconds, formatted exactly; larger values are clamped to 1E+15,
+  as negative values are clamped to 0. Sub-second formatting is unchanged.
+  Regression case 90 covers it.
+
 - **TW instance-key issuance (#35):** the shared key seed no longer overflows
   after 2,147,483,647 keys. It counts exactly up to 1E+15 keys in the same
   `cPM#<n>` format, and beyond that raises the new
   `ERR_TW_KEY_SPACE_EXHAUSTED` (`vbObjectError + 2204`) instead of wrapping,
   because a live instance can hold a cached key that a wrap would reissue.
-  `PM_TW_EndAllSessions` still never rewinds the seed. Regression case 88
+  `PM_TW_EndAllSessions` still never rewinds the seed. Regression case 91
   covers the boundary through a test-only seed seam.
 
 - **Regression error specificity (#76):** strict QPC/read/validation tests now

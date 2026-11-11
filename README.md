@@ -209,7 +209,10 @@ Set cPM = Nothing
 ```
 
 Supplying `ElapsedSecondsIn` formats the value already captured; it does not
-take a second timing sample.
+take a second timing sample. `ElapsedTime` formats any duration from 0 to
+1E+15 seconds (about 31.7 million years) exactly, with hours that never wrap
+at 24. Negative values are clamped to 0 and larger values to 1E+15, so no
+supplied value raises an overflow.
 
 ## 3. Benchmark a procedure with statistics
 
@@ -856,7 +859,7 @@ restores the previous value afterwards. The runner is local and maintainer-run;
 the automated CI gate is tracked in #11.
 
 <!-- facts:source-cases -->
-The regression module in the current source invokes **88 cases**, and
+The regression module in the current source invokes **91 cases**, and
 `TotalSteps` must equal that count. Assertion counts are not derived from the
 source: they come from an Excel run, recorded below for each published tag.
 <!-- /facts:source-cases -->
@@ -924,6 +927,7 @@ contributor evidence is unavailable. No 32-bit execution certification is inferr
 The suite covers, among other areas:
 
 - all six timing backends across start, elapsed, aligned-start, and formatting paths;
+- next-tick alignment faults: initial-read failure (#2), and loop-read failure and spin-guard timeout for QPC and method 4 in strict and non-strict mode (#44);
 - strict/non-strict validation and injected native-read failures;
 - unsigned 32-bit conversion boundaries and backend rollover constants;
 - checkpoint growth, cache preservation, delta/cumulative semantics, and exports;
