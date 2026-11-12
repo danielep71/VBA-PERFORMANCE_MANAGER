@@ -1239,12 +1239,17 @@ VBA-PERFORMANCE_MANAGER/
 │  ├─ M_cPM_DEMO.bas
 │  └─ M_cPM_USAGE_EXAMPLES.bas
 ├─ docs/
+│  ├─ assets/                 # website images and their provenance
 │  ├─ releases/               # per-release plans and evidence
 │  ├─ COMPILE_SAFETY_CHECKS.md
 │  ├─ EXCEL_CERTIFICATION.md
 │  ├─ LOCAL_EXCEL_TOOLS.md
 │  ├─ RELEASE_STATE.md
-│  └─ TEMPLATE_ADAPTATIONS.md
+│  ├─ TEMPLATE_ADAPTATIONS.md
+│  ├─ TRAFFIC_HISTORY.md
+│  ├─ WEBSITE.md
+│  ├─ index.html              # project website (GitHub Pages)
+│  └─ sitemap.xml
 ├─ images/
 ├─ src/
 │  ├─ classes/
@@ -1472,6 +1477,8 @@ For fuller procedures, see
 | [Local Excel tools](docs/LOCAL_EXCEL_TOOLS.md) | Double-click certify, sync and export launchers |
 | [Excel certification](docs/EXCEL_CERTIFICATION.md) | Supervised local certification run and the timer-rollback negative control |
 | [Release-state checks](docs/RELEASE_STATE.md) | How the gate checks release claims against tags and the pinned wiki |
+| [Project website](docs/WEBSITE.md) | The GitHub Pages landing page: publishing and maintenance |
+| [Traffic history](docs/TRAFFIC_HISTORY.md) | The daily traffic export behind the clones, visitors and visits badges |
 | [Regression suite](test/M_cPM_Test.bas) | Executable Excel/VBA behavioral verification |
 | [Static linter](tools/vba_lint.py) | Machine-readable source consistency checks |
 | [GitHub Releases](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases) | Published workbook and release manifest assets |
