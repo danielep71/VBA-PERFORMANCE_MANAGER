@@ -1,5 +1,9 @@
 # Strict error-code review — issue #76
 
+Outcome: merged into `main` in increment 13 ([#136](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/136)). Excel: 87
+cases, 771 assertions, 0 failures; #76 is closed. See the
+[evidence record](EVIDENCE.md). The text below is the preparation record.
+
 Status at preparation: implementation ready for exact-candidate 64-bit Excel
 execution. Production code is unchanged. Tests require specific documented
 errors instead of accepting unrelated nonzero errors.

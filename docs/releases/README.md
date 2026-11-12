@@ -13,3 +13,6 @@ implementation and release plan.
 
 The original v1.4.0 plan path remains as a redirect notice to preserve links
 from issue comments and external references.
+
+Practices adapted from the maintainer's project template, with their licence
+decisions, are recorded in [Template adaptations](../TEMPLATE_ADAPTATIONS.md).

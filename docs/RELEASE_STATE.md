@@ -11,7 +11,9 @@ python tools/vba_lint.py --wiki-root /tmp/cpm-wiki-input --json /tmp/cpm-lint.js
 
 Choose a directory that does not exist. Preparation refuses existing directories.
 Alternatively supply a clean local wiki checkout at the pinned commit, or set
-`PERFORMANCE_MANAGER_WIKI`. Missing, dirty, or mismatched input fails the gate.
+`PERFORMANCE_MANAGER_WIKI`. Without `--wiki-root` or that variable, the gate
+reads `.cache/release-wiki` in the repository; if that is absent, the three wiki
+checks fail. Missing, dirty, or mismatched input fails the gate.
 CI uses the same commands with read-only access; checking never fetches live wiki
 content. Text and JSON report the source commit, checked wiki commit and expected
 wiki commit. JSON also records the latest tag and its target. Local uncommitted
