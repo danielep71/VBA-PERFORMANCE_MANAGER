@@ -19,9 +19,12 @@
 
 <br>
 
-[![VBA source consistency](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/actions/workflows/static-checks.yml/badge.svg?branch=main)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/actions/workflows/static-checks.yml)
-[![GitHub release](https://img.shields.io/github/v/release/danielep71/VBA-PERFORMANCE_MANAGER?style=flat-square&label=release&color=217346)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases)
-[![Issues](https://img.shields.io/github/issues/danielep71/VBA-PERFORMANCE_MANAGER?style=flat-square&color=d73a49)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues)
+[![Static checks](https://img.shields.io/github/actions/workflow/status/danielep71/VBA-PERFORMANCE_MANAGER/static-checks.yml?branch=main&style=flat-square&label=static%20checks)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/actions/workflows/static-checks.yml)
+[![Last commit](https://img.shields.io/github/last-commit/danielep71/VBA-PERFORMANCE_MANAGER/main?style=flat-square&label=last%20commit&color=217346)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/commits/main)
+[![Downloads](https://img.shields.io/github/downloads/danielep71/VBA-PERFORMANCE_MANAGER/total?style=flat-square&label=downloads&color=217346)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/latest)
+[![P1 issues](https://img.shields.io/github/issues/danielep71/VBA-PERFORMANCE_MANAGER/P1?style=flat-square&label=P1&color=B60205)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues?q=is%3Aissue%20is%3Aopen%20label%3AP1)
+[![P2 issues](https://img.shields.io/github/issues/danielep71/VBA-PERFORMANCE_MANAGER/P2?style=flat-square&label=P2&color=D93F0B)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues?q=is%3Aissue%20is%3Aopen%20label%3AP2)
+[![P3 issues](https://img.shields.io/github/issues/danielep71/VBA-PERFORMANCE_MANAGER/P3?style=flat-square&label=P3&color=FBCA04)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues?q=is%3Aissue%20is%3Aopen%20label%3AP3)
 [![Stars](https://img.shields.io/github/stars/danielep71/VBA-PERFORMANCE_MANAGER?style=flat-square&color=bf8700)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER)
 
 <br>
@@ -39,6 +42,10 @@
 [Public API](#public-api)
 &nbsp;·&nbsp;
 [Assurance](#regression-testing)
+&nbsp;·&nbsp;
+[Limitations](#limitations)
+&nbsp;·&nbsp;
+[Changelog](CHANGELOG.md)
 &nbsp;·&nbsp;
 [Wiki](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/wiki)
 &nbsp;·&nbsp;
@@ -1321,6 +1328,8 @@ There is no official Performance Manager `.xlam` distribution. You may embed
 the source in your own add-in, but that host is built and maintained by you.
 
 ---
+
+<a id="limitations"></a>
 
 ## ⚠️ Known limitations and boundaries
 
