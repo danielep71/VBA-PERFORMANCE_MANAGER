@@ -24,6 +24,10 @@ After the first successful deployment:
 1. set the repository's **About → Website** field to that address;
 2. add the website link to the README navigation line.
 
+Both were done after the first deployment, on 2026-11-12. Pages publishes
+from `main` /docs; before that date it rendered the README from the
+repository root with Jekyll.
+
 The page uses only the images in [`assets/`](assets/README.md), where their
 provenance is recorded. Other documentation links point to the rendered files
 on GitHub, because Pages does not convert Markdown to HTML here.
