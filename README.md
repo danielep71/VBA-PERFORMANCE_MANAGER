@@ -34,6 +34,8 @@
 
 **Two-file runtime · No installer for source import · No admin rights normally required · No COM add-in · No third-party DLL · No external numerical runtime**
 
+[Project website](https://danielep71.github.io/VBA-PERFORMANCE_MANAGER/)
+&nbsp;·&nbsp;
 [Quick start](#quick-start)
 &nbsp;·&nbsp;
 [Timing backends](#timing-backends)
