@@ -225,11 +225,14 @@ images/**        linguist-documentation
 #------------------------------------------------------------------------------
 # These rules apply to git archive and archive producers that honor Git
 # attributes. Repository plumbing is not part of a consumable source package.
+#
+# .github is deliberately not excluded (#171). OpenSSF Scorecard reads the
+# repository from the GitHub tarball, which honours export-ignore; excluding
+# .github hid dependabot.yml and every workflow from it, so it reported no
+# dependency-update tool and could not evaluate the workflow checks.
 .gitattributes  export-ignore
 .gitignore      export-ignore
 .editorconfig   export-ignore
-.github         export-ignore
-.github/**      export-ignore
 
 
 #==============================================================================
