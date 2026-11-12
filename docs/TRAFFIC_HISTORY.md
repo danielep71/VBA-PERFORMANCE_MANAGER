@@ -96,8 +96,18 @@ Fix the configuration and run the workflow again on `main`.
 
 ## Key rotation
 
-Rotate the key every 90 days, at once on suspected exposure, or when someone
-other than the maintainer changes the workflow:
+GitHub App private keys do not expire: a key stays valid until it is deleted
+in the App settings. There is no scheduled rotation. The key grants only
+`Administration: read` and is reachable only from `main` through the
+`analytics` environment.
+
+Rotate it when there is a reason to:
+
+- the key may have been exposed, for example a downloaded `.pem` that was
+  kept, shared or backed up;
+- someone other than the maintainer changes the workflow.
+
+To rotate:
 
 1. generate a new key in the App settings;
 2. replace `TRAFFIC_APP_PRIVATE_KEY` in `analytics`;
