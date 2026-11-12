@@ -80,6 +80,9 @@ These steps are done by the maintainer.
      `data/badges/`;
    - only then add the README traffic badges.
 
+   The first run succeeded on 2026-11-12, and the README has shown the
+   clones, visitors and visits badges since then.
+
 ## Failures
 
 - **Missing credentials** fail the configuration check with an error naming
