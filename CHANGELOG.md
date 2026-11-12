@@ -187,6 +187,11 @@ Use only the categories needed by a release.
 
 ### Changed
 
+- Source archives (`git archive` and GitHub's source ZIP and tarball) now
+  include the `.github/` directory. Excluding it hid `dependabot.yml` and the
+  workflows from OpenSSF Scorecard, which reads the repository from the
+  tarball (#171).
+
 - Relicensed the project from MIT to the Apache License, Version 2.0, and added
   a `NOTICE` file. Releases up to and including v1.4.0 remain available under
   MIT; the change applies from the next release. Source code and public API are
