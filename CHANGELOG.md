@@ -163,6 +163,13 @@ Use only the categories needed by a release.
   anchors on every change, and a weekly workflow requests the external links
   (#85).
 
+- Added a daily traffic export. `.github/workflows/daily-traffic.yml`
+  keeps GitHub's 14-day traffic data as CSV history on the `traffic-history`
+  branch, and writes the endpoints for the clones, visitors and visits README
+  badges. It reads the traffic API with a short-lived GitHub App token from
+  the `analytics` environment. Setup and key rotation are in
+  `docs/TRAFFIC_HISTORY.md` (#165).
+
 - Added six release-state checks: release changelog sections and comparison
   links agree with the tags, README current-release claims agree with the
   latest tag, the wiki input matches its pinned revision, the wiki badges
