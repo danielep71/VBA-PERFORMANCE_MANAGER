@@ -1,0 +1,523 @@
+name: Daily traffic export
+
+# Repository analytics, not CI (#165). GitHub keeps traffic data for 14 days
+# only; this workflow reads the traffic API once a day and appends a snapshot
+# to CSV files under data/ on the orphan traffic-history branch, which the
+# first run creates. It also writes data/badges/clones.json, visitors.json and
+# visits.json there: the shields.io endpoints behind the README traffic badges.
+# The data is the aggregate GitHub already shows to repository admins (views,
+# clones, referrers, popular paths), with nothing that identifies a visitor.
+#
+# Credentials: a dedicated GitHub App with Administration: read on this
+# repository. Its client ID (vars.TRAFFIC_APP_CLIENT_ID) and private key
+# (secrets.TRAFFIC_APP_PRIVATE_KEY) belong to the analytics environment, which
+# allows only main. Only the token step receives the key, and only the fetch
+# step the short-lived installation token, which is revoked when the job ends.
+# There is no personal-token fallback. Setup and key rotation:
+# docs/TRAFFIC_HISTORY.md.
+#
+# This job compiles nothing and runs no repository code, and must never be
+# extended to do so: the static checks stay in static-checks.yml, so the App
+# key is never available to a job that executes repository code. The checkout
+# keeps no credentials; the workflow token reaches git only in the push to
+# traffic-history, as a masked header on that one command.
+
+on:
+  schedule:
+    # Daily, off the hour.
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-traffic
+  cancel-in-progress: false
+
+jobs:
+  traffic:
+    name: Export GitHub traffic
+    # A manual dispatch can select any branch: run only the default branch's
+    # reviewed copy. The analytics environment independently allows only main.
+    if: github.event_name == 'schedule' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    environment: analytics
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare traffic-history branch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin traffic-history; then
+            git fetch origin traffic-history:traffic-history
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then exit "$status"; fi
+          fi
+
+          if git show-ref --verify --quiet refs/heads/traffic-history; then
+            git checkout traffic-history
+          else
+            git checkout --orphan traffic-history
+            git rm -rf . || true
+          fi
+
+          mkdir -p data
+
+      - name: Check the traffic App configuration
+        shell: bash
+        env:
+          CLIENT_ID: ${{ vars.TRAFFIC_APP_CLIENT_ID }}
+          HAS_KEY: ${{ secrets.TRAFFIC_APP_PRIVATE_KEY != '' }}
+        run: |
+          if [ -z "$CLIENT_ID" ] || [ "$HAS_KEY" != "true" ]; then
+            echo "::error::TRAFFIC_APP_CLIENT_ID or TRAFFIC_APP_PRIVATE_KEY is not set in the analytics environment (docs/TRAFFIC_HISTORY.md)"
+            exit 1
+          fi
+
+      - name: Create the traffic App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.TRAFFIC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.TRAFFIC_APP_PRIVATE_KEY }}
+          permission-administration: read
+
+      - name: Fetch GitHub traffic API data
+        shell: bash
+        env:
+          TRAFFIC_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TRAFFIC_TOKEN:-}" ]; then
+            echo "::error::Missing traffic App installation token; check App installation and credentials in the analytics environment."
+            exit 1
+          fi
+
+          API_VERSION="2026-03-10"
+          REPO="${{ github.repository }}"
+          BASE_URL="https://api.github.com/repos/$REPO"
+
+          api_get() {
+            local label="$1"
+            local url="$2"
+            local output="$3"
+            local status
+
+            status=$(curl -sS -L --retry 5 --retry-max-time 300 --max-time 60 --connect-timeout 15 --retry-connrefused \
+              -o "$output" \
+              -w "%{http_code}" \
+              -H "Authorization: Bearer $TRAFFIC_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: $API_VERSION" \
+              "$url")
+
+            if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+              echo "::error::$label failed with HTTP $status"
+              echo "Response body:"
+              head -c 2000 "$output" || true
+              echo
+              exit 1
+            fi
+          }
+
+          date -u +%Y-%m-%dT%H:%M:%S+00:00 > /tmp/traffic-snapshot-time
+          api_get "Page views" "$BASE_URL/traffic/views?per=day" "/tmp/views.json"
+          api_get "Clones" "$BASE_URL/traffic/clones?per=day" "/tmp/clones.json"
+          api_get "Top referrers" "$BASE_URL/traffic/popular/referrers" "/tmp/referrers.json"
+          api_get "Popular paths" "$BASE_URL/traffic/popular/paths" "/tmp/paths.json"
+          api_get "Repository metadata" "$BASE_URL" "/tmp/repo.json"
+
+      - name: Build CSV history
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/build-traffic.py << 'PY'
+          import csv
+          import json
+          import os
+          from datetime import datetime
+
+          def load_json(path):
+              with open(path, "r", encoding="utf-8") as f:
+                  return json.load(f)
+
+          def read_csv(path):
+              if not os.path.exists(path):
+                  return []
+              with open(path, "r", newline="", encoding="utf-8") as f:
+                  return list(csv.DictReader(f))
+
+          def write_csv(path, rows, fieldnames):
+              directory = os.path.dirname(path)
+              if directory:
+                  os.makedirs(directory, exist_ok=True)
+
+              with open(path, "w", newline="", encoding="utf-8") as f:
+                  writer = csv.DictWriter(f, fieldnames=fieldnames)
+                  writer.writeheader()
+
+                  for row in rows:
+                      writer.writerow({field: row.get(field, "") for field in fieldnames})
+
+          def upsert_rows(path, new_rows, fieldnames, key_fields, normalizer=None):
+              existing_rows = read_csv(path)
+
+              if normalizer is not None:
+                  normalized_rows = []
+
+                  for row in existing_rows:
+                      normalized = normalizer(row)
+
+                      if normalized is not None:
+                          normalized_rows.append(normalized)
+
+                  existing_rows = normalized_rows
+
+              new_keys = {
+                  tuple(str(row.get(key, "")) for key in key_fields)
+                  for row in new_rows
+              }
+
+              kept_rows = [
+                  row for row in existing_rows
+                  if tuple(str(row.get(key, "")) for key in key_fields) not in new_keys
+              ]
+
+              combined_rows = kept_rows + new_rows
+
+              combined_rows = [
+                  row for row in combined_rows
+                  if all(str(row.get(key, "")) for key in key_fields)
+              ]
+
+              combined_rows.sort(
+                  key=lambda row: tuple(str(row.get(key, "")) for key in key_fields)
+              )
+
+              write_csv(path, combined_rows, fieldnames)
+
+          def to_int(value, default=0):
+              try:
+                  return int(value)
+              except Exception:
+                  return default
+
+          def normalize_traffic_row(row):
+              if row.get("snapshot_date"):
+                  return {
+                      "snapshot_date": row.get("snapshot_date", ""),
+                      "snapshot_datetime_utc": row.get("snapshot_datetime_utc", ""),
+                      "views_14d": row.get("views_14d", "0"),
+                      "unique_views_14d": row.get("unique_views_14d", "0"),
+                      "clones_14d": row.get("clones_14d", "0"),
+                      "unique_clones_14d": row.get("unique_clones_14d", "0"),
+                      "stars": row.get("stars", "0"),
+                      "forks": row.get("forks", "0"),
+                      "watchers": row.get("watchers", "0"),
+                      "open_issues": row.get("open_issues", "0")
+                  }
+
+              if row.get("date"):
+                  return {
+                      "snapshot_date": row.get("date", "")[:10],
+                      "snapshot_datetime_utc": row.get("date", ""),
+                      "views_14d": row.get("views", "0"),
+                      "unique_views_14d": row.get("unique_views", "0"),
+                      "clones_14d": row.get("clones", "0"),
+                      "unique_clones_14d": row.get("unique_clones", "0"),
+                      "stars": row.get("stars", "0"),
+                      "forks": row.get("forks", "0"),
+                      "watchers": row.get("watchers", "0"),
+                      "open_issues": row.get("open_issues", "0")
+                  }
+
+              return None
+
+          views = load_json("/tmp/views.json")
+          clones = load_json("/tmp/clones.json")
+          referrers = load_json("/tmp/referrers.json")
+          paths = load_json("/tmp/paths.json")
+          repo = load_json("/tmp/repo.json")
+
+          if "views" not in views or "count" not in views:
+              raise RuntimeError("Unexpected views API response")
+
+          if "clones" not in clones or "count" not in clones:
+              raise RuntimeError("Unexpected clones API response")
+
+          if not isinstance(referrers, list):
+              raise RuntimeError("Unexpected referrers API response")
+
+          if not isinstance(paths, list):
+              raise RuntimeError("Unexpected popular paths API response")
+
+          if "stargazers_count" not in repo:
+              raise RuntimeError("Unexpected repository metadata API response")
+
+          with open("/tmp/traffic-snapshot-time", encoding="utf-8") as handle:
+              now = datetime.fromisoformat(handle.read().strip())
+          # A newer concurrent snapshot wins; do not replace its observations.
+          if any(row.get("snapshot_datetime_utc", "") > now.isoformat(timespec="seconds")
+                 for row in read_csv("data/traffic.csv")):
+              print("Keeping newer concurrent snapshot")
+              raise SystemExit(0)
+          snapshot_date = now.date().isoformat()
+          snapshot_datetime = now.isoformat(timespec="seconds")
+
+          traffic_fields = [
+              "snapshot_date",
+              "snapshot_datetime_utc",
+              "views_14d",
+              "unique_views_14d",
+              "clones_14d",
+              "unique_clones_14d",
+              "stars",
+              "forks",
+              "watchers",
+              "open_issues"
+          ]
+
+          traffic_row = {
+              "snapshot_date": snapshot_date,
+              "snapshot_datetime_utc": snapshot_datetime,
+              "views_14d": to_int(views.get("count", 0)),
+              "unique_views_14d": to_int(views.get("uniques", 0)),
+              "clones_14d": to_int(clones.get("count", 0)),
+              "unique_clones_14d": to_int(clones.get("uniques", 0)),
+              "stars": to_int(repo.get("stargazers_count", 0)),
+              "forks": to_int(repo.get("forks_count", 0)),
+              "watchers": to_int(repo.get("subscribers_count", 0)),
+              "open_issues": to_int(repo.get("open_issues_count", 0))
+          }
+
+          upsert_rows(
+              "data/traffic.csv",
+              [traffic_row],
+              traffic_fields,
+              ["snapshot_date"],
+              normalize_traffic_row
+          )
+
+          daily_fields = [
+              "date",
+              "views",
+              "unique_views",
+              "clones",
+              "unique_clones"
+          ]
+
+          daily = {}
+
+          for item in views.get("views", []):
+              day = str(item.get("timestamp", ""))[:10]
+
+              if not day:
+                  continue
+
+              daily.setdefault(day, {
+                  "date": day,
+                  "views": 0,
+                  "unique_views": 0,
+                  "clones": 0,
+                  "unique_clones": 0
+              })
+
+              daily[day]["views"] = to_int(item.get("count", 0))
+              daily[day]["unique_views"] = to_int(item.get("uniques", 0))
+
+          for item in clones.get("clones", []):
+              day = str(item.get("timestamp", ""))[:10]
+
+              if not day:
+                  continue
+
+              daily.setdefault(day, {
+                  "date": day,
+                  "views": 0,
+                  "unique_views": 0,
+                  "clones": 0,
+                  "unique_clones": 0
+              })
+
+              daily[day]["clones"] = to_int(item.get("count", 0))
+              daily[day]["unique_clones"] = to_int(item.get("uniques", 0))
+
+          upsert_rows(
+              "data/traffic_daily.csv",
+              list(daily.values()),
+              daily_fields,
+              ["date"]
+          )
+
+          # README badges: shields.io endpoint JSON files.
+          #   clones   total clones recorded in the daily history since
+          #            tracking began
+          #   visitors unique visitors over GitHub's rolling 14-day window,
+          #            from today's snapshot (daily uniques cannot be summed
+          #            into a unique count)
+          #   visits   cumulative daily unique visitors since tracking began;
+          #            a visitor counts once per day they visit
+          def compact_count(value):
+              if value >= 1000000:
+                  return f"{value / 1000000:.1f}M".replace(".0M", "M")
+              if value >= 1000:
+                  return f"{value / 1000:.1f}k".replace(".0k", "k")
+              return str(value)
+
+          def write_badge(name, label, value):
+              os.makedirs("data/badges", exist_ok=True)
+
+              with open(f"data/badges/{name}.json", "w", encoding="utf-8") as f:
+                  json.dump(
+                      {
+                          "schemaVersion": 1,
+                          "label": label,
+                          "message": compact_count(value),
+                          "color": "217346"
+                      },
+                      f
+                  )
+                  f.write("\n")
+
+          total_clones = sum(
+              to_int(row.get("clones", 0))
+              for row in read_csv("data/traffic_daily.csv")
+          )
+
+          total_visits = sum(
+              to_int(row.get("unique_views", 0))
+              for row in read_csv("data/traffic_daily.csv")
+          )
+
+          write_badge("clones", "clones", total_clones)
+          write_badge("visits", "visits", total_visits)
+          write_badge(
+              "visitors",
+              "visitors (14d)",
+              to_int(traffic_row["unique_views_14d"])
+          )
+
+          referrer_fields = [
+              "snapshot_date",
+              "rank",
+              "referrer",
+              "count",
+              "uniques"
+          ]
+
+          existing_referrers = [
+              row for row in read_csv("data/referrers.csv")
+              if row.get("snapshot_date") != snapshot_date
+          ]
+
+          referrer_rows = []
+
+          for rank, item in enumerate(referrers, start=1):
+              referrer_rows.append({
+                  "snapshot_date": snapshot_date,
+                  "rank": rank,
+                  "referrer": item.get("referrer", ""),
+                  "count": to_int(item.get("count", 0)),
+                  "uniques": to_int(item.get("uniques", 0))
+              })
+
+          combined_referrers = existing_referrers + referrer_rows
+          combined_referrers.sort(
+              key=lambda row: (
+                  row.get("snapshot_date", ""),
+                  to_int(row.get("rank", 999))
+              )
+          )
+
+          write_csv(
+              "data/referrers.csv",
+              combined_referrers,
+              referrer_fields
+          )
+
+          path_fields = [
+              "snapshot_date",
+              "rank",
+              "path",
+              "title",
+              "count",
+              "uniques"
+          ]
+
+          existing_paths = [
+              row for row in read_csv("data/popular_paths.csv")
+              if row.get("snapshot_date") != snapshot_date
+          ]
+
+          path_rows = []
+
+          for rank, item in enumerate(paths, start=1):
+              path_rows.append({
+                  "snapshot_date": snapshot_date,
+                  "rank": rank,
+                  "path": item.get("path", ""),
+                  "title": item.get("title", ""),
+                  "count": to_int(item.get("count", 0)),
+                  "uniques": to_int(item.get("uniques", 0))
+              })
+
+          combined_paths = existing_paths + path_rows
+          combined_paths.sort(
+              key=lambda row: (
+                  row.get("snapshot_date", ""),
+                  to_int(row.get("rank", 999))
+              )
+          )
+
+          write_csv(
+              "data/popular_paths.csv",
+              combined_paths,
+              path_fields
+          )
+          PY
+          python3 /tmp/build-traffic.py
+
+      - name: Commit traffic history
+        shell: bash
+        env:
+          PUSH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          auth="$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$auth"
+          for attempt in 1 2 3; do
+            git add data/
+            if ! git diff --cached --quiet; then
+              git commit -m "Update traffic history"
+            fi
+            if git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+                push origin HEAD:traffic-history; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Traffic history push failed after three attempts"
+              exit 1
+            fi
+            # Reset only this ephemeral checkout, then replay the frozen snapshot
+            # over the complete remote history. Never force-push or re-use stale CSVs.
+            git fetch origin traffic-history
+            git reset --hard FETCH_HEAD
+            python3 /tmp/build-traffic.py
+          done

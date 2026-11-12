@@ -1223,7 +1223,7 @@ VBA-PERFORMANCE_MANAGER/
 │  ├─ dependabot.yml
 │  └─ workflows/              # static checks, issue triage, labels sync and
 │                             # drift, pull-request milestones, link check,
-│                             # Scorecard
+│                             # Scorecard, daily traffic export
 ├─ demo/
 │  ├─ M_DEMO_BUILDER.bas
 │  ├─ M_cPM_DEMO.bas
