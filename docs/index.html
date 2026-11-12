@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VBA Performance Manager — Benchmark-grade timing for Excel VBA</title>
+  <meta name="description" content="VBA Performance Manager is an open-source timing, benchmarking and execution-control component for Excel VBA on Windows: six timing backends, QPC by default, full sample vectors, statistics and shared Excel-state control.">
+  <link rel="canonical" href="https://danielep71.github.io/VBA-PERFORMANCE_MANAGER/">
+  <meta name="theme-color" content="#10243e">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="VBA Performance Manager — timing and execution control for Excel VBA">
+  <meta property="og:description" content="Measure VBA with a session-bound, high-resolution clock, keep every sample, and control expensive Excel state safely. Open source, two-file runtime.">
+  <meta property="og:url" content="https://danielep71.github.io/VBA-PERFORMANCE_MANAGER/">
+  <meta property="og:image" content="https://danielep71.github.io/VBA-PERFORMANCE_MANAGER/assets/cPM_social_preview.png">
+  <meta property="og:image:alt" content="VBA Performance Manager: a QPC timing snippet and the project's main characteristics">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    :root { color-scheme: light; --ink: #10243e; --muted: #4a5d74; --paper: #f6f8fa; --accent: #217346; --light: #8fd6a8; --line: #d6dee8; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 1.5rem; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.65; }
+    a { color: var(--accent); text-underline-offset: .22em; }
+    a:hover { text-decoration-thickness: 2px; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid #2b8a57; outline-offset: 5px; }
+    code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .92em; }
+    .wrap { width: min(1120px, 90%); margin-inline: auto; }
+    .skip { position: absolute; left: 1rem; top: -5rem; padding: .6rem 1rem; background: white; z-index: 3; }
+    .skip:focus { top: 1rem; }
+    header { border-bottom: 1px solid var(--line); }
+    nav { min-height: 86px; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .brand { color: var(--ink); text-decoration: none; font-weight: 800; font-size: 1.3rem; letter-spacing: -.04em; }
+    .brand span { color: var(--accent); }
+    .navlinks { display: flex; flex-wrap: wrap; gap: 1.6rem; font-size: .9rem; }
+    .navlinks a { color: var(--ink); text-decoration: none; }
+    .eyebrow { font-size: .72rem; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+    .hero { padding-block: 78px 64px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 64px; align-items: center; }
+    h1 { font-size: clamp(2.6rem, 5.2vw, 4.4rem); line-height: 1.06; letter-spacing: -.06em; font-weight: 730; margin: 1.2rem 0 1.5rem; }
+    h1 em { font-style: normal; color: var(--accent); }
+    .lead { font-size: 1.1rem; color: var(--muted); max-width: 54ch; }
+    .actions { display: flex; flex-wrap: wrap; gap: .8rem; margin-top: 1.8rem; }
+    .button { display: inline-block; padding: .8rem 1.1rem; border: 1px solid var(--accent); border-radius: 4px; font-size: .9rem; font-weight: 650; text-decoration: none; }
+    .button.primary { color: white; background: var(--accent); }
+    .status { margin-top: 1.2rem; font-size: .8rem; color: var(--muted); }
+    .example { background: var(--ink); color: #fff; border-radius: 8px; padding: 2rem; box-shadow: 0 20px 45px #10243e14; min-width: 0; }
+    .example .eyebrow { color: var(--light); }
+    .example h2 { font-size: 1.4rem; margin: .6rem 0 1.2rem; letter-spacing: -.025em; }
+    .example pre { margin: 0; padding: 1.1rem 1.2rem; background: #0a182b; border-radius: 6px; overflow-x: auto; font-size: .85rem; line-height: 1.6; color: #d9e6f2; }
+    .example pre .k { color: #7cc4ff; }
+    .example pre .c { color: #8aa0b8; }
+    .example small { display: block; color: #c9d6e6; font-size: .73rem; margin-top: 1.3rem; }
+    .example a { color: var(--light); }
+    .example a:focus-visible, footer a:focus-visible { outline-color: var(--light); }
+    .strip { display: flex; flex-wrap: wrap; gap: .8rem 2.5rem; padding-block: 1.2rem; border-block: 1px solid var(--line); font-size: .8rem; font-weight: 650; }
+    section { padding-block: 64px; }
+    h2 { font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -.045em; line-height: 1.2; margin: .8rem 0 1.3rem; }
+    h3 { font-size: 1.1rem; letter-spacing: -.02em; }
+    p { margin: .7rem 0; }
+    .intro { max-width: 690px; color: var(--muted); }
+    .steps { padding: 0; margin: 2.5rem 0 0; list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5rem; }
+    .steps li { border-top: 2px solid var(--accent); padding-top: 1rem; }
+    .number { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; }
+    .steps p { color: var(--muted); font-size: .94rem; }
+    .screen { margin: 2.3rem 0 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: white; }
+    .screen img { width: 100%; height: auto; display: block; }
+    figcaption { padding: 1rem 1.3rem; font-size: .8rem; color: var(--muted); border-top: 1px solid var(--line); }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; }
+    .tint { background: #eaf3ee; border-block: 1px solid var(--line); }
+    .scope-list { padding-left: 1.2rem; color: var(--muted); }
+    .scope-list li { margin-block: .7rem; }
+    .note { border-left: 3px solid var(--accent); padding-left: 1.2rem; margin-top: 1.4rem; }
+    .formula { font-family: ui-monospace, monospace; font-size: 1.05rem; padding: 1.1rem 0; border-block: 1px solid var(--line); margin-top: 1.5rem; }
+    .backends { margin: 1.5rem 0 0; }
+    .backends div { display: grid; grid-template-columns: 2.2rem 1fr; gap: .2rem 1rem; padding: .65rem 0; border-bottom: 1px solid var(--line); }
+    .backends dt { font-family: ui-monospace, monospace; color: var(--accent); font-weight: 700; }
+    .backends dd { margin: 0; color: var(--muted); font-size: .94rem; }
+    .backends dd strong { color: var(--ink); }
+    .resources { display: grid; grid-template-columns: 1fr 1fr; gap: 0 3rem; margin-top: 2rem; }
+    .resource { display: block; text-decoration: none; padding: 1.3rem 0; border-top: 1px solid var(--line); }
+    .resource strong { display: block; font-size: 1.1rem; }
+    .resource span { display: block; color: var(--muted); font-size: .9rem; margin-top: .3rem; }
+    .resource:hover strong { text-decoration: underline; }
+    details { margin-top: 2rem; padding: 1.2rem 0; border-block: 1px solid var(--line); }
+    summary { cursor: pointer; font-weight: 650; }
+    details p { color: var(--muted); max-width: 85ch; }
+    footer { padding-block: 2rem; background: var(--ink); color: #c9d6e6; font-size: .8rem; }
+    footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; }
+    footer a { color: white; }
+    .banner { position: relative; height: 260px; overflow: hidden; color: #fff; background: radial-gradient(circle at 82% 50%, #2b8a5766 0, #2b8a5700 34%), repeating-linear-gradient(90deg, #ffffff0d 0 1px, transparent 1px 48px), linear-gradient(100deg, #0b1a2e 0%, #10243e 55%, #173a5c 100%); }
+    .banner .wrap { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; gap: .4rem; }
+    .banner .kicker { font-size: .78rem; font-weight: 750; letter-spacing: .18em; text-transform: uppercase; color: var(--light); }
+    .banner .title { font-size: clamp(1.7rem, 3.6vw, 2.9rem); font-weight: 780; letter-spacing: -.04em; line-height: 1.05; margin: 0; }
+    .banner .sub { font-size: 1rem; color: #c9d6e6; }
+    @media (max-width: 760px) {
+      nav { align-items: flex-start; padding-block: 1.2rem; flex-direction: column; }
+      .navlinks { gap: .6rem 1.2rem; }
+      .hero { grid-template-columns: 1fr; gap: 2.5rem; padding-block: 42px; }
+      .steps, .split, .resources { grid-template-columns: 1fr; gap: 1.5rem; }
+      .resources { gap: 0; }
+      section { padding-block: 42px; }
+      .example { padding: 1.5rem; }
+      .strip { gap: .6rem 1.5rem; }
+      .banner { height: 180px; }
+      .banner .sub { font-size: .85rem; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header>
+    <nav class="wrap" aria-label="Main navigation">
+      <a class="brand" href="./" aria-label="VBA Performance Manager home">VBA <span>Performance</span> Manager</a>
+      <div class="navlinks">
+        <a href="#workflow">How it works</a>
+        <a href="#measurement">Measurement</a>
+        <a href="#assurance">Assurance</a>
+        <a href="#documentation">Documentation</a>
+        <a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER">GitHub ↗</a>
+      </div>
+    </nav>
+  </header>
+  <div class="banner">
+    <div class="wrap"><div class="kicker">Excel VBA · Windows desktop</div><p class="title">Benchmark-grade timing for pure VBA</p><div class="sub">Six timing backends &middot; QPC by default &middot; Two-file runtime</div></div>
+  </div>
+  <main id="main">
+    <div class="wrap hero">
+      <div>
+        <div class="eyebrow">Timing &amp; execution control · Open-source Excel VBA</div>
+        <h1>Measure VBA.<br><em>Trust the number.</em></h1>
+        <p class="lead">VBA Performance Manager is a reusable timing, benchmarking and execution-control component for Microsoft Excel VBA on Windows.</p>
+        <p class="lead">Time code on a session-bound, high-resolution clock, keep every sample of a benchmark, and switch expensive Excel settings off and back on safely.</p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER">Explore the source ↗</a>
+          <a class="button" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/INSTALLATION.md">Install from source</a>
+          <a class="button" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/download/v1.4.0/PERFORMANCE.MANAGER.xlsm" data-direct-download>Demo workbook 1.4.0 ↓</a>
+        </div>
+        <p class="status">Release 1.4.0 · Windows desktop Excel · Certified on 64-bit Microsoft 365 Excel</p>
+        <p class="status">The runtime is two source files you import. The workbook is an optional demo: check its SHA-256 against the <a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0">release notes</a> before you open it.</p>
+      </div>
+      <aside class="example" aria-labelledby="example-title">
+        <div class="eyebrow">Time a block of code</div>
+        <h2 id="example-title">One clock, one session</h2>
+<pre><code><span class="k">Dim</span> cPM <span class="k">As</span> cPerformanceManager
+<span class="k">Dim</span> ElapsedS <span class="k">As Double</span>
+
+<span class="k">Set</span> cPM = <span class="k">New</span> cPerformanceManager
+
+cPM.StartTimer cPM_MethodQPC
+    <span class="c">' ... workload ...</span>
+ElapsedS = cPM.ElapsedSeconds
+
+Debug.Print cPM.ElapsedTime( _
+    ElapsedSecondsIn:=ElapsedS)
+cPM.ResetEnvironment</code></pre>
+        <small><code>StartTimer</code> binds the backend to the session; later reads are validated against it. Passing <code>ElapsedSecondsIn</code> formats the captured value without taking a second sample.<br><a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER#quick-start">Quick start in the README ↗</a></small>
+      </aside>
+    </div>
+    <div class="wrap strip" aria-label="Project characteristics">
+      <span>Six timing backends</span><span>QPC by default</span><span>Full sample vectors</span><span>Dispatch-matched baselines</span><span>Shared Excel-state ownership</span><span>Apache License 2.0</span>
+    </div>
+    <section class="wrap" id="workflow">
+      <div class="eyebrow">01 / From one call to a benchmark</div>
+      <h2>Time it. Benchmark it. Explain it.</h2>
+      <p class="intro">Inline <code>Timer()</code> calls leave clock choice, rollover, failures, repetition and Excel cleanup to the caller. One class, <code>cPerformanceManager</code>, takes those over behind a small public surface.</p>
+      <ol class="steps">
+        <li><span class="number">01</span><h3>Time a block</h3><p>Start a session on the clock you choose, read elapsed seconds, and format them for people. A failed read is reported, never silently returned as a duration.</p></li>
+        <li><span class="number">02</span><h3>Benchmark a procedure</h3><p>Run a <code>Public Sub</code> with warm-ups and repetitions, get back every retained sample, and subtract a baseline measured on the same dispatch path.</p></li>
+        <li><span class="number">03</span><h3>Instrument a workflow</h3><p>Add named checkpoints with delta and cumulative times, export them as an array or text, and suspend screen updating, events or calculation while the work runs.</p></li>
+      </ol>
+    </section>
+    <section class="tint" id="measurement">
+      <div class="wrap split">
+        <div>
+          <div class="eyebrow">02 / Timing backends</div>
+          <h2>Six clocks.<br>Explicit boundaries.</h2>
+          <p class="intro">Select a backend with the first argument to <code>StartTimer</code>. Each one documents the boundary that matters when you read its result.</p>
+          <dl class="backends">
+            <div><dt>1</dt><dd><strong>VBA <code>Timer</code></strong>: wall-clock seconds since midnight.</dd></div>
+            <div><dt>2</dt><dd><strong><code>GetTickCount</code> / <code>GetTickCount64</code></strong>: monotonic uptime counter.</dd></div>
+            <div><dt>3</dt><dd><strong><code>timeGetTime</code></strong>: multimedia timer; requests 1 ms resolution while held.</dd></div>
+            <div><dt>4</dt><dd><strong><code>timeGetSystemTime</code></strong>: multimedia time with a validated return format.</dd></div>
+            <div><dt>5</dt><dd><strong><code>QueryPerformanceCounter</code></strong>: high-resolution and monotonic. The default.</dd></div>
+            <div><dt>6</dt><dd><strong><code>Now() * 86400</code></strong>: wall clock, for diagnostics and compatibility.</dd></div>
+          </dl>
+          <p><a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER#timing-backends">Backend details and session binding ↗</a></p>
+        </div>
+        <div>
+          <div class="eyebrow">Measurement &amp; statistics</div>
+          <h2>Keep every sample.</h2>
+          <ul class="scope-list">
+            <li><strong>Full vectors:</strong> repeated measurement returns every retained run, not just an average. Failed reads and samples taken on a fallback backend are counted and excluded.</li>
+            <li><strong>Matched baselines:</strong> an empty procedure measured through the same <code>Application.Run</code> path gives an overhead that can legitimately be subtracted.</li>
+            <li><strong>Distribution-aware statistics:</strong> median, minimum and maximum, mean, percentiles, standard deviation and coefficient of variation, with a contamination warning for noisy runs.</li>
+            <li><strong>Strict by default:</strong> an invalid measurement raises; the non-strict mode falls back with an explicit read status.</li>
+          </ul>
+          <div class="formula">net ≈ median(workload) − median(baseline)</div>
+          <p><a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER#measurement-and-statistics">Measurement primitives and the statistics contract ↗</a></p>
+        </div>
+      </div>
+    </section>
+    <section class="wrap" id="assurance">
+      <div class="eyebrow">03 / Assurance, with its limits</div>
+      <h2>Know what has been verified.</h2>
+      <p class="intro">Every change passes a static gate before it merges. Each release is certified by running the regression suite in real Excel, at the exact tagged source.</p>
+      <ul class="scope-list">
+        <li><strong>Release 1.4.0:</strong> 80 regression cases, 643 assertions, 0 failures, on Microsoft 365 Excel 64-bit (Version 2607), at the exact tag.</li>
+        <li><strong>32-bit Office:</strong> the source keeps its 32-bit branches, but no 32-bit host has been execution-certified yet.</li>
+        <li><strong>Static gate:</strong> source consistency, compile safety, pinned workflow actions and release claims are checked on every push and pull request.</li>
+        <li><strong>Provenance:</strong> each release lists the SHA-256 of its source files and assets, and the source files are compared with the tag.</li>
+      </ul>
+      <figure class="screen">
+        <a href="assets/cPM_regression_results.webp" aria-label="Open the full-size regression results screenshot"><img src="assets/cPM_regression_results.webp" width="1918" height="919" loading="lazy" alt="Regression results worksheet in the demo workbook: one row per case with its assertions, failures and PASS result"></a>
+        <figcaption>The regression results worksheet in the demo workbook, from an earlier run. The current certification record is in the README's <a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER#execution-evidence">execution evidence</a>.</figcaption>
+      </figure>
+    </section>
+    <section class="tint" id="documentation">
+      <div class="wrap">
+      <div class="eyebrow">04 / Start with the source</div>
+      <h2>Import. Measure. Review.</h2>
+      <p class="intro">Import <code>M_cPM_TIMEWASTERS.bas</code>, then <code>cPerformanceManager.cls</code>, and compile. Test, demo and example modules are optional. Start with the installation guide, then the README and the wiki.</p>
+      <div class="resources">
+        <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/INSTALLATION.md"><strong>Installation &amp; upgrade ↗</strong><span>Supported hosts, import order, validation, upgrade and removal.</span></a>
+        <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0"><strong>Release 1.4.0 ↗</strong><span>Release notes, the demo workbook and the SHA-256 of every file.</span></a>
+        <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/wiki"><strong>Project wiki ↗</strong><span>Guides to timing, measurement, Excel state and testing.</span></a>
+        <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER#public-api"><strong>Public API ↗</strong><span>Members, named enums and errors, strict mode and read status.</span></a>
+        <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/CHANGELOG.md"><strong>Changelog ↗</strong><span>What changed in each release, and what is coming in the next.</span></a>
+        <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/tree/main/test"><strong>Regression suite ↗</strong><span>The test module behind the certification runs.</span></a>
+      </div>
+      <details>
+        <summary>What should I know before using VBA Performance Manager?</summary>
+        <p>Use Windows desktop Excel and follow your organization's macro policy. The component is not a compiled profiler and does not claim nanosecond resolution: inspect the QPC frequency on your own host. <code>MeasureProcedure</code> runs the procedure name it is given through <code>Application.Run</code>, so pass only names your code controls. Calculation control needs a stable set of open workbooks while it is suspended. Further boundaries are listed in the <a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER#limitations">README's known limitations</a>.</p>
+      </details>
+      </div>
+    </section>
+  </main>
+  <footer><div class="wrap"><span>VBA Performance Manager · An independent project by <a href="https://github.com/danielep71">Daniele Penza</a></span><span><a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/CONTRIBUTING.md">Contribute</a> · <a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/SECURITY.md">Security</a></span></div></footer>
+  <script>
+    // Start release downloads in a hidden frame so the page does not visibly pass through GitHub; without JavaScript the plain links still work.
+    document.querySelectorAll("a[data-direct-download]").forEach(function (link) {
+      link.addEventListener("click", function (event) {
+        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        var frame = document.createElement("iframe");
+        frame.hidden = true;
+        frame.src = link.href;
+        document.body.appendChild(frame);
+        setTimeout(function () { frame.remove(); }, 60000);
+      });
+    });
+  </script>
+</body>
+</html>

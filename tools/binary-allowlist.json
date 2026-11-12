@@ -1,6 +1,14 @@
 {
   "schema_version": 1,
   "files": {
+    "docs/assets/cPM_regression_results.webp": {
+      "sha256": "ff9d9f7891a9f22316cd48b9a198d8850ab0bd6362002669e540b424182a99e9",
+      "reason": "Website screenshot of the regression results worksheet (docs/assets/README.md)."
+    },
+    "docs/assets/cPM_social_preview.png": {
+      "sha256": "3e33ad611e1b020f9360db4f4039b5f554a778393113897e8b3977581fe0ab20",
+      "reason": "Website Open Graph image (docs/assets/README.md)."
+    },
     "images/cPM Demo Control Panel.png": {
       "sha256": "40ee94efc016acb8d0552cb650581102264e3f804d4dd478292dddcb90b065c2",
       "reason": "Demo control-panel screenshot. Not referenced by the README or the wiki; kept by the maintainer's decision of 3 November 2026."

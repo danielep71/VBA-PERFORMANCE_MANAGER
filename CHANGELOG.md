@@ -170,6 +170,11 @@ Use only the categories needed by a release.
   the `analytics` environment. Setup and key rotation are in
   `docs/TRAFFIC_HISTORY.md` (#165).
 
+- Added a project website, published with GitHub Pages from `docs/` on
+  `main`: a static landing page with no build step that links to the
+  repository documentation. Publishing and maintenance are in
+  `docs/WEBSITE.md`.
+
 - Added six release-state checks: release changelog sections and comparison
   links agree with the tags, README current-release claims agree with the
   latest tag, the wiki input matches its pinned revision, the wiki badges
