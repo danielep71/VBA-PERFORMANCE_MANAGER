@@ -21,6 +21,9 @@
 
 [![Static checks](https://img.shields.io/github/actions/workflow/status/danielep71/VBA-PERFORMANCE_MANAGER/static-checks.yml?branch=main&style=flat-square&label=static%20checks)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/actions/workflows/static-checks.yml)
 [![Last commit](https://img.shields.io/github/last-commit/danielep71/VBA-PERFORMANCE_MANAGER/main?style=flat-square&label=last%20commit&color=217346)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/commits/main)
+[![Clones](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdanielep71%2FVBA-PERFORMANCE_MANAGER%2Ftraffic-history%2Fdata%2Fbadges%2Fclones.json&style=flat-square&label=clones)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER)
+[![Visitors](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdanielep71%2FVBA-PERFORMANCE_MANAGER%2Ftraffic-history%2Fdata%2Fbadges%2Fvisitors.json&style=flat-square&label=visitors%20%2814d%29)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER)
+[![Visits](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdanielep71%2FVBA-PERFORMANCE_MANAGER%2Ftraffic-history%2Fdata%2Fbadges%2Fvisits.json&style=flat-square&label=visits)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER)
 [![Downloads](https://img.shields.io/github/downloads/danielep71/VBA-PERFORMANCE_MANAGER/total?style=flat-square&label=downloads&color=217346)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/latest)
 [![P1 issues](https://img.shields.io/github/issues/danielep71/VBA-PERFORMANCE_MANAGER/P1?style=flat-square&label=P1&color=B60205)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues?q=is%3Aissue%20is%3Aopen%20label%3AP1)
 [![P2 issues](https://img.shields.io/github/issues/danielep71/VBA-PERFORMANCE_MANAGER/P2?style=flat-square&label=P2&color=D93F0B)](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues?q=is%3Aissue%20is%3Aopen%20label%3AP2)
