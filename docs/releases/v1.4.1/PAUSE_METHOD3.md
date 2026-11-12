@@ -1,5 +1,9 @@
 # Pause method 3 coverage — issue #74
 
+Outcome: merged into `main` in increment 12 ([#133](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/133)). Excel at
+`ca66242`: 86 cases, 715 assertions, 0 failures; #74 is closed. See the
+[evidence record](EVIDENCE.md). The text below is the preparation record.
+
 Status: implementation prepared; real 64-bit Excel execution pending.
 This is test coverage, not new release certification or a timing API change.
 

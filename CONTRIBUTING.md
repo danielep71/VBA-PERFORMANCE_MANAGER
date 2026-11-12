@@ -80,7 +80,7 @@ focused pull request.
 | 📖 Documentation | Identify the affected behavior and keep examples executable and current. |
 | ⚙️ Repository/tooling | Explain developer impact, failure behavior, portability, and maintenance cost. |
 | 🔐 Security concern | Follow [SECURITY.md](SECURITY.md); do not open a public report. |
-| 💬 Usage question | Use the repository's supported discussion or issue channel without sensitive data. |
+| 💬 Usage question | Read the [Wiki FAQ](https://github.com/danielep71/vba-performance_manager/wiki/FAQ); report a reproducible defect with the Bug report form, without sensitive data. Discussions are not enabled. |
 
 A proposal may be adapted, deferred, or declined when it is out of scope,
 duplicates an existing capability, weakens a contract, or creates maintenance
@@ -99,7 +99,7 @@ the review artifact.
 | `src/modules/` | Authoritative support modules |
 | `test/` | Regression harness |
 | `demo/` | Demo builders and usage examples |
-| `tools/` | Static analysis and release provenance |
+| `tools/` | Static gate, release provenance and state, governance as code, and local Excel runners |
 | `docs/` and wiki | Contracts, architecture, and usage guidance |
 
 The README and current tree are authoritative if a listed optional directory is
@@ -111,46 +111,54 @@ not present.
 
 ## 🌿 Development workflow
 
-1. Fork or clone the repository and start from the current `main`.
-2. Create a short, focused branch such as `fix/clear-description`,
-   `feat/clear-description`, `docs/clear-description`, or
-   `test/clear-description`.
+1. Fork or clone the repository and start from the active release branch,
+   `release/vX.Y.Z` (currently `release/v1.4.1`), not from `main`.
+2. Create a short, focused branch named as in
+   [Maintainer workflow](#maintainer-workflow), such as
+   `fix/<issue>-<slug>`, `test/<issue>-<slug>` or `docs/<slug>`.
 3. Reproduce the existing behavior before changing it.
 4. Define the intended contract, affected callers, compatibility impact, and
    evidence plan.
 5. Make the smallest coherent source change; do not mix unrelated formatting,
    refactoring, generated files, or cleanup.
 6. Compile and run the relevant static, regression, host, and manual checks.
-7. Re-export changed VBA components and review the complete text/binary diff.
+7. Re-export changed VBA components and review the complete text/binary
+   diff. `tools/Export-PerformanceManager-VBA.cmd` exports a workbook's
+   components to a new directory outside the checkout for comparison.
 8. Update documentation and release notes required by the change.
-9. Push the branch and open a pull request with evidence and limitations.
+9. Push the branch and open a pull request against the active release branch
+   with evidence and limitations.
 
-Repository maintainers may use the repository's configured direct-push workflow
-where permitted. External contributions and reviewable portfolio changes should
-use branches and pull requests.
+Every change, including the maintainer's, reaches the release branch through a
+pull request; `main` accepts changes only through a pull request.
 
 ### Maintainer workflow
 
 Planning lives in GitHub issues and milestones, not in repository documents.
 
-- **Issue metadata.** Every issue has:
-  - an assignee;
+- **Issue metadata.** Every open issue has:
+  - `danielep71` among its assignees;
   - exactly one priority label (`P1`, `P2` or `P3`);
   - an open milestone;
   - a `## Dependencies` section listing `None`, `#` references or
     `External condition:` lines;
-  - a `## Schedule` with a target date on or before the milestone's due date.
+  - a `## Schedule` with a `- Target date: YYYY-MM-DD` line (optionally
+    preceded by a `- Start date:` that is not later) on or before the
+    milestone's due date.
 
-  The issue-triage workflow audits every open issue for these. The issue forms
-  ask for them.
+  The issue-triage workflow (`tools/issue_triage.py`) audits every open issue
+  for these. The issue forms set the assignee and a default priority and ask
+  for the dependencies and target date; the maintainer sets the milestone
+  during triage.
 - **Release branch.** Work for the next release happens on one branch,
   `release/vX.Y.Z`.
 - **Topic branches.** Each change goes on a topic branch (`fix/<issue>-<slug>`,
-  `ci/<issue>-<slug>` or `docs/<slug>`) and reaches the release branch through
-  its own pull request.
-- **Merges to `main`.** These happen only at the maintainer's request, by
-  squash merge through a pull request, as the `Protect main` ruleset requires.
-  The release branch is then recreated from the new `main`.
+  `test/<issue>-<slug>`, `ci/<issue>-<slug>` or `docs/<slug>`) and reaches the
+  release branch through its own pull request.
+- **Merges to `main`.** These happen only at the maintainer's request, through
+  an "Align main with release/vX.Y.Z" pull request. The `Protect main` ruleset
+  requires a pull request; squash merge is the project's convention. The
+  release branch is then recreated from the new `main`.
 - **Excel boundary.** A change to executable VBA reaches `main` only after an
   Excel run on its exact SHA. If such a change is ready but unrun when `main`
   is aligned, it is withdrawn by one commit for the merge and restored on the
@@ -261,12 +269,52 @@ under review.
 
 - Compile the complete VBA project.
 - Run the repository's full regression/certification harness and relevant focused checks.
-- Run the hosted static-source gate.
+- Run the static gate locally and confirm the hosted **Static checks** workflow passes.
 - Exercise changed timing backends, rollover/backwards-clock paths, sample classification, strict-mode behavior, and cleanup.
 - For Excel-state changes, test overlapping instances, partial failure, and restoration on success and error.
 - Record exact commit, Excel/Windows/Office bitness, backend, timer-resolution state, verdict, skips, and cleanup.
 
 Treat cleanup and session-release failures as test failures. Validate statistics against an independent calculation where formulas or percentile behavior change, and test both ordinary and degenerate sample sets.
+
+### Local commands
+
+The static gate (its checks are listed in `tools/gate_checks.py`) needs the
+repository's tags and the wiki revision pinned in `tools/release-state.json`.
+Prepare the wiki into a new directory outside the checkout:
+
+```bash
+git fetch --tags
+python3 tools/release_state.py --fetch-wiki --wiki-root <new directory outside the checkout>
+python3 tools/vba_lint.py --wiki-root <same directory> --json vba-lint-results.json
+git diff --check
+```
+
+For changes under `tools/` or `.github/`, also run what the Static checks
+workflow runs, after installing the hash-locked `tools/requirements-ci.txt` and
+`tools/requirements-quality.txt` (actionlint is installed separately):
+
+```bash
+python3 -m unittest discover -s tools -p "test_*.py"
+ruff check tools
+mypy
+actionlint
+```
+
+Changes to the PowerShell Excel tools also run `tools/Test-ExcelRunnerVerdicts.ps1`
+and `tools/Test-LocalExcelTools.ps1`, which need PowerShell but not Excel.
+
+For executable VBA, run the full regression suite in desktop Excel on
+Windows from a clean checkout of the exact commit. Double-click
+`tools/Certify-PerformanceManager.cmd`, or run the local runner directly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\Invoke-ExcelRegression.ps1 `
+    -ExpectedSha <full commit SHA> -AllowVbomAccess -OutDir <folder outside the checkout>
+```
+
+Windows blocks unsigned scripts by default, hence `-ExecutionPolicy Bypass`.
+[Local Excel tools](docs/LOCAL_EXCEL_TOOLS.md) describes every launcher and
+what its evidence proves.
 
 ### Evidence principles
 

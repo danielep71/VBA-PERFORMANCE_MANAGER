@@ -41,6 +41,8 @@ Related to #<!-- number -->
 
 Use a closing keyword only when this pull request satisfies the issue's complete acceptance criteria.
 
+Pull requests into `release/vX.Y.Z` do not close issues automatically; only merges into `main` do. After merge, close each satisfied issue with a comment recording the commit, the checks actually run and their results, and update `docs/releases/vX.Y.Z/EVIDENCE.md` where the change belongs in the release record.
+
 ## 🧭 Change classification
 
 - [ ] Defect correction
@@ -125,7 +127,7 @@ Explain decisions a future reviewer cannot safely infer from the diff.
 | Evidence | Result |
 | --- | --- |
 | Exact PR HEAD SHA | <!-- Full 40-character SHA --> |
-| Base branch and base SHA | <!-- Branch + full SHA --> |
+| Base branch and base SHA | <!-- Normally the active release/vX.Y.Z branch + full SHA --> |
 | Working tree used locally | <!-- clean / dirty; explain --> |
 | Source or package tested | <!-- Exact candidate source / artifact / N/A --> |
 
@@ -133,12 +135,14 @@ Evidence from another commit does not certify this candidate.
 
 ### Static and repository checks
 
-- `python3 tools/vba_lint.py --json vba-lint-results.json`
+- `git fetch --tags`
+- `python3 tools/release_state.py --fetch-wiki --wiki-root <new directory outside the checkout>`
+- `python3 tools/vba_lint.py --wiki-root <same directory> --json vba-lint-results.json` (every check in `tools/gate_checks.py`; without the pinned wiki the three wiki checks fail)
 - `git diff --check`
 
 | Check | Result / evidence |
 | --- | --- |
-| Hosted required checks | <!-- PASS / FAIL / NOT RUN + workflow URL --> |
+| Hosted Static checks workflow (VBA source consistency; Minimum Python 3.11) | <!-- PASS / FAIL / NOT RUN + workflow URL --> |
 | Local static command | <!-- Command + PASS / FAIL / NOT RUN --> |
 | Formatting / `git diff --check` | <!-- PASS / FAIL --> |
 | Machine-readable artifact | <!-- Name / URL / not produced --> |
@@ -151,7 +155,9 @@ Evidence from another commit does not certify this candidate.
 
 Relevant entry points:
 
-- `Run_cPerformanceManager_RegressionSuite`
+- `Run_cPerformanceManager_RegressionSuite` (all `TotalSteps` cases in `test/M_cPM_Test.bas`)
+- `tools/Certify-PerformanceManager.cmd`, or `powershell -ExecutionPolicy Bypass -File tools\Invoke-ExcelRegression.ps1 -ExpectedSha <full SHA> -AllowVbomAccess -OutDir <folder outside the checkout>`
+- `tools/Certify-MeasurementExamples.cmd` for usage-example changes; see [Local Excel tools](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/docs/LOCAL_EXCEL_TOOLS.md)
 - Focused fault-injection, workbook-lifecycle, and package smoke scenarios
 
 | Evidence | Result |
@@ -290,10 +296,10 @@ Keep for harness or coverage changes.
 
 Keep for packaging or release preparation.
 
-- [ ] `PERFORMANCE.MANAGER.xlsm` is assembled from the exact candidate.
-- [ ] The final-saved workbook is reopened and smoke-tested.
-- [ ] `tools/release_provenance.py` output contains no TODO, missing, or inconsistent fields.
-- [ ] Source/tag identity, Excel environment, suite result, asset filename, and SHA-256 agree.
+- [ ] `VBA-Performance-Manager-vX.Y.Z.zip` holds exactly `PERFORMANCE MANAGER.xlsm`, assembled from the exact candidate, and the tagged `LICENSE` and `NOTICE`.
+- [ ] The workbook extracted from the package is reopened and smoke-tested.
+- [ ] `tools/release_provenance.py` exits 0 on a clean checkout of the exact tag.
+- [ ] Source/tag identity, Excel environment, suite result, package and member filenames, and SHA-256 values agree.
 - [ ] No post-validation binary edit or silent asset replacement occurred.
 
 </details>
@@ -315,6 +321,7 @@ Unresolved question or accepted trade-off:
 - [ ] The title describes the observable outcome.
 - [ ] The pull request has one coherent purpose and no unrelated churn.
 - [ ] Linked issue acceptance criteria are met or remaining work is explicit.
+- [ ] Each satisfied issue will be closed after merge with an evidence comment.
 - [ ] Compatibility and release impact are assessed.
 - [ ] Evidence belongs to the exact candidate claimed.
 - [ ] Required checks are terminal and passing; incomplete work is not presented as PASS.

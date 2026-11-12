@@ -209,10 +209,11 @@ Set cPM = Nothing
 ```
 
 Supplying `ElapsedSecondsIn` formats the value already captured; it does not
-take a second timing sample. `ElapsedTime` formats any duration from 0 to
-1E+15 seconds (about 31.7 million years) exactly, with hours that never wrap
-at 24. Negative values are clamped to 0 and larger values to 1E+15, so no
-supplied value raises an overflow.
+take a second timing sample. From v1.4.1 (unreleased; #30), `ElapsedTime`
+formats any duration from 0 to 1E+15 seconds (about 31.7 million years)
+exactly, with hours that never wrap at 24. Negative values are clamped to 0
+and larger values to 1E+15, so no supplied value raises an overflow. In v1.4.0
+a supplied value above 2,147,483,647 seconds raises a VBA overflow.
 
 ## 3. Benchmark a procedure with statistics
 
@@ -246,20 +247,26 @@ Samples = cPM.MeasureProcedure( _
               LastFailureStatusOut:=LastFailure, _
               RejectedSamplesOut:=Rejected)
 
-Debug.Print cPM.Stats_Text(Samples, "Benchmark_Target")
-
 'A negative count means the run ended before classifying anything, so no
 'evidence was published and Err carried the diagnosis instead
 If FailedReads < 0 Then
     Debug.Print "No evidence published for this run."
-Else
+ElseIf FailedReads > 0 Or Rejected > 0 Then
+    'A degraded run: report the evidence, not statistics
     Debug.Print "Failed reads: " & FailedReads & _
-                " | rejected for backend fallback: " & Rejected
+                " | rejected for backend fallback: " & Rejected & _
+                " | last failure status: " & LastFailure
+Else
+    Debug.Print cPM.Stats_Text(Samples, "Benchmark_Target")
 End If
 
 cPM.ResetEnvironment
 Set cPM = Nothing
 ```
+
+Report statistics only when both counts are zero, as the curated examples in
+`demo/M_cPM_USAGE_EXAMPLES.bas` do: a shorter vector from a degraded run is not
+comparable with a clean one.
 
 `StrictMode` defaults to `True`. Keep that default for release-quality
 benchmarks unless the non-strict behavior described below is explicitly
@@ -327,10 +334,14 @@ Example output:
 ```text
 CHECKPOINT REPORT | RunLabel=Import run
 Seq | Checkpoint | DeltaSeconds | CumulativeSeconds | MethodName | Note
-1 | Load | 1.204881200 | 1.204881200 | QPC |
-2 | Transform | 3.771003400 | 4.975884600 | QPC | 22 400 rows
-3 | Write back | 0.918224100 | 5.894108700 | QPC |
+----+------------+--------------+-------------------+------------+------------
+  1 | Load       |  1.204881200 |       1.204881200 | QPC        |
+  2 | Transform  |  3.771003400 |       4.975884600 | QPC        | 22 400 rows
+  3 | Write back |  0.918224100 |       5.894108700 | QPC        |
 ```
+
+Each column is padded to its widest value, so the report reads as a table in a
+fixed-width font.
 
 ## 6. Control expensive Excel state
 
@@ -509,7 +520,9 @@ negative value or a value above that bound is rejected at the shared
 validation gate with `ERR_CPM_STATS_OUT_OF_DOMAIN`, naming the offending index.
 Within the bound no statistic can overflow: the mean, the median's midpoint,
 the standard deviation's squared deviations and the coefficient of variation
-all stay far inside the `Double` range.
+all stay far inside the `Double` range. The 1E+15 bound is v1.4.1 behavior
+(unreleased; #32): v1.4.0 accepts values up to 1E+300, and a large value can
+then overflow `Stats_StdDev`.
 
 | Member | Result |
 |---|---|
@@ -695,7 +708,7 @@ shape still compiles.
 
 | Member | Description |
 |---|---|
-| `Pause(Seconds, [Method])` | Four pause strategies; requests are capped at 3,600 seconds |
+| `Pause(Seconds, [Method])` | Four pause strategies; a request of 0 or less, or over 3,600 seconds, returns immediately without pausing |
 | `TW_Turn_OFF([Except])` / `TW_Turn_ON` | Shared Application-state suppression |
 | `TW_IsActive` / `TW_ActiveSessionCount` | This-instance and shared-session state |
 | `TW_CalculationExempted` | Whether Calculation suppression could not be honored |
@@ -712,10 +725,12 @@ shape still compiles.
 | `cPM_PauseMethod` | 4 | Pause strategy names |
 | `cPM_ReadStatus` | 6 | Timing-read and fallback outcomes |
 | `cPM_Error` | 24 | Named class error values |
-| `cPM_TWError` | 6 | Named shared-state/reporting error values |
+| `cPM_TWError` | 7 | Named shared-state/reporting error values |
 
-The production source therefore centralizes **30 named error values**. No bare
-`vbObjectError + N` offsets appear in the shipped class or support module.
+The production source therefore centralizes **31 named error values**. No bare
+`vbObjectError + N` offsets appear in the shipped class or support module. The
+seventh `cPM_TWError` value, `ERR_TW_KEY_SPACE_EXHAUSTED`, is v1.4.1 behavior
+(unreleased; #35); v1.4.0 has 6 shared-state values and 30 in total.
 
 The enum names are an API readability contract. They do not override VBA's
 underlying `Long` calling semantics.
@@ -878,6 +893,25 @@ modules needs Excel's *Trust access to the VBA project object model*.
 restores the previous value afterwards. The runner is local and maintainer-run
 (#11); the automated CI gate is tracked in #156.
 
+## Local Excel launchers
+
+Double-click launchers in `tools/` wrap the runner for a supervised local run
+on Windows with Git and desktop Excel:
+
+- `Certify-PerformanceManager.cmd` certifies the core suite at the checked-out
+  commit;
+- `Certify-MeasurementExamples.cmd` also imports and runs the measurement usage
+  examples;
+- `Certify-TimerRollback.cmd` repeats the suite with the #31 timer-period
+  rollback disabled, as a negative control in which only that case must fail;
+- `Sync-PerformanceManager-VBA.cmd` replaces the managed modules in a new copy
+  of a workbook;
+- `Export-PerformanceManager-VBA.cmd` exports a workbook's VBA components with
+  a SHA-256 manifest.
+
+See [local Excel tools](docs/LOCAL_EXCEL_TOOLS.md) and
+[Excel certification with a double click](docs/EXCEL_CERTIFICATION.md).
+
 <!-- facts:source-cases -->
 The regression module in the current source invokes **93 cases**, and
 `TotalSteps` must equal that count. Assertion counts are not derived from the
@@ -967,14 +1001,21 @@ The suite covers, among other areas:
 
 # 🔍 Static source analysis
 
-The hosted workflow runs:
+The hosted workflow runs the equivalent of:
 
 ```bash
-python3 tools/vba_lint.py --json vba-lint-results.json
+python3 tools/release_state.py --fetch-wiki --wiki-root /tmp/cpm-wiki-input
+python3 tools/vba_lint.py --wiki-root /tmp/cpm-wiki-input --json vba-lint-results.json
 ```
 
 on every push and pull request. It publishes the machine-readable result even
 when a check fails.
+
+The first command fetches the wiki commit pinned in `tools/release-state.json`
+into a new directory, which must not exist yet; checks 28–30 read it. Without
+that input a local run fails those three checks. `PERFORMANCE_MANAGER_WIKI` can
+name the checkout instead of `--wiki-root`. See
+[release-state checks](docs/RELEASE_STATE.md).
 
 The published certifications above record the checks of their own tags and
 are not recertified by later additions.
@@ -1060,7 +1101,7 @@ one or two blank lines after each End. `python3 tools/vba_format.py --check`
 fails without writing; `--write` rewrites the files that differ, which are then
 re-imported into the VBE.
 
-Check 25 keeps this README's facts in rendered blocks, marked
+Check 31 keeps this README's facts in rendered blocks, marked
 `<!-- facts:NAME -->`. Derived facts come from the source: the version in
 `VERSION`, the regression module's case count, and the check list in
 `tools/gate_checks.py`, which the gate must run exactly and in order.
@@ -1095,8 +1136,9 @@ dated JSON record of the run. GitHub enables Dependabot security updates
 asynchronously, through their own endpoint, so `--apply` re-reads the settings
 up to five times, three seconds apart, before it reports a difference.
 
-The two compile-safety checks scan production, regression and demo exports with
-separate Windows conditional-compilation profiles and fixture-backed grammar.
+The two compile-safety checks (15 and 16) scan production, regression and demo
+exports with separate Windows conditional-compilation profiles and
+fixture-backed grammar.
 See [scope, limitations and verification](docs/COMPILE_SAFETY_CHECKS.md).
 
 The tools need Python 3.11 or later; the static gate itself uses only the
@@ -1149,9 +1191,10 @@ being skipped. Run its fixtures with `python tools/test_workflow_pins.py`.
 
 The macro-enabled demo workbook is distributed from
 [GitHub Releases](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases)
-rather than maintained as an opaque binary in the source tree. From v1.4.1 it
-is published only inside `VBA-Performance-Manager-vX.Y.Z.zip`, together with
-`LICENSE` and `NOTICE`; keep all three together when redistributing it.
+rather than maintained as an opaque binary in the source tree. From v1.4.1
+(not yet released; #72) it will be published only inside
+`VBA-Performance-Manager-vX.Y.Z.zip`, as `PERFORMANCE MANAGER.xlsm` together
+with `LICENSE` and `NOTICE`; keep all three together when redistributing it.
 v1.4.0 and earlier published the bare `PERFORMANCE.MANAGER.xlsm`. See
 [verifying a release package](INSTALLATION.md#release-workbook-package).
 
@@ -1165,6 +1208,8 @@ It is useful for:
 
 The release workbook is not a deterministic source-to-binary build product.
 Its SHA-256 proves the identity of the downloaded file, not how it was assembled.
+Building the workbook from the exact commit is tracked in
+[#87](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/87).
 
 ---
 
@@ -1176,12 +1221,20 @@ VBA-PERFORMANCE_MANAGER/
 │  ├─ ISSUE_TEMPLATE/         # issue forms: bug, feature, documentation
 │  ├─ PULL_REQUEST_TEMPLATE.md
 │  ├─ dependabot.yml
-│  └─ workflows/              # static checks, labels sync and drift,
-│                             # pull-request milestones, link check, Scorecard
+│  └─ workflows/              # static checks, issue triage, labels sync and
+│                             # drift, pull-request milestones, link check,
+│                             # Scorecard
 ├─ demo/
 │  ├─ M_DEMO_BUILDER.bas
 │  ├─ M_cPM_DEMO.bas
 │  └─ M_cPM_USAGE_EXAMPLES.bas
+├─ docs/
+│  ├─ releases/               # per-release plans and evidence
+│  ├─ COMPILE_SAFETY_CHECKS.md
+│  ├─ EXCEL_CERTIFICATION.md
+│  ├─ LOCAL_EXCEL_TOOLS.md
+│  ├─ RELEASE_STATE.md
+│  └─ TEMPLATE_ADAPTATIONS.md
 ├─ images/
 ├─ src/
 │  ├─ classes/
@@ -1192,7 +1245,11 @@ VBA-PERFORMANCE_MANAGER/
 │  └─ M_cPM_Test.bas
 ├─ tools/
 │  ├─ vba_lint.py             # the static gate
+│  ├─ gate_checks.py          # the gate's ordered check list
+│  ├─ readme_facts.py         # renders this README's facts blocks
 │  ├─ release_provenance.py   # release package and manifest verifier
+│  ├─ Invoke-Excel*.ps1       # local real-Excel runner and batch runner
+│  ├─ *.cmd                   # double-click Excel certify/sync/export launchers
 │  ├─ labels.json             # issue labels: names, colours, descriptions
 │  ├─ binary-allowlist.json   # reviewed tracked binaries
 │  ├─ requirements-*.txt      # hash-locked CI dependencies
@@ -1201,12 +1258,14 @@ VBA-PERFORMANCE_MANAGER/
 ├─ pyproject.toml
 ├─ CHANGELOG.md
 ├─ CODE_OF_CONDUCT.md
+├─ CONTRIBUTING.md
 ├─ INSTALLATION.md
 ├─ LICENSE
 ├─ NOTICE
 ├─ README.md
 ├─ RELEASING.md
-└─ SECURITY.md
+├─ SECURITY.md
+└─ VERSION
 ```
 
 Exported VBA source uses CRLF in the repository policy; cross-platform
@@ -1268,14 +1327,29 @@ the source in your own add-in, but that host is built and maintained by you.
 ### Platform and bitness
 
 - The supported host is Windows desktop Excel. Backends 2–5 use Windows APIs.
-- The source contains 32-/64-bit conditional branches, but v1.3.0 was executed
-  and certified only on 64-bit Office.
+- The source contains 32-/64-bit conditional branches, but v1.3.0 and v1.4.0
+  were executed and certified only on 64-bit Office, so 32-bit behavior remains
+  unverified.
 - Shared unsigned arithmetic tests reduce the untested 32-bit surface; they do
-  not replace a real 32-bit Excel run. v1.4.0 was executed and certified on
-  64-bit Office only, so 32-bit behavior remains unverified. Support is
-  unchanged; contributor-provided verification is tracked in
+  not replace a real 32-bit Excel run. Support is unchanged;
+  contributor-provided verification is tracked in
   [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) for v1.5.0,
   independently of v1.4.1's 64-bit certification.
+
+### Changed in v1.4.1 (unreleased)
+
+Behavior on the v1.4.1 development line that differs from v1.4.0. It is not in
+any published release yet; the authoritative ledger is the `[Unreleased]`
+section of [CHANGELOG.md](CHANGELOG.md).
+
+| Area | v1.4.0 | v1.4.1 (unreleased) |
+|---|---|---|
+| `ElapsedTime` range | A supplied value above 2,147,483,647 seconds raises a VBA overflow | 0 to 1E+15 seconds formatted exactly; values outside are clamped to that range ([#30](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/30)) |
+| Statistics domain | Values up to 1E+300 accepted, so a large value can overflow `Stats_StdDev` | Values above 1E+15 seconds raise `ERR_CPM_STATS_OUT_OF_DOMAIN` ([#32](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/32)) |
+| TW instance keys | The shared key seed overflows after 2,147,483,647 keys | Counts exactly to 1E+15 keys, then raises `ERR_TW_KEY_SPACE_EXHAUSTED` (`vbObjectError + 2204`) ([#35](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/35)) |
+| Aligned method-3 start | A strict alignment timeout leaves the 1 ms timer period requested | The period that attempt acquired is released before the original error is re-raised ([#31](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/31)) |
+| Calculation exemption | Once a workbook reappears, a later begin, update or end can force Calculation back to Manual, and teardown can restore a stale baseline | The exemption lasts for the rest of the shared scope; an exempt scope never reads, writes or restores Calculation ([#33](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/33)) |
+| Demo buttons (demo module only) | A button built without an action macro raises Excel's "Cannot run the macro" | `DEMO_DemoButton_NotAssigned` shows a message naming the button and changes no state ([#73](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/73)) |
 
 ### Changed in v1.4.0
 
@@ -1312,10 +1386,11 @@ working code does.
   Prefer `MeasureOverhead_Samples` with `Stats_Text` for anything you will act
   on.
 - `ElapsedTime` formats exactly only from 0 to 1E+15 seconds; a supplied value
-  outside that range is clamped to it, not reported as an error.
+  outside that range is clamped to it, not reported as an error (v1.4.1,
+  unreleased; #30).
 - Statistics accept timing observations up to 1E+15 seconds only. That bound
   keeps every statistic free of overflow, but a larger value is rejected rather
-  than computed.
+  than computed (v1.4.1, unreleased; #32).
 
 ### Excel and Windows state
 
@@ -1326,16 +1401,24 @@ working code does.
 - A hard VBA `End` bypasses `Class_Terminate`.
 - Calculation suppression assumes a stable open-workbook set for the lifetime
   of the shared scope.
-- `Pause` methods 3 and 4 omit their coarse wait for short requests where that
-  wait could overshoot the target.
+- `Pause` method 3 skips `Application.Wait` when less than two seconds remain,
+  so requests under about two seconds behave like method 2. Methods 3 and 4
+  bound every coarse wait by `Timer`, so neither overshoots by more than
+  `DoEvents` granularity.
+- `Pause` returns immediately, without pausing or raising, for a request of 0
+  or less or over 3,600 seconds.
 - The nanosecond group in `ElapsedTime` is formatting precision, not a claim of
   nanosecond clock resolution.
 
 ### Assurance and release trust
 
-- Hosted CI currently performs static source analysis only; it does not run Excel.
-- The v1.3.0 tag and tagged commit are unsigned.
-- The release workbook is manually assembled; no deterministic source-to-workbook build exists.
+- Hosted CI currently performs static source analysis only; it does not run
+  Excel. An automated Excel gate is tracked in
+  [#156](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/156).
+- The v1.3.0 and v1.4.0 tags and tagged commits are unsigned.
+- The release workbook is manually assembled; no deterministic
+  source-to-workbook build exists. Building it from the exact commit is tracked
+  in [#87](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/87).
 - Published hashes establish file identity, not cryptographic authorship or reproducible build provenance.
 - GitHub Release assets are technically mutable; stronger signing, attestation,
   and immutability controls are tracked in
@@ -1356,7 +1439,7 @@ working code does.
 | `MeasureProcedure` cannot find a target | Confirm it is a `Public Sub` in a standard module and that the workbook qualification is correct |
 | Workbook name contains an apostrophe | Handled automatically. To target a *different* workbook, escape it yourself: `'O''Brien.xlsm'!ProcedureName` |
 | Calculation was not suppressed | Check `TW_CalculationExempted` and the stable-open-workbook invariant |
-| Regression module does not compile | Import `M_DEMO_BUILDER.bas` before `M_cPM_Test.bas` |
+| Regression module does not compile | Confirm `demo/M_DEMO_BUILDER.bas` is imported; the harness calls its `DEMO_*` and `Demo_SB_SetProgress` helpers |
 | State is uncertain after a hard `End` or VBA reset | Save work, close every Excel window, confirm `EXCEL.EXE` exits, restart Excel, and rerun validation in a controlled workbook |
 
 For fuller procedures, see
@@ -1373,6 +1456,10 @@ For fuller procedures, see
 | [CHANGELOG.md](CHANGELOG.md) | Released behavior and compatibility history |
 | [SECURITY.md](SECURITY.md) | Security model, private reporting, trusted inputs, runner and release boundaries |
 | [RELEASING.md](RELEASING.md) | Maintainer-only exact-SHA release procedure and evidence chain |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Source and validation standards, and the maintainer workflow |
+| [Local Excel tools](docs/LOCAL_EXCEL_TOOLS.md) | Double-click certify, sync and export launchers |
+| [Excel certification](docs/EXCEL_CERTIFICATION.md) | Supervised local certification run and the timer-rollback negative control |
+| [Release-state checks](docs/RELEASE_STATE.md) | How the gate checks release claims against tags and the pinned wiki |
 | [Regression suite](test/M_cPM_Test.bas) | Executable Excel/VBA behavioral verification |
 | [Static linter](tools/vba_lint.py) | Machine-readable source consistency checks |
 | [GitHub Releases](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases) | Published workbook and release manifest assets |
@@ -1440,18 +1527,24 @@ for the published workbook and manifest.
 The v1.4.1 milestone hardens the v1.4.0 runtime, documentation and assurance
 chain. The release ledger is reconciled (#49); fail-closed provenance (#51)
 and compile-safety checks (#45) are implemented, and workflow actions are
-pinned to immutable commits (#46). These
-controls do not constitute a new Excel certification. Remaining work includes:
+pinned to immutable commits (#46). The bounded timing, statistics and
+shared-state corrections are merged (see
+[Changed in v1.4.1](#changed-in-v141-unreleased)), and a local real-Excel
+runner exists (#11). These controls do not constitute a new Excel
+certification. Remaining work:
 
-- completing current-documentation reconciliation and release-state enforcement;
-- bounded timing, statistics and shared-state corrections;
-- a real-Excel executable gate and a rebuilt demonstration workbook;
-- contributor-dependent real Office 32-bit evidence when a suitable host is
-  available.
+- rebuild and recertify the demo workbook against the current API (#47);
+- include `LICENSE` and `NOTICE` with the downloadable workbook (#72);
+- align legacy call-shape assertions and case labels with what the suite runs
+  (#78);
+- local example certification and VBA sync/export launchers (#138);
+- certify and publish v1.4.1 (#101).
 
-The official add-in artifact remains a v1.5.0 goal. An automated Excel
-regression gate needs a secured self-hosted Windows runner and is tracked in
-[#156](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/156).
+The automated CI Excel gate
+([#156](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/156)) and
+contributor-provided Office 32-bit evidence
+([#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)) are
+v1.5.0 work, as is the official add-in artifact.
 
 ---
 
@@ -1516,9 +1609,3 @@ for the attribution notice that redistributions must carry.
 Releases up to and including v1.4.0 were published under the MIT License, and
 copies obtained under those terms remain MIT-licensed. Later changes are
 licensed under Apache 2.0.
-
-## Local Excel launchers
-
-Use the [local Excel tools](docs/LOCAL_EXCEL_TOOLS.md) to certify the core suite
-and measurement examples, synchronize VBA into a new workbook copy, or export
-workbook modules with a hash manifest. The launchers are in `tools/`.
