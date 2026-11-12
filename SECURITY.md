@@ -66,7 +66,8 @@ Procedure names passed to dynamic measurement APIs are executable input and must
 If the project has not yet published a functional release, development code is
 pre-release and no production version is security-supported.
 
-Security fixes normally land on **main** and are included in a new tagged
+Security fixes normally land on the active **release/vX.Y.Z** branch, reach
+**main** through its alignment pull request, and ship in the next tagged
 release. Older releases are not normally patched in place unless the maintainer
 states otherwise.
 
@@ -85,9 +86,10 @@ thread.
 
 Use either private channel:
 
-1. On the repository **Security** page, select **Report a vulnerability** when
-   GitHub private vulnerability reporting is available.
-2. Otherwise email **danielep71@gmail.com** with the subject:
+1. GitHub private vulnerability reporting, which is enabled: on the repository
+   **Security** page, select **Report a vulnerability**, or open
+   <https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/security/advisories/new>.
+2. If you cannot use GitHub, email **danielep71@gmail.com** with the subject:
    **Private security report — VBA-PERFORMANCE_MANAGER**.
 
 Include the smallest amount of information needed to reproduce and assess the
@@ -297,8 +299,10 @@ Workflow code and configuration are security-sensitive.
 Automation that writes repository content or publishes releases must have
 explicit, least-privilege authorization.
 
-`tools/Invoke-ExcelRegression.ps1` is a local, maintainer-run Excel runner, not a
-CI runner.
+The local Excel tools in `tools/` are maintainer-run and supervised, not CI
+runners. They are described in [Local Excel tools](docs/LOCAL_EXCEL_TOOLS.md).
+
+`tools/Invoke-ExcelRegression.ps1` is the regression runner the others build on.
 
 - It refuses to start while Excel is open, so it controls only the instance it
   starts.
@@ -310,6 +314,20 @@ CI runner.
   previous value is restored on every path.
 - Run it only on a checkout you trust: the imported VBA runs with your user's
   rights.
+
+The other tools differ as follows:
+
+- The double-click launchers (`Certify-*.cmd`, `Sync-PerformanceManager-VBA.cmd`
+  and `Export-PerformanceManager-VBA.cmd`) always pass `-AllowVbomAccess`, so
+  they change `AccessVBOM` for the run and restore it afterwards.
+- `Sync-PerformanceManager-VBA.cmd` does save a workbook: a new copy outside
+  the checkout, with the repository's modules imported. The input workbook is
+  never modified.
+- `tools/Invoke-ExcelBatch.ps1` fetches the commits its manifest lists by SHA,
+  typically the heads of open pull requests, and runs each commit's own copy of
+  `Invoke-ExcelRegression.ps1` with `-AllowVbomAccess`, importing that commit's
+  VBA. Review a pull request's complete diff, including its `tools/` changes,
+  before adding it to a batch: contributor code runs with your user's rights.
 
 The isolated runner and trust model for an automated gate are tracked in #156.
 
