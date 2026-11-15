@@ -12,7 +12,13 @@ structure of each job and step and therefore a YAML parser:
 - every actions/setup-python step reads the one exact interpreter version in
   .python-version, except the minimum-Python job, which pins the documented
   floor exactly;
-- that minimum-Python job exists, and the README states the same floor.
+- that minimum-Python job exists, and the README states the same floor;
+- every push, pull_request or pull_request_target branch filter still matches
+  the default branch named in tools/repository-settings.json, and no
+  branches-ignore filter excludes it (#180);
+- the static-checks gate runs on push only for the default branch and
+  release/**, on every pull_request without a branch filter, and none of its
+  jobs carries a job-level ``if``: a skipped run would read as passing (#180).
 
 PyYAML is pinned with hashes in tools/requirements-ci.txt. A duplicate mapping
 key is an error: PyYAML would keep the last value while GitHub may read
@@ -20,6 +26,7 @@ another, so a rule could pass on a value GitHub does not use.
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -30,6 +37,10 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW_DIR = ".github/workflows"
 PYTHON_VERSION_FILE = ".python-version"
 README = "README.md"
+SETTINGS = "tools/repository-settings.json"
+GATE = "static-checks.yml"
+RELEASE_BRANCHES = "release/**"
+FILTERED_EVENTS = ("push", "pull_request", "pull_request_target")
 
 # The only jobs that may write, and what each may write.
 WRITE_PERMISSIONS = {
@@ -71,6 +82,80 @@ def load(text: str) -> Any:
     if isinstance(document, dict) and True in document:
         document["on"] = document.pop(True)
     return document
+
+
+def _glob(pattern: str) -> re.Pattern[str]:
+    """Compile a GitHub branch filter pattern: ** spans '/', * and ? do not."""
+    out = ""
+    i = 0
+    while i < len(pattern):
+        if pattern.startswith("**", i):
+            out += ".*"
+            i += 2
+            continue
+        char = pattern[i]
+        out += {"*": "[^/]*", "?": "[^/]"}.get(char, re.escape(char))
+        i += 1
+    return re.compile(out)
+
+
+def branch_matches(patterns: Any, branch: str) -> bool:
+    """Whether a branches filter selects branch; a later '!' pattern excludes."""
+    if isinstance(patterns, str):
+        patterns = [patterns]
+    selected = False
+    for pattern in patterns or []:
+        text = str(pattern)
+        negated = text.startswith("!")
+        if _glob(text[1:] if negated else text).fullmatch(branch):
+            selected = not negated
+    return selected
+
+
+def _triggers(document: dict[str, Any]) -> dict[str, Any]:
+    on = document.get("on")
+    if isinstance(on, str):
+        return {on: None}
+    if isinstance(on, list):
+        return {str(event): None for event in on}
+    return on if isinstance(on, dict) else {}
+
+
+def _trigger_problems(name: str, document: dict[str, Any], default_branch: str) -> list[str]:
+    """Branch filters that miss the default branch, and the gate's trigger shape."""
+    problems: list[str] = []
+    triggers = _triggers(document)
+    for event in FILTERED_EVENTS:
+        config = triggers.get(event)
+        if not isinstance(config, dict):
+            continue
+        if "branches" in config and not branch_matches(config["branches"], default_branch):
+            problems.append(f"{name}: on.{event}.branches does not match the default "
+                            f"branch {default_branch!r}")
+        if "branches-ignore" in config and branch_matches(config["branches-ignore"],
+                                                          default_branch):
+            problems.append(f"{name}: on.{event}.branches-ignore excludes the default "
+                            f"branch {default_branch!r}")
+    if name != GATE:
+        return problems
+    push = triggers.get("push")
+    wanted = {default_branch, RELEASE_BRANCHES}
+    branches = push.get("branches") if isinstance(push, dict) else None
+    listed = {branches} if isinstance(branches, str) else set(map(str, branches or []))
+    if listed != wanted or (isinstance(push, dict) and "branches-ignore" in push):
+        problems.append(f"{name}: on.push must filter branches to exactly "
+                        f"{sorted(wanted)}, got {sorted(listed)}")
+    if "pull_request" not in triggers:
+        problems.append(f"{name}: must run on pull_request")
+    elif isinstance(triggers["pull_request"], dict) and \
+            {"branches", "branches-ignore"} & set(triggers["pull_request"]):
+        problems.append(f"{name}: on.pull_request must not filter branches, so a pull "
+                        "request to any base is checked")
+    for job_id, job in (document.get("jobs") or {}).items():
+        if isinstance(job, dict) and "if" in job:
+            problems.append(f"{name}: job {job_id}: a job-level if would skip the gate, "
+                            "and a skipped run reads as passing")
+    return problems
 
 
 def _writes(permissions: Any) -> set[str]:
@@ -131,11 +216,12 @@ def _job_problems(name: str, job_id: str, job: Any) -> tuple[list[str], str | No
 
 
 def check(workflows: dict[str, str], python_version: str | None,
-          readme: str | None) -> list[str]:
+          readme: str | None, default_branch: str = "main") -> list[str]:
     """Return every rule violation; an empty list means the workflows comply.
 
     workflows maps a workflow file name to its text. python_version is the
     content of .python-version and readme the README text, or None if absent.
+    default_branch is the repository's default branch.
     """
     problems: list[str] = []
 
@@ -161,6 +247,7 @@ def check(workflows: dict[str, str], python_version: str | None,
             problems.append(f"{name}: the workflow-level token may write "
                             f"{sorted(_writes(document['permissions']))}; grant writes per job")
 
+        problems += _trigger_problems(name, document, default_branch)
         for job_id, job in document["jobs"].items():
             job_problems, job_minimum = _job_problems(name, job_id, job)
             problems += job_problems
@@ -183,8 +270,10 @@ def repository_problems(root: Path = ROOT) -> list[str]:
                  for path in sorted((root / WORKFLOW_DIR).glob("*.y*ml"))}
     version_path = root / PYTHON_VERSION_FILE
     readme_path = root / README
+    settings = json.loads((root / SETTINGS).read_text(encoding="utf-8"))
     return check(
         workflows,
         version_path.read_text(encoding="utf-8") if version_path.exists() else None,
         readme_path.read_text(encoding="utf-8") if readme_path.exists() else None,
+        str(settings["general"]["default_branch"]),
     )

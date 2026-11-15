@@ -192,6 +192,15 @@ Use only the categories needed by a release.
 
 ### Changed
 
+- The static checks run on every pull request and on pushes to `main` and
+  the release branches, no longer on pushes to topic branches, whose pull
+  request already runs them on the same commit. Between 15 October and 12
+  November 2026, 64 of 67 topic-branch push runs repeated a pull-request run,
+  22% of all static-check minutes. `tools/workflow_controls.py` fails if a
+  workflow's branch filter stops matching the default branch, if the gate's
+  push filter changes or its pull-request trigger gains a branch filter, or if
+  a gate job gains a job-level `if` (#180).
+
 - Source archives (`git archive` and GitHub's source ZIP and tarball) now
   include the `.github/` directory. Excluding it hid `dependabot.yml` and the
   workflows from OpenSSF Scorecard, which reads the repository from the

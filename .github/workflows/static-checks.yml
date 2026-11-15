@@ -1,8 +1,16 @@
 name: Static checks
 
-# Runs on every push and pull request. These checks analyse the exported VBA
-# sources, CHANGELOG, workflow files and release tooling as text and need no
-# Excel, so they run on a hosted runner in seconds.
+# Runs on every pull request, whatever its base, and on pushes to main and the
+# release branches, where commits land and where the release procedure reads
+# the hosted run on the candidate. A topic-branch push is checked by its pull
+# request; a push trigger there would repeat the same run on the same commit
+# (#180). The default branch is named, and tools/workflow_controls.py fails if
+# a filter stops matching it. No job may be skipped with a job-level `if`: a
+# skipped run on a commit would read as passing.
+#
+# These checks analyse the exported VBA sources, CHANGELOG, workflow files and
+# release tooling as text and need no Excel, so they run on a hosted runner in
+# seconds.
 #
 # One check needs git history: released changelog sections are compared against
 # their content at the matching tag, so the checkout fetches tags.
@@ -26,9 +34,10 @@ name: Static checks
 
 on:
   push:
-    branches: ["**"]
+    branches:
+      - main
+      - "release/**"
   pull_request:
-    branches: ["**"]
   workflow_dispatch:
 
 permissions:

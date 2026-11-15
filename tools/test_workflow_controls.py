@@ -29,6 +29,10 @@ STATIC = f"""\
 name: Static checks
 on:
   push:
+    branches:
+      - main
+      - "release/**"
+  pull_request:
 permissions:
   contents: read
 jobs:
@@ -152,6 +156,55 @@ class WorkflowControlTests(unittest.TestCase):
         self.assertRejects(run(readme="The tools need Python 3.12 or later.\n"),
                            "README.md must state the minimum once as 'Python 3.11 or later'")
         self.assertRejects(run(readme=None), "'Python 3.11 or later'")
+
+    def test_branch_patterns_follow_github_globs(self) -> None:
+        for patterns, branch, expected in (("**", "main", True), ("*", "main", True),
+                                           ("*", "release/v1.4.1", False),
+                                           ("release/**", "release/v1.4.1", True),
+                                           (["**", "!main"], "main", False),
+                                           (["!main", "main"], "main", True),
+                                           ("ma?n", "main", True), ("mai", "main", False)):
+            with self.subTest(patterns=patterns, branch=branch):
+                self.assertIs(wc.branch_matches(patterns, branch), expected)
+
+    def test_branch_filters_keep_the_default_branch(self) -> None:
+        labels = LABELS.replace("on:\n  workflow_dispatch:\n",
+                                "on:\n  push:\n    branches: [develop]\n  workflow_dispatch:\n")
+        self.assertRejects(run(labels=labels),
+                           "labels-sync.yml: on.push.branches does not match the default branch 'main'")
+        ignored = LABELS.replace("on:\n  workflow_dispatch:\n",
+                                 "on:\n  pull_request_target:\n    branches-ignore: [main]\n"
+                                 "  workflow_dispatch:\n")
+        self.assertRejects(run(labels=ignored),
+                           "on.pull_request_target.branches-ignore excludes the default branch")
+        renamed = wc.check({"static-checks.yml": STATIC.replace("- main", "- trunk"),
+                            "labels-sync.yml": LABELS}, "3.13.18\n", README_OK, "trunk")
+        self.assertEqual(renamed, [])
+        self.assertRejects(wc.check({"static-checks.yml": STATIC, "labels-sync.yml": LABELS},
+                                    "3.13.18\n", README_OK, "trunk"),
+                           "on.push must filter branches to exactly ['release/**', 'trunk']")
+
+    def test_gate_push_runs_only_where_commits_land(self) -> None:
+        everywhere = STATIC.replace('    branches:\n      - main\n      - "release/**"\n',
+                                    '    branches: ["**"]\n')
+        self.assertRejects(run(static=everywhere), "static-checks.yml: on.push must filter branches "
+                                                   "to exactly ['main', 'release/**'], got ['**']")
+        self.assertRejects(run(static=STATIC.replace('      - "release/**"\n', "")),
+                           "got ['main']")
+        self.assertRejects(run(static=STATIC.replace('    branches:\n      - main\n      - "release/**"\n', "")),
+                           "on.push must filter branches")
+
+    def test_gate_checks_every_pull_request(self) -> None:
+        self.assertRejects(run(static=STATIC.replace("  pull_request:\n", "")),
+                           "static-checks.yml: must run on pull_request")
+        filtered = STATIC.replace("  pull_request:\n", "  pull_request:\n    branches: [main]\n")
+        self.assertRejects(run(static=filtered), "on.pull_request must not filter branches")
+
+    def test_gate_jobs_are_never_skipped(self) -> None:
+        skipped = STATIC.replace("    timeout-minutes: 10\n",
+                                 "    timeout-minutes: 10\n    if: github.event_name == 'pull_request'\n")
+        self.assertRejects(run(static=skipped),
+                           "static-checks.yml: job vba-lint: a job-level if would skip the gate")
 
 
 if __name__ == "__main__":

@@ -205,7 +205,7 @@ cPM.ResetEnvironment</code></pre>
       <ul class="scope-list">
         <li><strong>Release 1.4.0:</strong> 80 regression cases, 643 assertions, 0 failures, on Microsoft 365 Excel 64-bit (Version 2607), at the exact tag.</li>
         <li><strong>32-bit Office:</strong> the source keeps its 32-bit branches, but no 32-bit host has been execution-certified yet.</li>
-        <li><strong>Static gate:</strong> source consistency, compile safety, pinned workflow actions and release claims are checked on every push and pull request.</li>
+        <li><strong>Static gate:</strong> source consistency, compile safety, pinned workflow actions and release claims are checked on every pull request and on every push to <code>main</code> and the release branch.</li>
         <li><strong>Provenance:</strong> each release lists the SHA-256 of its source files and assets, and the source files are compared with the tag.</li>
       </ul>
       <figure class="screen">
