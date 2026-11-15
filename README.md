@@ -1020,8 +1020,10 @@ python3 tools/release_state.py --fetch-wiki --wiki-root /tmp/cpm-wiki-input
 python3 tools/vba_lint.py --wiki-root /tmp/cpm-wiki-input --json vba-lint-results.json
 ```
 
-on every push and pull request. It publishes the machine-readable result even
-when a check fails.
+on every pull request, whatever its base, and on every push to `main` and the
+release branches. A push to a topic branch is checked by its pull request
+instead (#180). The workflow publishes the machine-readable result even when a
+check fails.
 
 The first command fetches the wiki commit pinned in `tools/release-state.json`
 into a new directory, which must not exist yet; checks 28–30 read it. Without
