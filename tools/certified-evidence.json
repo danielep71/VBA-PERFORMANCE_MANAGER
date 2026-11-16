@@ -12,8 +12,8 @@
       "failures": 0,
       "static_checks": 12,
       "workbook": "PERFORMANCE.MANAGER.xlsm",
-      "workbook_sha256": "5eddd6473e43a5c9fb12a97f3d00c07117843368165082c947c953003ed7b4a2",
-      "manifest_sha256": "d13567b416c39dd0b62f2eaf4767f25d21a9daa300d8e7e8b2dc81db3fa8119f"
+      "workbook_sha256": "4b2c4c4bedc31f70ab6dc48c8e0a0f7ab34db0412182e95b1fa7ad4220704fc5",
+      "manifest_sha256": "c5d5438d937b5e67351cd111d0bf405ce8b08ad564c5b8e1961a77984ea7eb2e"
     },
     {
       "tag": "v1.3.0",
@@ -26,8 +26,8 @@
       "failures": 0,
       "static_checks": null,
       "workbook": "PERFORMANCE.MANAGER.xlsm",
-      "workbook_sha256": "05cb9d79986144d0498d599ccf070447b5fe8720ee23a5c81bf68a99a5aa66a0",
-      "manifest_sha256": "56c3a1996184e65b541a958619e199b7000ee9a9b92e2266ed0c886a7d81310f"
+      "workbook_sha256": "5405e100bca16d61e35d5ac67c59cf3a4a2e80dbb63bb97934ef5bc17065005e",
+      "manifest_sha256": "6335f2c0bc16d9082600eaf355d690889fab704548894646ebf390cd9e6f8cc9"
     }
   ]
 }
