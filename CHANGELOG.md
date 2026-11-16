@@ -106,6 +106,12 @@ Use only the categories needed by a release.
 
 ### Added
 
+- Added `tools/Build-DemoWorkbook.cmd`, which builds the demo workbook from the
+  checked-out commit: it imports and compiles the components, builds the
+  sheets, smoke-tests every demo action, removes the build machine's metadata,
+  reopens the workbook and packages it with `LICENSE` and `NOTICE`, with a
+  JSON build record (#47, #72).
+
 - Added two independent compile-safety checks for same-procedure error-handler
   labels and declared assignment targets across production, test and demo VBA.
   Conditional profiles and positive/negative fixtures are checked locally;
@@ -191,6 +197,13 @@ Use only the categories needed by a release.
   has one more assertion (#74).
 
 ### Changed
+
+- The demo workbook reports a failed action on the results log and in a
+  message, instead of a VBA runtime-error dialog. A Home start page is built
+  from source in place of the illustration. The help sheet corrects pause
+  method 3 and the TimeWasters file name, and explains the measurement
+  harness, its evidence counts and strict mode. The regression button reads
+  "Regression Suite (maintainer)" (#47).
 
 - `tools/release_provenance.py` 3.1.0 opens the packaged workbook and refuses
   one that carries a sensitivity label, a document category or content

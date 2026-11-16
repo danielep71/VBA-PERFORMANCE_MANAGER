@@ -13,6 +13,7 @@ attention. They are not an unattended runner with a hard timeout (#156).
 | `Certify-MeasurementExamples.cmd` | Core regression plus clean import/compile of the usage module and execution of all four measurement examples; JSON includes their output. |
 | `Sync-PerformanceManager-VBA.cmd` | Select an `.xlsm`; create a new copy outside the checkout, replace the six managed modules, compile, save and reopen to verify code readback. |
 | `Export-PerformanceManager-VBA.cmd` | Select an `.xlsm`; read all VBA components into a fresh directory with a SHA-256 manifest, without modifying the workbook. |
+| `Build-DemoWorkbook.cmd` | Builds the demo workbook from the checked-out commit, smoke-tests every demo action, removes the build machine's metadata, and packages it with `LICENSE` and `NOTICE` in `..\cpm-demo-build` (#47, #72). |
 | `Verify-SyncRefusals.cmd` | Evidence that the sync refuses a protected VBA project and a component type conflict, restores AccessVBOM and leaves no Excel process (#138). It creates both test workbooks in `..\cpm-sync-refusals`; locking the project is one manual step in the VBA editor, needed once. |
 
 Each launcher opens its output folder. Send the JSON/manifest for review.
@@ -22,6 +23,31 @@ two certification launchers step by step. To run several commits in one pass,
 use `tools/Invoke-ExcelBatch.ps1` with a JSON manifest
 (`tools/excel-batch.example.json`); see the README's
 [Regression testing](../README.md#regression-testing) section.
+
+## Building the demo workbook
+
+`Build-DemoWorkbook.cmd` builds the release workbook from the clean checked-out
+commit, without manual steps, into a new folder under `..\cpm-demo-build`:
+
+1. imports the six managed components into a new workbook and compiles;
+2. runs `cPM_CreateDemoSheets`, which builds `Home`, `DEMO_cPM`, `DATA_cPM`
+   and `HELP_cPM`, and deletes every other sheet;
+3. runs every demo action unattended and checks that each adds a
+   results-log row and that none fails; failures are counted by the demo
+   itself, so no message box blocks the run;
+4. clears the results log and saves `PERFORMANCE MANAGER.xlsm`;
+5. removes the metadata a managed machine can add (sensitivity label,
+   document category or content status, the folder it was saved from, print
+   headers and footers) and checks that none is left; these are the kinds
+   `tools/release_provenance.py` refuses;
+6. reopens the workbook with macros disabled and checks its sheets;
+7. writes `VBA-Performance-Manager-v<VERSION>.zip` with the workbook and the
+   checkout's `LICENSE` and `NOTICE`, and `demo-build.json`.
+
+`RESULT=PASS` needs all seven steps. The build record names the commit, the
+Excel build, every component hash, each action's rows and time, what metadata
+was removed, and the workbook and package SHA-256. The smoke test is demo
+evidence; it does not replace the regression suite.
 
 ## Verifying the sync refusals
 
