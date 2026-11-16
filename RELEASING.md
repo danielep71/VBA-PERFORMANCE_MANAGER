@@ -285,11 +285,17 @@ For each artifact:
 2. Use only candidate-controlled inputs.
 3. Preserve required form and resource companions.
 4. Compile before saving.
-5. Exclude developer-only tests unless the artifact promises them.
-6. Extract the package, reopen the extracted workbook, and run the packaged
+5. Remove the metadata of the machine it was built on: no sensitivity
+   label, no document category or content status, no print headers or
+   footers. Build it in a folder outside any synced or managed location, so
+   the workbook does not record the folder it was saved from. File > Info >
+   Check for Issues > Inspect Document finds the properties and the headers
+   and footers.
+6. Exclude developer-only tests unless the artifact promises them.
+7. Extract the package, reopen the extracted workbook, and run the packaged
    smoke or regression test.
-7. Record filename, size, and SHA-256.
-8. Never edit the artifact after hashing.
+8. Record filename, size, and SHA-256.
+9. Never edit the artifact after hashing.
 
 ```powershell
 Get-FileHash -Algorithm SHA256 .\dist\<artifact>
@@ -313,6 +319,9 @@ zip -X VBA-Performance-Manager-vX.Y.Z.zip "PERFORMANCE MANAGER.xlsm" LICENSE NOT
 ```
 
 Provenance generation (step 9) verifies the package before it emits anything.
+It also opens the workbook and refuses one that carries a sensitivity label,
+a document category or content status, the folder it was saved from, or a
+sheet print header or footer (#191).
 
 Publish only artifacts promised by the installation guide.
 

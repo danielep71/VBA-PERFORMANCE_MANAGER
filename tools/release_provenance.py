@@ -17,7 +17,10 @@ The Release asset is one ZIP package, VBA-Performance-Manager-vX.Y.Z.zip,
 holding exactly the workbook, LICENSE and NOTICE at its root. The package is
 verified before anything is emitted: its name must match the version, it
 must be a sound ZIP with exactly those members, and LICENSE and NOTICE must be
-byte-identical to their blobs at the release tag.
+byte-identical to their blobs at the release tag. The workbook itself must be
+a readable Office Open XML file without the metadata a managed machine can add:
+a sensitivity label, a document category or content status, the folder it was
+saved from, or a sheet print header or footer (#191).
 
 There is one strict path. Every release-critical input is required and is
 validated before any publishable markdown or JSON is produced. Incomplete
@@ -48,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import re
@@ -59,7 +63,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-TOOL_VERSION = "3.0.0"
+TOOL_VERSION = "3.1.0"
 ROOT = Path(__file__).resolve().parent.parent
 
 REQUIRED = [
@@ -75,6 +79,12 @@ OPTIONAL = [
 VERSION_FILE = "VERSION"
 LICENSE_FILES = ("LICENSE", "NOTICE")
 WORKBOOK_SUFFIX = ".xlsm"
+CORE_PROPERTIES = "docProps/core.xml"
+CUSTOM_PROPERTIES = "docProps/custom.xml"
+WORKBOOK_PART = "xl/workbook.xml"
+SHEET_PART = re.compile(r"xl/(?:worksheets|chartsheets|dialogsheets|macrosheets)/[^/]+\.xml")
+CLASSIFYING_PROPERTY = re.compile(r"<cp:(category|contentStatus)\b[^>]*>\s*([^<\s][^<]*)</cp:\1>")
+HEADER_FOOTER = re.compile(r"<(odd|even|first)(Header|Footer)\b[^>]*>\s*[^<\s]")
 
 
 def package_name(version: str) -> str:
@@ -269,6 +279,40 @@ def _package_inventory_problems(names: list[str], members: dict[str, bytes]) -> 
     return problems
 
 
+def workbook_metadata_problems(data: bytes) -> list[str]:
+    """Metadata the published workbook must not carry (#191).
+
+    A workbook saved on a managed machine can carry its sensitivity label, a
+    document category or content status, the folder it was saved from and a
+    classification in the sheets' print headers or footers. None of it belongs
+    in a public release. Problems name the part, never its content.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as book:
+            parts = {info.filename: book.read(info) for info in book.infolist()}
+    except (zipfile.BadZipFile, OSError, RuntimeError, ValueError) as exc:
+        return [f"package workbook is not a readable Office Open XML file: {exc}"]
+
+    def text(name: str) -> str:
+        return parts.get(name, b"").decode("utf-8", "replace")
+
+    problems: list[str] = []
+    labels = sorted(name for name in parts if name.lower().startswith("docmetadata/"))
+    problems += [f"workbook carries a sensitivity label part: {name}" for name in labels]
+    if not labels and "classificationlabels" in text("_rels/.rels"):
+        problems.append("workbook relates a sensitivity label part in _rels/.rels")
+    if "MSIP_Label_" in text(CUSTOM_PROPERTIES):
+        problems.append(f"workbook carries sensitivity-label properties in {CUSTOM_PROPERTIES}")
+    for element, _ in CLASSIFYING_PROPERTY.findall(text(CORE_PROPERTIES)):
+        problems.append(f"workbook sets the document {element} in {CORE_PROPERTIES}")
+    if "absPath" in text(WORKBOOK_PART):
+        problems.append(f"workbook records the folder it was saved from in {WORKBOOK_PART}")
+    for name in sorted(parts):
+        if SHEET_PART.fullmatch(name) and HEADER_FOOTER.search(text(name)):
+            problems.append(f"workbook has a print header or footer in {name}")
+    return problems
+
+
 def package_problems(asset: Path, version: str | None, tag: str | None) -> list[str]:
     """Verify the Release package before it is described as published.
 
@@ -296,6 +340,9 @@ def package_problems(asset: Path, version: str | None, tag: str | None) -> list[
         return problems + [f"--asset is not a readable ZIP package: {exc}"]
 
     problems += _package_inventory_problems(names, members)
+    workbooks = [n for n in dict.fromkeys(names) if n.lower().endswith(WORKBOOK_SUFFIX) and "/" not in n]
+    if len(workbooks) == 1 and members[workbooks[0]]:
+        problems += workbook_metadata_problems(members[workbooks[0]])
 
     if tag is not None:
         for required in LICENSE_FILES:

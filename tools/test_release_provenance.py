@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.util
+import io
 import json
 import re
 import shutil
@@ -31,7 +32,28 @@ SOURCES = [
     "demo/M_DEMO_BUILDER.bas",
 ]
 WORKBOOK = "PERFORMANCE MANAGER.xlsm"
-WORKBOOK_BYTES = b"fixture workbook bytes"
+CLEAN_PARTS = {
+    "[Content_Types].xml": '<?xml version="1.0"?><Types/>',
+    "_rels/.rels": '<?xml version="1.0"?><Relationships/>',
+    "docProps/core.xml": ('<?xml version="1.0"?><cp:coreProperties '
+                          'xmlns:cp="cp"><cp:category></cp:category></cp:coreProperties>'),
+    "xl/workbook.xml": '<?xml version="1.0"?><workbook><sheets/></workbook>',
+    "xl/worksheets/sheet1.xml": '<?xml version="1.0"?><worksheet><headerFooter/></worksheet>',
+}
+
+
+def make_workbook(**changes: str | None) -> bytes:
+    """A minimal Office Open XML workbook; changes add, replace or (None) drop parts."""
+    parts = {**CLEAN_PARTS, **changes}
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as book:
+        for name, body in parts.items():
+            if body is not None:
+                book.writestr(zipfile.ZipInfo(name, (2026, 1, 1, 0, 0, 0)), body)
+    return buffer.getvalue()
+
+
+WORKBOOK_BYTES = make_workbook()
 LICENSE_TEXT = b"fixture license text\n"
 NOTICE_TEXT = b"fixture notice text\n"
 NOTES = "NOTES.txt"
@@ -341,13 +363,45 @@ def _package_cases(m: Matrix, tmp: Path) -> None:
                     "LICENSE is missing from tagged source v1.4.0",
                     members=[wb, lic, notice], include_license=False)
 
+    # #191: the packaged workbook carries no managed-machine metadata.
+    rejected_metadata = {
+        "label": ({"docMetadata/LabelInfo.xml": '<labelList/>'},
+                  "sensitivity label part: docMetadata/LabelInfo.xml"),
+        "label-rel": ({"_rels/.rels": '<Relationships><Relationship Type="x/classificationlabels"/>'
+                                      '</Relationships>'},
+                      "relates a sensitivity label part in _rels/.rels"),
+        "msip": ({"docProps/custom.xml": '<Properties><property name="MSIP_Label_x_Enabled"/>'
+                                         '</Properties>'},
+                 "sensitivity-label properties in docProps/custom.xml"),
+        "category": ({"docProps/core.xml": '<cp:coreProperties xmlns:cp="cp">'
+                                           '<cp:category>Internal</cp:category></cp:coreProperties>'},
+                     "sets the document category in docProps/core.xml"),
+        "status": ({"docProps/core.xml": '<cp:coreProperties xmlns:cp="cp">'
+                                         '<cp:contentStatus>Restricted</cp:contentStatus></cp:coreProperties>'},
+                   "sets the document contentStatus in docProps/core.xml"),
+        "abspath": ({"xl/workbook.xml": '<workbook><x15ac:absPath url="C:/Users/someone/"/></workbook>'},
+                    "folder it was saved from in xl/workbook.xml"),
+        "footer": ({"xl/worksheets/sheet1.xml": '<worksheet><headerFooter><oddFooter>&amp;CText'
+                                                '</oddFooter></headerFooter></worksheet>'},
+                   "print header or footer in xl/worksheets/sheet1.xml"),
+        "header": ({"xl/worksheets/sheet1.xml": '<worksheet><headerFooter><firstHeader>Text'
+                                                '</firstHeader></headerFooter></worksheet>'},
+                   "print header or footer in xl/worksheets/sheet1.xml"),
+    }
+    for label, (changes, expected) in rejected_metadata.items():
+        package_rejects(f"package workbook metadata: {label}", f"meta-{label}", expected,
+                        members=[(WORKBOOK, make_workbook(**changes)), lic, notice])
+    package_rejects("package workbook that is not Office Open XML", "meta-not-ooxml",
+                    "package workbook is not a readable Office Open XML file",
+                    members=[(WORKBOOK, b"not a workbook"), lic, notice])
+
     bare = make_repo(tmp / "pkg-bare")
     (bare / WORKBOOK).write_bytes(WORKBOOK_BYTES)
     m.rejects("a bare workbook asset is rejected", bare, valid_args(asset=WORKBOOK),
               expected="must be the Release package")
 
     not_zip = make_repo(tmp / "pkg-not-zip")
-    (not_zip / ASSET).write_bytes(WORKBOOK_BYTES)
+    (not_zip / ASSET).write_bytes(b"fixture bytes that are not a ZIP")
     m.rejects("an asset that is not a ZIP is rejected", not_zip, valid_args(),
               expected="is not a readable ZIP package")
 
