@@ -13,7 +13,7 @@ latest published release is v1.4.0, whose evidence is recorded in
 | Evidence for each change | The closing comment of its issue and the pull request that delivered it |
 | Branch and merge rules | [CONTRIBUTING.md](../../../CONTRIBUTING.md#maintainer-workflow) |
 | Release procedure | [RELEASING.md](../../../RELEASING.md) |
-| Preparation notes for individual changes | [#74 Pause method 3](PAUSE_METHOD3.md), [#75 worker seam cleanup](WORKER_SEAM_CLEANUP.md), [#76 strict error codes](STRICT_ERROR_ASSERTIONS.md), [#77 measurement examples](MEASUREMENT_EXAMPLE_EVIDENCE.md) |
+| Preparation notes for individual changes | [#74 Pause method 3](PAUSE_METHOD3.md), [#75 worker seam cleanup](WORKER_SEAM_CLEANUP.md), [#76 strict error codes](STRICT_ERROR_ASSERTIONS.md), [#77 measurement examples](MEASUREMENT_EXAMPLE_EVIDENCE.md), [#47 demo workbook inventory](DEMO_WORKBOOK_INVENTORY.md) |
 
 The implementation plan that tracked v1.4.1 until 3 November 2026 was retired
 under [#90](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/90).
