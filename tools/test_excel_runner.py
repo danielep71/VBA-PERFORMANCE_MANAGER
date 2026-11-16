@@ -34,6 +34,75 @@ def assignment(name: str) -> str:
     return match.group(1).strip().strip("'")
 
 
+PROGRESS = re.compile(r'^\s*Demo_SB_SetProgress\s+CurrentStep,\s*TotalSteps,\s*"([^"]*)"\s*$', re.M)
+CASE_CALL = re.compile(r"^\s*(Test_\w+)\s*$", re.M)
+CASE_BEGIN = re.compile(r'^\s*Case_Begin\s+"([^"]*)"', re.M)
+CASE_PROC = re.compile(r"^(?:Private |Public )?Sub (Test_\w+)\(.*?^End Sub", re.M | re.S)
+
+
+def label_problems(text: str) -> list[str]:
+    """Runner status-bar labels that differ from their case's Case_Begin name (#78).
+
+    Each `Demo_SB_SetProgress CurrentStep, TotalSteps, "<label>"` followed by a
+    `Test_<name>` call must show the one name that procedure passes to
+    Case_Begin, so a status-bar label can be found in the log by its text. A
+    label not followed by a case call (the preparation step) is not checked.
+    """
+    text = text.replace("\r\n", "\n")
+    names = {m.group(1): CASE_BEGIN.findall(m.group(0)) for m in CASE_PROC.finditer(text)}
+    problems: list[str] = []
+    for label in PROGRESS.finditer(text):
+        following = CASE_CALL.search(text, label.end())
+        next_label = PROGRESS.search(text, label.end())
+        if following is None or (next_label is not None and next_label.start() < following.start()):
+            continue
+        case = following.group(1)
+        begun = names.get(case)
+        if not begun or len(begun) != 1:
+            problems.append(f"{case}: needs exactly one Case_Begin name, has {begun or 'none'}")
+        elif begun[0] != label.group(1):
+            problems.append(f"{case}: runner label {label.group(1)!r} differs from "
+                            f"Case_Begin {begun[0]!r}")
+    return problems
+
+
+class CaseLabelTests(unittest.TestCase):
+    MODULE = (
+        'Public Sub Run()\r\n'
+        '        Demo_SB_SetProgress CurrentStep, TotalSteps, "Preparing regression environment"\r\n'
+        '        Suite_Prepare\r\n'
+        '        Demo_SB_SetProgress CurrentStep, TotalSteps, "First case"\r\n'
+        '        Test_First\r\n'
+        'End Sub\r\n'
+        'Private Sub Test_First()\r\n'
+        '        Case_Begin "First case"\r\n'
+        'End Sub\r\n'
+    )
+
+    def test_matching_labels_pass(self) -> None:
+        self.assertEqual(label_problems(self.MODULE), [])
+
+    def test_a_drifted_label_is_reported(self) -> None:
+        drifted = self.MODULE.replace('TotalSteps, "First case"', 'TotalSteps, "First"')
+        self.assertEqual(label_problems(drifted),
+                         ["Test_First: runner label 'First' differs from Case_Begin 'First case'"])
+
+    def test_a_case_needs_exactly_one_name(self) -> None:
+        missing = self.MODULE.replace('        Case_Begin "First case"\r\n', "")
+        self.assertEqual(label_problems(missing),
+                         ["Test_First: needs exactly one Case_Begin name, has none"])
+        twice = self.MODULE.replace('        Case_Begin "First case"\r\n',
+                                    '        Case_Begin "First case"\r\n        Case_Begin "Again"\r\n')
+        self.assertIn("needs exactly one Case_Begin name", label_problems(twice)[0])
+
+    def test_regression_module_labels_match_case_names(self) -> None:
+        self.assertEqual(label_problems(test_module()), [])
+        total = re.search(r"Const TotalSteps\s+As Long\s*=\s*(\d+)", test_module())
+        assert total
+        # Every case is labelled: one label per case, plus the preparation step.
+        self.assertEqual(len(PROGRESS.findall(test_module())) - 1, int(total.group(1)))
+
+
 class RunnerContractTests(unittest.TestCase):
     def test_components_follow_the_readme_import_order(self) -> None:
         listed = re.search(r"\$Components = @\((.*?)\)", runner(), re.S)

@@ -919,7 +919,9 @@ on Windows with Git and desktop Excel:
 - `Sync-PerformanceManager-VBA.cmd` replaces the managed modules in a new copy
   of a workbook;
 - `Export-PerformanceManager-VBA.cmd` exports a workbook's VBA components with
-  a SHA-256 manifest.
+  a SHA-256 manifest;
+- `Verify-SyncRefusals.cmd` records that the sync refuses a protected project
+  and a component type conflict, and cleans up after itself.
 
 See [local Excel tools](docs/LOCAL_EXCEL_TOOLS.md) and
 [Excel certification with a double click](docs/EXCEL_CERTIFICATION.md).

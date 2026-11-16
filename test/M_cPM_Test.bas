@@ -248,37 +248,37 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate StartTimer session-state transitions for all methods
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "StartTimer session state"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "StartTimer sets session state for all methods"
         Test_StartTimer_SetsSessionState_AllMethods
 
     'Validate numeric elapsed-time reads for all methods
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "ElapsedSeconds across methods"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "ElapsedSeconds across all methods"
         Test_ElapsedSeconds_AllMethods
 
     'Validate formatted elapsed-time reads for all methods
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "ElapsedTime across methods"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "ElapsedTime across all methods"
         Test_ElapsedTime_AllMethods
 
     'Validate formatting of an already measured elapsed-seconds value
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "ElapsedTime format existing seconds"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "ElapsedTime formats an existing elapsed-seconds value"
         Test_ElapsedTime_FormatExistingSeconds
 
     'Validate aligned-start timing for all methods
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Aligned-start timing"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "AlignToNextTick across all methods"
         Test_AlignedStart_AllMethods
 
     'Validate raw accessor behavior after a QPC measurement
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Raw/cached accessors after QPC"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Accessors after QPC measurement"
         Test_Accessors_QPC
 
     'Validate method 4 timeGetSystemTime low-level timestamp behavior
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Method 4 timeGetSystemTime"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Method 4 timeGetSystemTime nonzero and advances"
         Test_Method4_TimeGetSystemTime_NonZeroAndAdvances
 
 '------------------------------------------------------------------------------
@@ -286,12 +286,12 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 '------------------------------------------------------------------------------
     'Validate strict-mode behavior when elapsed time is requested before StartTimer
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "StrictMode: elapsed before StartTimer"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "StrictMode: ElapsedSeconds before StartTimer"
         Test_StrictMode_ElapsedBeforeStart
 
     'Validate strict-mode behavior for explicit method mismatch
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "StrictMode: method mismatch"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "StrictMode: explicit elapsed-method mismatch"
         Test_StrictMode_MethodMismatch
 
     'Validate strict-mode behavior for invalid start-method input
@@ -306,7 +306,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate non-strict fallback for explicit elapsed-method mismatch
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "NonStrictMode: elapsed-method mismatch fallback"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "NonStrictMode: explicit elapsed-method mismatch fallback"
         Test_NonStrictMode_MethodMismatchFallback
 
 '------------------------------------------------------------------------------
@@ -314,17 +314,17 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 '------------------------------------------------------------------------------
     'Validate numeric overhead measurement helpers
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "OverheadMeasurement_Seconds"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "OverheadMeasurement_Seconds across all methods"
         Test_OverheadMeasurement_Seconds
 
     'Validate formatted overhead measurement helpers
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "OverheadMeasurement_Text"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "OverheadMeasurement_Text across all methods"
         Test_OverheadMeasurement_Text
 
     'Validate diagnostic / informational properties
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Diagnostics and informational properties"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Diagnostic and informational properties"
         Test_Diagnostics_Properties
 
 '------------------------------------------------------------------------------
@@ -332,12 +332,12 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 '------------------------------------------------------------------------------
     'Validate Pause method 1
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Pause method 1"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Pause method 1 (Sleep)"
         Test_Pause_Method1
 
     'Validate Pause method 2
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Pause method 2"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Pause method 2 (Timer + DoEvents)"
         Test_Pause_Method2
 
     'Validate Pause method 3
@@ -347,7 +347,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate Pause method 4
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Pause method 4"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Pause method 4 (Now + DoEvents)"
         Test_Pause_Method4
 
 '------------------------------------------------------------------------------
@@ -355,7 +355,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 '------------------------------------------------------------------------------
     'Validate blank-key behavior in the shared TW manager
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW blank-key validation"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW manager blank-key validation"
         Test_TW_BlankKeyValidation
 
     'Validate single-instance TW lifecycle
@@ -403,7 +403,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate ReportAsText behavior when no checkpoints exist
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "ReportAsText when empty"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "ReportAsText when no checkpoints exist"
         Test_ReportAsText_Empty
 
     'Validate ReportAsText behavior after checkpoint capture
@@ -413,7 +413,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate ClearCheckpoints behavior
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "ClearCheckpoints"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "ClearCheckpoints resets checkpoint state"
         Test_ClearCheckpoints
 
     'Validate that StartTimer resets checkpoint/report state
@@ -514,7 +514,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate that the coefficient of variation is undefined for a non-positive mean
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics: CV undefined"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics: CV undefined for a non-positive mean"
         Test_Stats_CV_UndefinedForNonPositiveMean
 
     'Validate fail-safe contamination reporting and threshold validation
@@ -524,7 +524,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate that the summary reports an undefined CV rather than raising
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics: Stats_Text undefined CV"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics: Stats_Text reports an undefined CV"
         Test_Stats_Text_ReportsUndefinedCV
 
 '------------------------------------------------------------------------------
@@ -537,7 +537,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate deterministic resolution of the measured procedure name
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: qualified resolution"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: qualified procedure resolution"
         Test_Measure_QualifiedResolution
 
     'Validate the qualification rule across workbook and procedure name shapes
@@ -547,12 +547,12 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate that worker read failures reach the caller
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: worker read failures"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: worker read failures are surfaced"
         Test_Measure_SurfacesWorkerReadFailures
 
     'Validate that failed reads never enter the sample vector
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: failed reads excluded"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Measure: failed reads are excluded from the vector"
         Test_Measure_ExcludesFailedSamples
 
     'Validate the dispatch-matched baseline
@@ -600,42 +600,42 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 '------------------------------------------------------------------------------
     'Validate strict-mode rejection of a failed QPC start read
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault: QPC start failure, strict"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault injection: QPC start failure, strict"
         Test_FaultInject_QpcStartFailure_Strict
 
     'Validate non-strict fallback to method 2 before any commit
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault: QPC start failure, non-strict"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault injection: QPC start failure, non-strict"
         Test_FaultInject_QpcStartFailure_NonStrict
 
     'Validate cache and session preservation on a failed elapsed read
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault: QPC elapsed failure"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault injection: QPC elapsed failure, non-strict"
         Test_FaultInject_QpcElapsedFailure_NonStrict
 
     'Validate the method-4 start contract in both modes
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault: method-4 start failure"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault injection: method-4 start failure"
         Test_FaultInject_SystemTimeStartFailure
 
     'Validate that a failed read never enters rollover arithmetic
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault: method-4 elapsed, no rollover"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault injection: method-4 elapsed failure, no rollover"
         Test_FaultInject_SystemTimeElapsedFailure_NoRollover
 
     'Validate that a wrong-format read is a distinct reported condition
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault: method-4 wrong format"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault injection: method-4 wrong format"
         Test_FaultInject_SystemTimeFormatInvalid
 
     'Validate checkpoint abandonment on a failed read
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault: checkpoint read failure"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Fault injection: checkpoint read failure"
         Test_FaultInject_CheckpointFailure
 
     'Validate that LastReadStatus survives a strict-mode raise
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "LastReadStatus after strict failure"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "LastReadStatus after a strict-mode failure"
         Test_LastReadStatus_AfterStrictFailure
 
 '------------------------------------------------------------------------------
@@ -653,17 +653,17 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate Calculation across overlapping instance scopes
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation overlapping scopes"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation across overlapping scopes"
         Test_TW_Calculation_OverlappingScopes
 
     'Validate that a synthetic Calculation baseline is never written
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation no synthetic baseline"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation never writes a synthetic baseline"
         Test_TW_Calculation_NoSyntheticBaseline
 
     'Validate that a Calculation exemption stays sticky across the workbook lifecycle
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation sticky exemption"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation exemption is sticky across the workbook lifecycle"
         Test_TW_Calculation_StickyExemption
 
     'Validate update rollback after a partially applied Application-state failure
@@ -673,7 +673,7 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate recoverable bookkeeping after a final-restore failure
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW end restore failure is recoverable"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW end restore failure leaves recoverable bookkeeping"
         Test_TW_EndRestoreFailure_IsRecoverable
 
     'Validate emergency recovery after a failed normal teardown
@@ -683,12 +683,12 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate the deterministic zero-workbook/open/close lifecycle matrix
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW zero-workbook lifecycle matrix"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW Calculation zero-workbook lifecycle matrix"
         Test_TW_Calculation_ZeroWorkbookLifecycleMatrix
 
     'Validate method-3 timer-period rollback (#31)
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Method 3 timer-period rollback"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Method 3 aligned-start timeout releases only the timer period it acquired"
         Test_Method3_AlignTimeout_PeriodRollback
 
     'Validate worker fault isolation after input validation failures (#75)
@@ -698,32 +698,32 @@ Public Sub Run_cPerformanceManager_RegressionSuite()
 
     'Validate QPC alignment-loop read failure and spin-guard timeout (#44)
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "QPC alignment loop failure and timeout"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "QPC alignment: loop-read failure and spin-guard timeout, strict and non-strict"
         Test_AlignLoop_QpcInjection
 
     'Validate method-4 alignment-loop read failure and spin-guard timeout (#44)
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Method-4 alignment loop failure and timeout"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Method-4 alignment: loop-read failure and spin-guard timeout, strict and non-strict"
         Test_AlignLoop_SystemTimeInjection
 
     'Validate ElapsedTime across and beyond the Long boundary (#30)
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "ElapsedTime large durations"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "ElapsedTime formats durations across the Long boundary"
         Test_ElapsedTime_LargeDurations
 
     'Validate TW instance keys across the Long boundary and at exhaustion (#35)
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW instance keys beyond the Long boundary"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "TW instance keys continue past the Long boundary and fail explicitly at exhaustion"
         Test_TW_KeySeed_Boundaries
 
     'Validate the fallback action of demo buttons built without one (#73)
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Demo button fallback action"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Demo buttons built without an action run DEMO_DemoButton_NotAssigned"
         Test_Demo_ButtonFallbackAction
 
     'Validate the statistics domain bound and its arithmetic (#32)
         CurrentStep = CurrentStep + 1
-        Demo_SB_SetProgress CurrentStep, TotalSteps, "Stats timing-domain limit"
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Statistics compute at the 1E+15 s bound and reject values above it"
         Test_Stats_TimingDomainLimit
 
 Clean_Exit:
@@ -10846,7 +10846,7 @@ Private Sub Test_MeasureBaseline_ForwardsEvidence()
 ' ASSERT THE OUTPUTS REMAIN OPTIONAL
 '------------------------------------------------------------------------------
     'The pre-v1.4.0 call shape must still compile and behave
-        Baseline = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 4, 1)
+        Baseline = cPM.MeasureBaseline("cPM_Test_BaselineEmpty", 4, 1, cPM_MethodQPC)
         Test_Assert_EqualLong 4, cPM.Stats_Count(Baseline), _
                               "The four-argument baseline call is unchanged"
 
@@ -11255,7 +11255,7 @@ Private Sub Test_MeasureOverhead_EvidenceContract()
 ' ASSERT THE OUTPUTS REMAIN OPTIONAL
 '------------------------------------------------------------------------------
     'The pre-v1.4.0 call shape must still compile and behave
-        Samples = cPM.MeasureOverhead_Samples(5, 1)
+        Samples = cPM.MeasureOverhead_Samples(5, 1, cPM_MethodQPC)
         Test_Assert_EqualLong 5, cPM.Stats_Count(Samples), _
                               "The three-argument overhead call is unchanged"
 

@@ -13,6 +13,7 @@ attention. They are not an unattended runner with a hard timeout (#156).
 | `Certify-MeasurementExamples.cmd` | Core regression plus clean import/compile of the usage module and execution of all four measurement examples; JSON includes their output. |
 | `Sync-PerformanceManager-VBA.cmd` | Select an `.xlsm`; create a new copy outside the checkout, replace the six managed modules, compile, save and reopen to verify code readback. |
 | `Export-PerformanceManager-VBA.cmd` | Select an `.xlsm`; read all VBA components into a fresh directory with a SHA-256 manifest, without modifying the workbook. |
+| `Verify-SyncRefusals.cmd` | Evidence that the sync refuses a protected VBA project and a component type conflict, restores AccessVBOM and leaves no Excel process (#138). It creates both test workbooks in `..\cpm-sync-refusals`; locking the project is one manual step in the VBA editor, needed once. |
 
 Each launcher opens its output folder. Send the JSON/manifest for review.
 A failure keeps diagnostic output; do not distribute an incomplete sync copy.
@@ -21,6 +22,26 @@ two certification launchers step by step. To run several commits in one pass,
 use `tools/Invoke-ExcelBatch.ps1` with a JSON manifest
 (`tools/excel-batch.example.json`); see the README's
 [Regression testing](../README.md#regression-testing) section.
+
+## Verifying the sync refusals
+
+`Verify-SyncRefusals.cmd` works in `..\cpm-sync-refusals`, next to the
+checkout, and never changes the checkout.
+
+- **`conflict.xlsm`:** created automatically, with a class module named
+  `M_cPM_TIMEWASTERS`, which the sync expects as a standard module.
+- **`protected.xlsm`:** created automatically with one standard module. Excel
+  cannot lock a VBA project through automation, so the script opens it with
+  the VBA editor and waits. In the editor: Tools > VBAProject Properties >
+  Protection, lock the project with any password, save, close the workbook,
+  then press Enter. Later runs reuse the locked file.
+
+Each sync must then fail with its refusal, leave the input unchanged, report
+cleanup `completed`, restore AccessVBOM to its prior value and leave no Excel
+process. The sync manifest does not record AccessVBOM, so the script reads it
+before and after each run. Invisible Excel instances are closed first; a
+visible Excel window stops the script. The verdict and every check go to
+`sync-refusals-<sha>-<UTC time>.json` in the work folder.
 
 ## Certifying the examples
 
