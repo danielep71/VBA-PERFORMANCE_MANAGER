@@ -328,6 +328,16 @@ Use only the categories needed by a release.
 
 ### Fixed
 
+- The regression suite's pre-v1.4.0 call-shape checks now pass the full
+  legacy argument lists, including the method:
+  `MeasureBaseline(Name, 4, 1, cPM_MethodQPC)` and
+  `MeasureOverhead_Samples(5, 1, cPM_MethodQPC)`. They previously omitted it
+  while their messages claimed four and three arguments. Each runner
+  status-bar label now equals its case's `Case_Begin` name, so a label can be
+  found in the log by its text; 44 of 93 differed.
+  `tools/test_excel_runner.py` keeps them in step. Case and assertion counts
+  are unchanged (#78).
+
 - **ElapsedTime large durations (#30):** whole seconds and hours are no longer
   narrowed to `Long`, so a supplied value above 2,147,483,647 seconds (about
   68 years) formats instead of raising a VBA overflow. The supported domain is
