@@ -305,6 +305,10 @@ Get-FileHash -Algorithm SHA256 .\dist\<artifact>
 sha256sum dist/<artifact>
 ```
 
+`tools/Build-DemoWorkbook.cmd` performs steps 1–8 for the demo workbook from a
+clean checkout and writes the package and a build record; see
+[local Excel tools](docs/LOCAL_EXCEL_TOOLS.md#building-the-demo-workbook).
+
 Build the package from the certified checkout once the workbook is frozen.
 Take `LICENSE` and `NOTICE` from that checkout, never from another branch or an
 edited copy:
