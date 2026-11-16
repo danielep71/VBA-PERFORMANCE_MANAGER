@@ -9,7 +9,9 @@ records findings only; nothing here changes the workbook or the source.
 
 - **Input:** the published v1.4.0 asset `PERFORMANCE.MANAGER.xlsm`, SHA-256
   `5eddd6473e43a5c9fb12a97f3d00c07117843368165082c947c953003ed7b4a2`, the
-  digest in the v1.4.0 release notes.
+  digest the v1.4.0 release notes gave at the time. The asset was re-issued
+  on 2026-11-16 without its document metadata (#191); the sheets, names,
+  controls and VBA project inventoried here are unchanged.
 - **Method:** the file was read as an Office Open XML package (workbook,
   sheets, shared strings, drawings and names), without opening it in Excel and
   without running any macro. The demo source was read at `release/v1.4.1`

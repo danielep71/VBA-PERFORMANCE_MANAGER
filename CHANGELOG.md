@@ -192,6 +192,11 @@ Use only the categories needed by a release.
 
 ### Changed
 
+- `tools/release_provenance.py` 3.1.0 opens the packaged workbook and refuses
+  one that carries a sensitivity label, a document category or content
+  status, the folder it was saved from, or a sheet print header or footer.
+  RELEASING.md adds the matching packaging step (#191).
+
 - The static checks run on every pull request and on pushes to `main` and
   the release branches, no longer on pushes to topic branches, whose pull
   request already runs them on the same commit. Between 15 October and 12
