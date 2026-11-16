@@ -953,13 +953,23 @@ actually executed rather than inferring it from the source.
 | Regression | **80 cases · 643 assertions · 0 failures** |
 | Static checks | 12 checks · 0 failures |
 | Release workbook | `PERFORMANCE.MANAGER.xlsm` |
-| Workbook SHA-256 | `5eddd6473e43a5c9fb12a97f3d00c07117843368165082c947c953003ed7b4a2` |
-| Manifest SHA-256 | `d13567b416c39dd0b62f2eaf4767f25d21a9daa300d8e7e8b2dc81db3fa8119f` |
+| Workbook SHA-256 | `4b2c4c4bedc31f70ab6dc48c8e0a0f7ab34db0412182e95b1fa7ad4220704fc5` |
+| Manifest SHA-256 | `c5d5438d937b5e67351cd111d0bf405ce8b08ad564c5b8e1961a77984ea7eb2e` |
 <!-- /facts:evidence:v1.4.0 -->
 
 Both published assets were downloaded from the release and re-hashed: the
 workbook and manifest match the values above, so the upload preserved bytes and
 a downloader can verify what they received.
+
+On 16 November 2026 the published workbooks of v1.1.0 to v1.4.0 were
+re-issued without the document metadata of the machine they were saved on: a
+sensitivity label, a document category, the folder they were saved from and a
+print footer (#191). Only those parts changed. The VBA project and every other
+part of each workbook are byte-identical, so the certification above still
+describes them. The v1.3.0 and v1.4.0 manifests changed only in the workbook
+digest. The re-issued assets were downloaded and re-hashed against the values
+above. The originally published digests were `5eddd647…` (workbook) and
+`d13567b4…` (manifest) for v1.4.0, and `05cb9d79…` and `56c3a199…` for v1.3.0.
 
 > [!NOTE]
 > The locally assembled workbook and the uploaded Release asset use different
@@ -977,8 +987,8 @@ a downloader can verify what they received.
 | Office bitness | **64-bit** |
 | Regression | **72 cases · 511 assertions · 0 failures** |
 | Release workbook | `PERFORMANCE.MANAGER.xlsm` |
-| Workbook SHA-256 | `05cb9d79986144d0498d599ccf070447b5fe8720ee23a5c81bf68a99a5aa66a0` |
-| Manifest SHA-256 | `56c3a1996184e65b541a958619e199b7000ee9a9b92e2266ed0c886a7d81310f` |
+| Workbook SHA-256 | `5405e100bca16d61e35d5ac67c59cf3a4a2e80dbb63bb97934ef5bc17065005e` |
+| Manifest SHA-256 | `6335f2c0bc16d9082600eaf355d690889fab704548894646ebf390cd9e6f8cc9` |
 <!-- /facts:evidence:v1.3.0 -->
 
 ### Architecture scope
