@@ -172,7 +172,17 @@ if ((Get-ProjectProtection $protected) -eq 0) {
     Invoke-WithExcel {
         param($excel)
         $book = $excel.Workbooks.Open($protected)
-        $excel.VBE.MainWindow.Visible = $true
+        # PowerShell's COM adapter has no type information for the VBE, so
+        # its properties are reached through IDispatch; if that fails too,
+        # the user opens the editor with Alt+F11.
+        try {
+            $flags = [Reflection.BindingFlags]
+            $vbe = [__ComObject].InvokeMember('VBE', $flags::GetProperty, $null, $excel, $null)
+            $window = [__ComObject].InvokeMember('MainWindow', $flags::GetProperty, $null, $vbe, $null)
+            [void][__ComObject].InvokeMember('Visible', $flags::SetProperty, $null, $window, @($true))
+        } catch {
+            Write-Host 'Open the VBA editor with Alt+F11 in the Excel window.'
+        }
         [void](Read-Host 'Press Enter here after you have saved and closed the workbook')
         Release-Com $book
     } -Visible
