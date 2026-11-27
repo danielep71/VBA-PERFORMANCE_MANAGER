@@ -49,12 +49,14 @@ Attribute VB_Name = "M_cPM_DEMO"
 '   - cPM_RunOverheadDemo
 '   - cPM_RunPauseDemo
 '   - cPM_RunTWComparison
+'   - cPM_RunMeasuredBenchmark
 '   - cPM_ClearResultsLog
 '
 ' DEPENDENCIES
 '   - cPerformanceManager
 '   - M_DEMO_BUILDER
 '   - M_cPM_TimeWasters
+'   - M_cPM_USAGE_EXAMPLES (the procedures the measured benchmark runs)
 '
 ' NOTES
 '   - Place this code in a STANDARD MODULE
@@ -62,7 +64,7 @@ Attribute VB_Name = "M_cPM_DEMO"
 '     Option Private Module
 '
 ' UPDATED
-'   2026-04-15
+'   2026-11-27
 '
 ' AUTHOR
 '   Daniele Penza
@@ -83,6 +85,12 @@ Attribute VB_Name = "M_cPM_DEMO"
     Private Const cPM_SHEET_HOME            As String = "Home"
 
     Private Const cPM_TABLE_LOG             As String = "Tbl_cPM_Log"
+
+    'Procedures measured by cPM_RunMeasuredBenchmark. They live in
+    'M_cPM_USAGE_EXAMPLES because Application.Run reaches only Public
+    'procedures in a module without Option Private Module.
+    Private Const cPM_MEASURED_WORKLOAD     As String = "cPM_Usage_Workload_Compute"
+    Private Const cPM_MEASURED_BASELINE     As String = "cPM_Usage_BaselineEmpty"
 
     Private Const cPM_DEMO_TITLE            As String = "CLASS PERFORMANCE MANAGER"
 
@@ -468,21 +476,22 @@ Private Sub cPM_BuildDemoSheet( _
                 Array("btn_cPM_Overhead", "Run Overhead Demo", "cPM_RunOverheadDemo"), _
                 Array("btn_cPM_Pause", "Run Pause Demo", "cPM_RunPauseDemo"), _
                 Array("btn_cPM_TW", "Run TW Comparison", "cPM_RunTWComparison"), _
+                Array("btn_cPM_Measured", "Run Measured Benchmark", "cPM_RunMeasuredBenchmark"), _
                 Array("btn_cPM_ClearLog", "Clear Results Log", "cPM_ClearResultsLog"))
 
     '--------------------------------------------------------------------------
     ' CREATE BUTTONS
     '--------------------------------------------------------------------------
-        'Create the standard two-column demo button grid
+        'Create a three-column grid so nine buttons fit the box in three rows
             DEMO_Add_ButtonGrid _
                 WS, _
                 WS.Range("F5"), _
                 ButtonSpecs, _
-                2, _
+                3, _
                 110, _
                 25, _
                 12, _
-                15, _
+                25, _
                 6, _
                 5
 
@@ -843,24 +852,25 @@ Private Sub cPM_BuildHelpSheet(ByVal WS As Worksheet)
         WS.Range("D42").Value = "Those counts read -1 until a run publishes them: a negative count means nothing was recorded, not that nothing failed."
         WS.Range("D43").Value = "Report statistics only when both counts are zero; Stats_Median, Stats_Percentile and Stats_CoefficientOfVariation describe the vector."
         WS.Range("D44").Value = "Checkpoint, ReportAsArray and ReportAsText time named steps inside one session."
+        WS.Range("D45").Value = "Run Measured Benchmark on DEMO_cPM applies these rules: it measures a workload and a baseline, and logs the net median, P95 and CV only when every count is zero."
 
 '------------------------------------------------------------------------------
 ' STRICT MODE
 '------------------------------------------------------------------------------
     'Write the section header
-        DEMO_Write_BandHeader WS.Range("C46:D46"), "STRICT MODE", , , , , , False
+        DEMO_Write_BandHeader WS.Range("C47:D47"), "STRICT MODE", , , , , , False
     'Write the strict-mode guidance line
-        WS.Range("D47").Value = "StrictMode = TRUE (the default) raises when a measurement is invalid; FALSE falls back and reports the reason in LastReadStatus."
+        WS.Range("D48").Value = "StrictMode = TRUE (the default) raises when a measurement is invalid; FALSE falls back and reports the reason in LastReadStatus."
 
 '------------------------------------------------------------------------------
 ' DEMO, EXAMPLES AND REGRESSION
 '------------------------------------------------------------------------------
     'Write the section header
-        DEMO_Write_BandHeader WS.Range("C49:D49"), "DEMO, EXAMPLES AND REGRESSION", , , , , , False
+        DEMO_Write_BandHeader WS.Range("C50:D50"), "DEMO, EXAMPLES AND REGRESSION", , , , , , False
     'Write the responsibility guidance lines
-        WS.Range("D50").Value = "DEMO_cPM shows behaviour interactively; M_cPM_USAGE_EXAMPLES holds code examples; the regression suite is the evidence."
-        WS.Range("D51").Value = "Demo results are illustrative and depend on the machine; they are not benchmarks of the component."
-        WS.Range("D52").Value = "A failed demo action is written to the results log and reported in a message, without opening the VBA editor."
+        WS.Range("D51").Value = "DEMO_cPM shows behaviour interactively; M_cPM_USAGE_EXAMPLES holds code examples; the regression suite is the evidence."
+        WS.Range("D52").Value = "Demo results are illustrative and depend on the machine; they are not benchmarks of the component."
+        WS.Range("D53").Value = "A failed demo action is written to the results log and reported in a message, without opening the VBA editor."
 
 End Sub
 
@@ -2301,6 +2311,223 @@ CleanFail:
         SavedErrNumber = Err.Number
         SavedErrSource = Err.Source
         SavedErrDescription = Err.Description
+    'Continue through the centralized cleanup path
+        Resume CleanExit
+
+End Sub
+
+Public Sub cPM_RunMeasuredBenchmark()
+'
+'==============================================================================
+'                          RUN MEASURED BENCHMARK
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Measures a fixed workload repeatedly, subtracts a dispatch-matched baseline
+'   and logs the distribution of the retained samples
+'
+' WHY THIS EXISTS
+'   One timing is one observation. This action shows the measurement harness:
+'   repeated runs after warm-up, a baseline measured through the same
+'   Application.Run path, the evidence counts, and the statistics a reader
+'   should use (median, P95 and coefficient of variation)
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Reads the selected timing method and iteration count
+'   - Uses the iteration count as the number of measured runs, kept within
+'     cMinRuns to cMaxRuns, after cWarmupRuns discarded warm-up runs
+'   - Measures cPM_Usage_Workload_Compute with MeasureProcedure and
+'     cPM_Usage_BaselineEmpty with MeasureBaseline, with the same method and
+'     run count
+'   - Reports statistics only when every failed-read and rejected-sample count
+'     is zero; otherwise logs the counts and says that no statistic is shown
+'   - Appends one log row: Elapsed Seconds holds the net median (workload
+'     median minus baseline median), Notes holds the evidence and statistics
+'
+' ERROR POLICY
+'   Restores the cPerformanceManager environment, then reports the error on
+'   the results log and in a message through cPM_Demo_ReportFailure
+'
+' DEPENDENCIES
+'   - Btn_Click
+'   - cPM_Demo_PrepareInstance
+'   - cPM_Demo_GetMethodID
+'   - cPM_Demo_GetIterations
+'   - cPM_Demo_AppendLog
+'   - cPM_Demo_ReportFailure
+'   - Demo_SB_SetProgress
+'   - cPM_Usage_Workload_Compute and cPM_Usage_BaselineEmpty in
+'     M_cPM_USAGE_EXAMPLES
+'
+' NOTES
+'   A count below zero means the run published nothing, not that nothing
+'   failed, so the test is "not zero" rather than "greater than zero"
+'
+' UPDATED
+'   2026-11-27
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM                 As cPerformanceManager   'Timer instance
+
+    Dim SavedErrNumber      As Long                  'Captured error number
+    Dim SavedErrSource      As String                'Captured error source
+    Dim SavedErrDescription As String                'Captured error description
+
+    Dim MethodID            As Integer               'Selected timing method
+    Dim Runs                As Long                  'Measured runs per vector
+    Dim Work()              As Double                'Workload samples
+    Dim Baseline()          As Double                'Baseline samples
+    Dim WorkFailed          As Long                  'Workload failed reads
+    Dim WorkStatus          As cPM_ReadStatus        'Workload last failure status
+    Dim WorkRejected        As Long                  'Workload rejected samples
+    Dim BaseFailed          As Long                  'Baseline failed reads
+    Dim BaseStatus          As cPM_ReadStatus        'Baseline last failure status
+    Dim BaseRejected        As Long                  'Baseline rejected samples
+    Dim WorkMedian          As Double                'Workload median
+    Dim BaseMedian          As Double                'Baseline median
+    Dim NetMedian           As Double                'Workload minus baseline median
+    Dim WorkP95             As Double                'Workload 95th percentile
+    Dim WorkCv              As Double                'Workload coefficient of variation
+    Dim Evidence            As String                'Evidence part of the notes
+    Dim Verdict             As String                'Variance verdict
+
+    Dim CurrentStep         As Long                  'Current stage progress step
+    Const TotalSteps As Long = 4                     'Total number of visible execution stages
+    Const cWarmupRuns As Long = 3                    'Discarded warm-up runs
+    Const cMinRuns As Long = 5                       'Fewest measured runs
+    Const cMaxRuns As Long = 1000                    'Most measured runs
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Enable structured cleanup on failure
+        On Error GoTo CleanFail
+    'Simulate a pressed button when the routine was launched by a shape
+        Btn_Click
+    'Initialize stage progress
+        CurrentStep = 0
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Preparing measured benchmark"
+    'Read the selected timing method
+        MethodID = cPM_Demo_GetMethodID()
+    'Read the selected iteration count and keep it within the run limits
+        Runs = cPM_Demo_GetIterations()
+        If Runs < cMinRuns Then Runs = cMinRuns
+        If Runs > cMaxRuns Then Runs = cMaxRuns
+    'Prepare a timer instance using the current strict-mode setting
+        Set cPM = cPM_Demo_PrepareInstance()
+
+'------------------------------------------------------------------------------
+' MEASURE WORKLOAD AND BASELINE
+'------------------------------------------------------------------------------
+    'Measure the workload
+        CurrentStep = 1
+        Demo_SB_SetProgress CurrentStep, _
+                            TotalSteps, _
+                            "Measuring workload - " & cPM.MethodName(MethodID)
+        Work = cPM.MeasureProcedure(cPM_MEASURED_WORKLOAD, Runs, cWarmupRuns, MethodID, _
+                                    WorkFailed, WorkStatus, WorkRejected)
+    'Measure the empty procedure through the same dispatch path
+        CurrentStep = 2
+        Demo_SB_SetProgress CurrentStep, _
+                            TotalSteps, _
+                            "Measuring baseline - " & cPM.MethodName(MethodID)
+        Baseline = cPM.MeasureBaseline(cPM_MEASURED_BASELINE, Runs, cWarmupRuns, MethodID, _
+                                   BaseFailed, BaseStatus, BaseRejected)
+
+'------------------------------------------------------------------------------
+' LOG RESULT
+'------------------------------------------------------------------------------
+    'Describe the evidence first, as workload / baseline
+        CurrentStep = 3
+        Demo_SB_SetProgress CurrentStep, _
+                            TotalSteps, _
+                            "Summarizing measured benchmark - " & cPM.MethodName(MethodID)
+        Evidence = "Runs=" & CStr(Runs) & _
+                   "; Warmup=" & CStr(cWarmupRuns) & _
+                   "; FailedReads=" & CStr(WorkFailed) & "/" & CStr(BaseFailed) & _
+                   "; Rejected=" & CStr(WorkRejected) & "/" & CStr(BaseRejected)
+    'Report statistics only from complete evidence
+        If WorkFailed <> 0 Or WorkRejected <> 0 Or BaseFailed <> 0 Or BaseRejected <> 0 Then
+            cPM_Demo_AppendLog "Measured Benchmark", _
+                               MethodID, _
+                               cPM.MethodName(MethodID), _
+                               0#, _
+                               "not reported", _
+                               0#, _
+                               0#, _
+                               0#, _
+                               Evidence & "; incomplete evidence, no statistics reported"
+        Else
+            WorkMedian = cPM.Stats_Median(Work)
+            WorkP95 = cPM.Stats_Percentile(Work, 95#)
+            WorkCv = cPM.Stats_CoefficientOfVariation(Work)
+            BaseMedian = cPM.Stats_Median(Baseline)
+            NetMedian = WorkMedian - BaseMedian
+            If cPM.Stats_IsContaminated(Work) Then
+                Verdict = "high variance, run again"
+            Else
+                Verdict = "clean"
+            End If
+            cPM_Demo_AppendLog "Measured Benchmark", _
+                               MethodID, _
+                               cPM.MethodName(MethodID), _
+                               NetMedian, _
+                               Format$(NetMedian * 1000#, "0.000") & " ms net median", _
+                               0#, _
+                               0#, _
+                               0#, _
+                               Evidence & _
+                               "; Median=" & Format$(WorkMedian, "0.000000") & _
+                               "; P95=" & Format$(WorkP95, "0.000000") & _
+                               "; Baseline=" & Format$(BaseMedian, "0.000000") & _
+                               "; CV=" & Format$(WorkCv, "0.000") & _
+                               "; " & Verdict
+        End If
+
+    'Mark completion in the status bar
+        CurrentStep = 4
+        Demo_SB_SetProgress CurrentStep, _
+                            TotalSteps, _
+                            "Measured benchmark complete - " & cPM.MethodName(MethodID)
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release environment changes deterministically
+        If Not cPM Is Nothing Then
+            On Error Resume Next
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+            On Error GoTo 0
+        End If
+    'Return control of the status bar to Excel
+        Application.StatusBar = False
+    'Report a failure on the results log and in a message after cleanup
+        If SavedErrNumber <> 0 Then
+            cPM_Demo_ReportFailure "Measured Benchmark", SavedErrNumber, SavedErrSource, _
+                                   SavedErrDescription
+        End If
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Capture the original error details before cleanup
+        SavedErrNumber = Err.Number
+        SavedErrSource = Err.Source
+        SavedErrDescription = Err.Description
+
     'Continue through the centralized cleanup path
         Resume CleanExit
 

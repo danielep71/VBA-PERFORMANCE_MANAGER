@@ -59,7 +59,9 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
 '   The measurement examples call procedures by name through Application.Run,
 '   which reaches only Public procedures in standard modules. The cPM_Usage_*
 '   workload procedures at the foot of this module exist for that purpose and
-'   are deliberately Public
+'   are deliberately Public. cPM_Usage_Workload_Compute and
+'   cPM_Usage_BaselineEmpty are also the targets of the Run Measured Benchmark
+'   button on DEMO_cPM
 '
 ' NOTES
 '   - Place this code in a STANDARD MODULE
@@ -68,7 +70,7 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
 '   - Run worksheet-writing examples from a safe workbook / worksheet
 '
 ' UPDATED
-'   2026-10-21
+'   2026-11-27
 '
 ' AUTHOR
 '   Daniele Penza
@@ -82,6 +84,7 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
     Private m_ExampleCapture As Boolean       'Capture only during automated certification
     Private m_ExampleLog As String            'Immediate Window transcript
     Private m_ExampleErrors As Long           'Unexpected errors in measurement examples
+    Private m_WorkloadSink As Double          'Result of the in-memory workload
 
 
 '------------------------------------------------------------------------------
@@ -97,6 +100,11 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
     'ten thousand rows made a ten-iteration comparison take minutes and the
     'variance alone was enough to make the run report as contaminated.
         Private Const cPM_USAGE_WORKLOAD_ROWS        As Long = 500
+
+    'Steps of the in-memory workload used by the demo sheet. About a
+    'millisecond on a current desktop: long enough to dominate the
+    'Application.Run dispatch, short enough for a hundred runs to stay quick.
+        Private Const cPM_USAGE_COMPUTE_STEPS        As Long = 20000
 
 '
 '==============================================================================
@@ -2364,6 +2372,51 @@ Public Sub cPM_Usage_Workload_CellByCell()
         For i = 1 To cPM_USAGE_WORKLOAD_ROWS
             WS.Cells(i, 9).Value = i
         Next i
+
+End Sub
+
+Public Sub cPM_Usage_Workload_Compute()
+'
+'==============================================================================
+'                       CPM USAGE WORKLOAD COMPUTE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Runs a fixed in-memory calculation that touches no worksheet
+'
+' WHY THIS EXISTS
+'   The Run Measured Benchmark button on DEMO_cPM needs a workload that
+'   Application.Run can reach and that leaves the workbook as it found it. The
+'   two workloads above write to DATA_cPM, which a demo button should not do
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' NOTES
+'   The sum is kept in a module-level variable so the loop has an effect that
+'   outlives the call
+'
+' UPDATED
+'   2026-11-27
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Total   As Double       'Running sum
+    Dim i       As Long         'Loop index
+
+'------------------------------------------------------------------------------
+' COMPUTE
+'------------------------------------------------------------------------------
+    'Sum the square roots of a fixed range of integers
+        For i = 1 To cPM_USAGE_COMPUTE_STEPS
+            Total = Total + Sqr(i)
+        Next i
+    'Keep the result
+        m_WorkloadSink = Total
 
 End Sub
 

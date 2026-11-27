@@ -112,6 +112,13 @@ Use only the categories needed by a release.
   reopens the workbook and packages it with `LICENSE` and `NOTICE`, with a
   JSON build record (#47, #72).
 
+- Added a **Run Measured Benchmark** action to the demo sheet. It measures a
+  fixed in-memory workload with `MeasureProcedure` and an empty procedure with
+  `MeasureBaseline`, and logs the net median, P95, coefficient of variation
+  and contamination verdict only when every failed-read and rejected-sample
+  count is zero; otherwise it logs the counts and reports no statistic. The
+  demo actions now sit in three columns (#47).
+
 - Added two independent compile-safety checks for same-procedure error-handler
   labels and declared assignment targets across production, test and demo VBA.
   Conditional profiles and positive/negative fixtures are checked locally;

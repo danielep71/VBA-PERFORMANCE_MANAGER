@@ -51,7 +51,7 @@ $LogSheet = 'DEMO_cPM'
 $LogTable = 'Tbl_cPM_Log'
 $SmokeActions = @('cPM_RunBasicTiming', 'cPM_RunAllMethods', 'cPM_RunAlignedDemo',
                   'cPM_RunDiagnostics', 'cPM_RunOverheadDemo', 'cPM_RunPauseDemo',
-                  'cPM_RunTWComparison')
+                  'cPM_RunTWComparison', 'cPM_RunMeasuredBenchmark')
 $ClearAction = 'cPM_ClearResultsLog'
 $WorkbookName = 'PERFORMANCE MANAGER.xlsm'
 $CompileControlId = 578         # Debug > Compile VBAProject

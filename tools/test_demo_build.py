@@ -61,6 +61,16 @@ class DemoBuildContractTests(unittest.TestCase):
             self.assertRegex(demo(), rf"(?m)^Public (Sub|Function) {helper}\(")
             self.assertIn(f"'{helper}'", script())
 
+    def test_measured_procedures_are_reachable_by_application_run(self) -> None:
+        targets = re.findall(r'Private Const cPM_MEASURED_\w+\s+As String = "(\w+)"', demo())
+        self.assertEqual(len(targets), 2)
+        modules = [ROOT / c.replace("\\", "/") for c in ps_list(script(), "Components") if c.endswith(".bas")]
+        for target in targets:
+            with self.subTest(target=target):
+                hosts = [m for m in modules if re.search(rf"(?m)^Public Sub {target}\(\)", m.read_text(encoding="latin-1"))]
+                self.assertEqual(len(hosts), 1, target)
+                self.assertNotRegex(hosts[0].read_text(encoding="latin-1"), r"(?m)^[ \t]*Option Private Module")
+
     def test_actions_report_failures_instead_of_raising(self) -> None:
         for action in ps_list(script(), "SmokeActions"):
             body = re.search(rf"(?ms)^Public Sub {action}\(\)(.*?)^End Sub", demo())
