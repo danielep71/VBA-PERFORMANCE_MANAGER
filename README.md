@@ -920,6 +920,8 @@ on Windows with Git and desktop Excel:
   of a workbook;
 - `Export-PerformanceManager-VBA.cmd` exports a workbook's VBA components with
   a SHA-256 manifest;
+- `Build-DemoWorkbook.cmd` builds the demo workbook from the commit, smoke-tests
+  every demo action and packages it with `LICENSE` and `NOTICE`;
 - `Verify-SyncRefusals.cmd` records that the sync refuses a protected project
   and a component type conflict, and cleans up after itself.
 
