@@ -302,7 +302,7 @@ Private Sub cPM_BuildDemoSheet( _
 ' BEHAVIOR
 '   - Builds the control panel
 '   - Builds the action-button area
-'   - Adds the "Regression Suite (maintainer)" button, which runs
+'   - Adds the "Regression Suite" button in a separate MAINTAINER box, which runs
 '     Run_cPerformanceManager_RegressionSuite
 '   - Builds the structured results-log table
 '   - Applies lightweight number-format refinements to the results log
@@ -335,12 +335,14 @@ Private Sub cPM_BuildDemoSheet( _
 '------------------------------------------------------------------------------
 ' ADJUST COLUMNS
 '------------------------------------------------------------------------------
-    'Adjust the main visible columns for the demo sheet layout
-        WS.Columns("C:M").ColumnWidth = 18
+    'Keep the sheet within one screen: narrow columns by default (#47)
+        WS.Columns("C:M").ColumnWidth = 12
+    'Widen the control-panel label column
+        WS.Columns("C").ColumnWidth = 18
     'Widen the elapsed-time text column
-        WS.Columns("I").ColumnWidth = 50
+        WS.Columns("I").ColumnWidth = 30
     'Widen the notes column
-        WS.Columns("M").ColumnWidth = 40
+        WS.Columns("M").ColumnWidth = 34
 
 '------------------------------------------------------------------------------
 ' BUILD CONTROL PANEL
@@ -452,7 +454,7 @@ Private Sub cPM_BuildDemoSheet( _
     ' PREPARE ACTION SECTION
     '--------------------------------------------------------------------------
         'Write the actions section header band
-            DEMO_Write_BandHeader WS.Range("J4:L4"), "DEMO ACTIONS"
+            DEMO_Write_BandHeader WS.Range("F4:I4"), "DEMO ACTIONS"
 
     '--------------------------------------------------------------------------
     ' DEFINE BUTTON GRID
@@ -474,28 +476,31 @@ Private Sub cPM_BuildDemoSheet( _
         'Create the standard two-column demo button grid
             DEMO_Add_ButtonGrid _
                 WS, _
-                WS.Range("J5"), _
+                WS.Range("F5"), _
                 ButtonSpecs, _
                 2, _
-                135, _
+                110, _
                 25, _
-                18, _
+                12, _
                 15, _
-                4, _
+                6, _
                 5
 
     '--------------------------------------------------------------------------
     ' APPLY VISUAL FRAME
     '--------------------------------------------------------------------------
         'Apply a border around the full action-button area
-            DEMO_Set_RangeBorder WS.Range("J4:L12")
+            DEMO_Set_RangeBorder WS.Range("F4:I12")
 
     '--------------------------------------------------------------------------
     ' CREATE REGRESSION TEST BUTTON
     '--------------------------------------------------------------------------
-        DEMO_Add_DemoButton WS, "Btn_cPM_Regression", "Regression Suite (maintainer)", _
-            WS.Range("M8").Left + 40, WS.Range("I8").Top + 10, _
-            135, 25, "Run_cPerformanceManager_RegressionSuite"
+        'Keep the maintainer tool apart from the demo actions (#47)
+            DEMO_Write_BandHeader WS.Range("K4:L4"), "MAINTAINER"
+            DEMO_Add_DemoButton WS, "Btn_cPM_Regression", "Regression Suite", _
+                WS.Range("K5").Left + 6, WS.Range("K5").Top + 5, _
+                WS.Range("K5:L5").Width - 12, 25, "Run_cPerformanceManager_RegressionSuite"
+            DEMO_Set_RangeBorder WS.Range("K4:L6")
 
 '------------------------------------------------------------------------------
 ' BUILD RESULTS LOG

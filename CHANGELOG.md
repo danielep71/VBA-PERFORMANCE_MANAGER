@@ -202,8 +202,9 @@ Use only the categories needed by a release.
   message, instead of a VBA runtime-error dialog. A Home start page is built
   from source in place of the illustration. The help sheet corrects pause
   method 3 and the TimeWasters file name, and explains the measurement
-  harness, its evidence counts and strict mode. The regression button reads
-  "Regression Suite (maintainer)" (#47).
+  harness, its evidence counts and strict mode. The regression button sits in
+  its own MAINTAINER box, and the demo sheet is narrowed to fit one screen
+  (#47).
 
 - `tools/release_provenance.py` 3.1.0 opens the packaged workbook and refuses
   one that carries a sensitivity label, a document category or content

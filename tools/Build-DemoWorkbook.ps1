@@ -193,6 +193,20 @@ function Remove-Metadata([string] $Path) {
     return $removed
 }
 
+function Get-SheetNames($Book) {
+    # Names in workbook order. Each sheet object is released at once: a COM
+    # reference left in a variable keeps Excel alive after Quit.
+    $names = @()
+    $sheets = $Book.Worksheets
+    try {
+        for ($i = 1; $i -le $sheets.Count; $i++) {
+            $sheet = $sheets.Item($i)
+            try { $names += [string]$sheet.Name } finally { Release-Com $sheet; $sheet = $null }
+        }
+    } finally { Release-Com $sheets }
+    return $names
+}
+
 function Get-Sha256([string] $Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLower() }
 
 # -- Preconditions ------------------------------------------------------------
@@ -216,11 +230,12 @@ $record = [ordered]@{
     started_utc = $stamp.ToString('o'); state = 'not started'; excel = $null
     imported = @(); compiled = $false; sheets = @(); actions = @(); failure_count = $null
     metadata_removed = @(); metadata_problems = @(); reopened_sheets = @()
-    workbook = $null; package = $null; cleanup = $null; error = $null; passed = $false
+    workbook = $null; package = $null; cleanup = $null; error = $null; reasons = @(); passed = $false
 }
 
 $vbomExisted = $false; $vbomBefore = $null; $vbomTouched = $false
 $excel = $null; $excelPid = 0; $workbook = $null; $project = $null; $control = $null
+$sheet = $null; $table = $null; $tables = $null; $logSheetObject = $null; $homeSheet = $null
 try {
     if ($AllowVbomAccess) {
         if (-not (Test-Path $VbomKey)) { [void](New-Item -Path $VbomKey -Force) }
@@ -254,11 +269,12 @@ try {
     $record.state = 'building sheets'
     $prefix = "'$($workbook.Name)'!"
     [void]$excel.Run($prefix + $BuildEntry)
-    foreach ($sheet in @($workbook.Worksheets)) {
-        if ($Sheets -notcontains $sheet.Name) { $sheet.Delete() }
-        Release-Com $sheet
+    foreach ($name in @(Get-SheetNames $workbook)) {
+        if ($Sheets -contains $name) { continue }
+        $sheet = $workbook.Worksheets.Item($name)
+        try { $sheet.Delete() } finally { Release-Com $sheet; $sheet = $null }
     }
-    $record.sheets = @(foreach ($sheet in @($workbook.Worksheets)) { $sheet.Name })
+    $record.sheets = @(Get-SheetNames $workbook)
     if (($record.sheets -join ',') -ne ($Sheets -join ',')) {
         throw "Unexpected sheets after the build: $($record.sheets -join ', ')"
     }
@@ -266,7 +282,9 @@ try {
     # -- Smoke test --------------------------------------------------------
     $record.state = 'smoke test'
     [void]$excel.Run($prefix + 'cPM_Demo_SetUnattended', $true)
-    $table = $workbook.Worksheets.Item($LogSheet).ListObjects.Item($LogTable)
+    $logSheetObject = $workbook.Worksheets.Item($LogSheet)
+    $tables = $logSheetObject.ListObjects
+    $table = $tables.Item($LogTable)
     foreach ($action in $SmokeActions) {
         $before = [int]$table.ListRows.Count
         $failuresBefore = [int]$excel.Run($prefix + 'cPM_Demo_FailureCount')
@@ -282,9 +300,11 @@ try {
     $record.failure_count = [int]$excel.Run($prefix + 'cPM_Demo_FailureCount')
     [void]$excel.Run($prefix + $ClearAction)
     if ([int]$table.ListRows.Count -ne 0) { throw 'The results log is not empty after cPM_ClearResultsLog.' }
-    Release-Com $table; $table = $null
+    Release-Com $table; Release-Com $tables; Release-Com $logSheetObject
+    $table = $null; $tables = $null; $logSheetObject = $null
     [void]$excel.Run($prefix + 'cPM_Demo_SetUnattended', $false)
-    $workbook.Worksheets.Item('Home').Activate()
+    $homeSheet = $workbook.Worksheets.Item('Home')
+    try { $homeSheet.Activate() } finally { Release-Com $homeSheet; $homeSheet = $null }
 
     $record.state = 'saving'
     $workbook.SaveAs($workbookPath, 52)
@@ -303,7 +323,7 @@ try {
     $started = Start-Excel; $excel = $started[0]; $excelPid = $started[1]
     $excel.AutomationSecurity = 3
     $workbook = $excel.Workbooks.Open($workbookPath, 0, $true)
-    $record.reopened_sheets = @(foreach ($sheet in @($workbook.Worksheets)) { $sheet.Name })
+    $record.reopened_sheets = @(Get-SheetNames $workbook)
     $workbook.Close($false); Release-Com $workbook; $workbook = $null
     $reopenCleanup = Close-Excel $excel $excelPid; $excel = $null; $excelPid = 0
     if ($reopenCleanup -ne 'completed') { $record.cleanup = $reopenCleanup }
@@ -329,6 +349,7 @@ try {
     $record.error = $_.Exception.Message
     Write-Host "FAIL: $($record.error)"
 } finally {
+    Release-Com $homeSheet; Release-Com $sheet; Release-Com $table; Release-Com $tables; Release-Com $logSheetObject
     Release-Com $control; Release-Com $project
     if ($null -ne $workbook) { Release-Com $workbook }
     if ($null -ne $excel -or $excelPid) { $record.cleanup = Close-Excel $excel $excelPid }
@@ -340,12 +361,22 @@ try {
     }
 }
 
-$actionsOk = ($record.actions.Count -eq $SmokeActions.Count) -and
-             -not @($record.actions | Where-Object { $_.failed -or $_.rows_added -lt 1 })
-$record.passed = ($record.state -eq 'completed' -and $record.compiled -and $actionsOk -and
-                  $record.failure_count -eq 0 -and $record.metadata_problems.Count -eq 0 -and
-                  ($record.reopened_sheets -join ',') -eq ($Sheets -join ',') -and
-                  $record.cleanup -eq 'completed' -and -not $record.error)
+# Every reason the build is not publishable, so a FAIL always says why.
+$reasons = @()
+if ($record.state -ne 'completed') { $reasons += "stopped while $($record.state): $($record.error)" }
+if (-not $record.compiled) { $reasons += 'the VBA project was not compiled' }
+if ($record.actions.Count -ne $SmokeActions.Count) { $reasons += "$($record.actions.Count) of $($SmokeActions.Count) demo actions ran" }
+foreach ($action in @($record.actions | Where-Object { $_.failed -or $_.rows_added -lt 1 })) {
+    $reasons += "demo action $($action.action) failed or added no log row"
+}
+if ($record.failure_count -ne 0) { $reasons += "the demo reported $($record.failure_count) failure(s)" }
+foreach ($problem in $record.metadata_problems) { $reasons += "metadata left: $problem" }
+if (($record.reopened_sheets -join ',') -ne ($Sheets -join ',')) {
+    $reasons += "reopened sheets are '$($record.reopened_sheets -join ', ')', expected '$($Sheets -join ', ')'"
+}
+if ($record.cleanup -ne 'completed') { $reasons += "Excel cleanup: $($record.cleanup)" }
+$record.reasons = $reasons
+$record.passed = ($reasons.Count -eq 0)
 $record.finished_utc = (Get-Date).ToUniversalTime().ToString('o')
 $recordPath = Join-Path $runDir 'demo-build.json'
 $record | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $recordPath -Encoding UTF8
@@ -355,5 +386,6 @@ if ($record.workbook) { Write-Host "Workbook SHA-256: $($record.workbook.sha256)
 if ($record.package) { Write-Host "Package:          $($record.package.file)  $($record.package.sha256)" }
 Write-Host "Build record:     $recordPath"
 if ($record.passed) { Write-Host 'RESULT=PASS'; exit 0 }
+foreach ($reason in $reasons) { Write-Host "  - $reason" }
 Write-Host 'RESULT=FAIL; do not publish this workbook.'
 exit 1
