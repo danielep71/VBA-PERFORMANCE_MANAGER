@@ -149,3 +149,13 @@ snapshot_date,rank,path,title,count,uniques
 2026-11-26,8,/danielep71/VBA-PERFORMANCE_MANAGER/actions/runs/43165737040,/actions/runs/43165737040,2,1
 2026-11-26,9,/danielep71/VBA-PERFORMANCE_MANAGER/actions/runs/43095737415/workflow,/actions/runs/43095737415/workflow,1,1
 2026-11-26,10,/danielep71/VBA-PERFORMANCE_MANAGER/actions/runs/43165737040/job/131007108931,/actions/runs/43165737040/job/131007108931,1,1
+2026-11-27,1,/danielep71/VBA-PERFORMANCE_MANAGER,Overview,1,1
+2026-11-27,2,/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/docs/COMPILE_SAFETY_CHECKS.md,/blob/main/docs/COMPILE_SAFETY_CHECKS.md,1,1
+2026-11-27,3,/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/docs/EXCEL_CERTIFICATION.md,/blob/main/docs/EXCEL_CERTIFICATION.md,1,1
+2026-11-27,4,/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/docs/LOCAL_EXCEL_TOOLS.md,/blob/main/docs/LOCAL_EXCEL_TOOLS.md,1,1
+2026-11-27,5,/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/docs/RELEASE_STATE.md,/blob/main/docs/RELEASE_STATE.md,1,1
+2026-11-27,6,/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/docs/releases/v1.4.1/EVIDENCE.md,/blob/main/docs/releases/v1.4.1/EVIDENCE.md,1,1
+2026-11-27,7,/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/docs/releases/v1.4.1/PAUSE_METHOD3.md,/blob/main/docs/releases/v1.4.1/PAUSE_METHOD3.md,1,1
+2026-11-27,8,/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/docs/releases/v1.4.1/STRICT_ERROR_ASSERTIONS.md,/blob/main/docs/releases/v1.4.1/STRICT_ERROR_ASSERTIONS.md,1,1
+2026-11-27,9,/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/docs/releases/v1.4.1/WORKER_SEAM_CLEANUP.md,/blob/main/docs/releases/v1.4.1/WORKER_SEAM_CLEANUP.md,1,1
+2026-11-27,10,/danielep71/VBA-PERFORMANCE_MANAGER/issues/47,/issues/47,1,1
