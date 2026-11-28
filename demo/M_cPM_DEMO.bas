@@ -557,8 +557,8 @@ Private Sub cPM_BuildDemoSheet( _
             Lo.ListColumns("Method ID").DataBodyRange.NumberFormat = "0"
         'Format elapsed / timer metrics with higher precision
             Lo.ListColumns("Elapsed Seconds").DataBodyRange.NumberFormat = "0.000000"
-            Lo.ListColumns("T1").DataBodyRange.NumberFormat = "0.000000"
-            Lo.ListColumns("T2").DataBodyRange.NumberFormat = "0.000000"
+            Lo.ListColumns("T1").DataBodyRange.NumberFormat = "General"
+            Lo.ListColumns("T2").DataBodyRange.NumberFormat = "General"
             Lo.ListColumns("ET").DataBodyRange.NumberFormat = "0.000000"
 
         On Error GoTo 0
@@ -3570,8 +3570,10 @@ Private Sub cPM_Demo_AppendLog( _
 '   None
 '
 ' BEHAVIOR
-'   Wraps the notes cell and fits the row height to it, never below the
-'   header height, so a long note stays readable in a narrow column
+'   Wraps the method name, elapsed-time text and notes, and fits the row height
+'   to them, never below the header height, so long text stays readable in a
+'   narrow column. T1 and T2 use the General format, which adapts to the column
+'   width, because they are absolute clock readings that can exceed 1E+09
 '
 ' ERROR POLICY
 '   Raises errors normally
@@ -3637,13 +3639,17 @@ Private Sub cPM_Demo_AppendLog( _
 '------------------------------------------------------------------------------
     'Format the timestamp
         LR.Range(1, 2).NumberFormat = "yyyy-mm-dd hh:mm:ss"
-    'Format the numeric timing outputs
+    'Format the elapsed values with fixed precision
         LR.Range(1, 6).NumberFormat = "0.000000000"
-        LR.Range(1, 8).NumberFormat = "0.000000000"
-        LR.Range(1, 9).NumberFormat = "0.000000000"
         LR.Range(1, 10).NumberFormat = "0.000000000"
+    'T1 and T2 are absolute clock readings (Now() * 86400 is about 4E+09), which
+    'a fixed nine-decimal format cannot show in the column; General adapts (#47)
+        LR.Range(1, 8).NumberFormat = "General"
+        LR.Range(1, 9).NumberFormat = "General"
 
-    'Wrap the notes and fit the row so the whole note is visible (#47)
+    'Wrap the text columns and fit the row so nothing is cut off (#47)
+        LR.Range(1, 5).WrapText = True
+        LR.Range(1, 7).WrapText = True
         LR.Range(1, 11).WrapText = True
         LR.Range(1, 11).HorizontalAlignment = xlLeft
         LR.Range.VerticalAlignment = xlCenter
