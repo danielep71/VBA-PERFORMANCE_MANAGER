@@ -330,7 +330,7 @@ Private Sub cPM_BuildDemoSheet( _
 '     button's macro; it is resolved only when the button is clicked)
 '
 ' UPDATED
-'   2026-10-21
+'   2026-11-28
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -347,10 +347,14 @@ Private Sub cPM_BuildDemoSheet( _
         WS.Columns("C:M").ColumnWidth = 12
     'Widen the control-panel label column
         WS.Columns("C").ColumnWidth = 18
+    'Fit the log's timestamp (yyyy-mm-dd hh:mm:ss) and scenario names
+        WS.Columns("D:E").ColumnWidth = 20
+    'Leave room for the header filter arrows of Method Name and Elapsed Seconds
+        WS.Columns("G:H").ColumnWidth = 14
     'Widen the elapsed-time text column
-        WS.Columns("I").ColumnWidth = 30
+        WS.Columns("I").ColumnWidth = 20
     'Widen the notes column
-        WS.Columns("M").ColumnWidth = 34
+        WS.Columns("M").ColumnWidth = 30
 
 '------------------------------------------------------------------------------
 ' BUILD CONTROL PANEL
@@ -476,7 +480,7 @@ Private Sub cPM_BuildDemoSheet( _
                 Array("btn_cPM_Overhead", "Run Overhead Demo", "cPM_RunOverheadDemo"), _
                 Array("btn_cPM_Pause", "Run Pause Demo", "cPM_RunPauseDemo"), _
                 Array("btn_cPM_TW", "Run TW Comparison", "cPM_RunTWComparison"), _
-                Array("btn_cPM_Measured", "Run Measured Benchmark", "cPM_RunMeasuredBenchmark"), _
+                Array("btn_cPM_Measured", "Run Benchmark", "cPM_RunMeasuredBenchmark"), _
                 Array("btn_cPM_ClearLog", "Clear Results Log", "cPM_ClearResultsLog"))
 
     '--------------------------------------------------------------------------
@@ -852,7 +856,7 @@ Private Sub cPM_BuildHelpSheet(ByVal WS As Worksheet)
         WS.Range("D42").Value = "Those counts read -1 until a run publishes them: a negative count means nothing was recorded, not that nothing failed."
         WS.Range("D43").Value = "Report statistics only when both counts are zero; Stats_Median, Stats_Percentile and Stats_CoefficientOfVariation describe the vector."
         WS.Range("D44").Value = "Checkpoint, ReportAsArray and ReportAsText time named steps inside one session."
-        WS.Range("D45").Value = "Run Measured Benchmark on DEMO_cPM applies these rules: it measures a workload and a baseline, and logs the net median, P95 and CV only when every count is zero."
+        WS.Range("D45").Value = "Run Benchmark on DEMO_cPM applies these rules: it measures a workload and a baseline, and logs the net median, P95 and CV only when every count is zero."
 
 '------------------------------------------------------------------------------
 ' STRICT MODE

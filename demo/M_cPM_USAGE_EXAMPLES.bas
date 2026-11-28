@@ -60,7 +60,7 @@ Attribute VB_Name = "M_cPM_USAGE_EXAMPLES"
 '   which reaches only Public procedures in standard modules. The cPM_Usage_*
 '   workload procedures at the foot of this module exist for that purpose and
 '   are deliberately Public. cPM_Usage_Workload_Compute and
-'   cPM_Usage_BaselineEmpty are also the targets of the Run Measured Benchmark
+'   cPM_Usage_BaselineEmpty are also the targets of the Run Benchmark
 '   button on DEMO_cPM
 '
 ' NOTES
@@ -2384,7 +2384,7 @@ Public Sub cPM_Usage_Workload_Compute()
 '   Runs a fixed in-memory calculation that touches no worksheet
 '
 ' WHY THIS EXISTS
-'   The Run Measured Benchmark button on DEMO_cPM needs a workload that
+'   The Run Benchmark button on DEMO_cPM needs a workload that
 '   Application.Run can reach and that leaves the workbook as it found it. The
 '   two workloads above write to DATA_cPM, which a demo button should not do
 '
