@@ -8,8 +8,8 @@ implementation and release plan.
 
 | Release | Status | Tag target | Execution assurance | Record |
 |---|---|---|---|---|
-| v1.4.1 | Release candidate | Tagged at publication | Microsoft 365 Excel 64-bit, recorded in its evidence record once certified; Office 32-bit remains unverified under [issue #29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) | [Evidence record](v1.4.1/EVIDENCE.md) |
-| v1.4.0 | Published | `a5390b4c6ca56ebbd87eca121b5167ee5dc09963` | Microsoft 365 Excel 64-bit: 80 cases, 643 assertions, 0 failures; Office 32-bit remains unverified under [issue #29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) | [Implementation and release record](v1.4.0/IMPLEMENTATION_AND_RELEASE_PLAN.md) |
+| v1.4.1 | Published | `189668851754ec10e4c86d02f2e12b16739a54a5` | Microsoft 365 Excel 64-bit: 93 cases, 861 assertions, 0 failures; Office 32-bit remains unverified under [issue #29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) | [Evidence record](v1.4.1/EVIDENCE.md) |
+| v1.4.0 | Published; superseded by v1.4.1 | `a5390b4c6ca56ebbd87eca121b5167ee5dc09963` | Microsoft 365 Excel 64-bit: 80 cases, 643 assertions, 0 failures; Office 32-bit remains unverified under [issue #29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) | [Implementation and release record](v1.4.0/IMPLEMENTATION_AND_RELEASE_PLAN.md) |
 
 The original v1.4.0 plan path remains as a redirect notice to preserve links
 from issue comments and external references.

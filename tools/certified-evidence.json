@@ -2,6 +2,20 @@
   "schema_version": 1,
   "releases": [
     {
+      "tag": "v1.4.1",
+      "commit": "189668851754ec10e4c86d02f2e12b16739a54a5",
+      "certified": "2026-11-28",
+      "excel": "Microsoft Excel 16.0 build 20527 (16.0.20527.20194)",
+      "bitness": "64-bit",
+      "cases": 93,
+      "assertions": 861,
+      "failures": 0,
+      "static_checks": 31,
+      "workbook": "PERFORMANCE MANAGER.xlsm",
+      "workbook_sha256": "60f999e65f86f4dfbd976eab66326424f5f07b8d05deda07458ac1b3ec02778c",
+      "manifest_sha256": "02d893480d0f7d98c590ef05359533415d8f41abbf041eebd3cd6b00e941c9d9"
+    },
+    {
       "tag": "v1.4.0",
       "commit": "a5390b4c6ca56ebbd87eca121b5167ee5dc09963",
       "certified": "2026-08-31",

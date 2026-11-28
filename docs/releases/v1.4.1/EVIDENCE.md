@@ -1,11 +1,10 @@
 # v1.4.1 release evidence
 
-This is the certification and release record of v1.4.1. The candidate is the
-`main` commit that the `v1.4.1` tag targets; the record below is completed from
-that commit's static, Excel and package evidence after publication, in the
-first pull request of the next cycle (RELEASING step 12). Until a field is
-filled in, it claims nothing. v1.4.0's evidence is recorded in
-[docs/releases/v1.4.0](../v1.4.0/IMPLEMENTATION_AND_RELEASE_PLAN.md).
+This is the certification and release record of v1.4.1, published on
+28 November 2026 from `main` at `189668851754ec10e4c86d02f2e12b16739a54a5`,
+the target of tag `v1.4.1`. It was completed after publication, in the first
+pull request of the next cycle (RELEASING step 12). v1.4.0's evidence is
+recorded in [docs/releases/v1.4.0](../v1.4.0/IMPLEMENTATION_AND_RELEASE_PLAN.md).
 
 ## Where the work is tracked
 
@@ -62,23 +61,46 @@ failed. The evidence is on
 
 ## Release record
 
-This section is completed under #101 from the frozen candidate on `main`. Each
-field is one that [RELEASING.md](../../../RELEASING.md#evidence-record) or #101
-requires. The demo workbook is built by `tools\Build-DemoWorkbook.cmd`, whose
-JSON build record names the commit, the smoke-tested actions and the package
-hashes (#47, #72).
+Completed under [#101](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/101) from the frozen candidate on `main`.
+Each field is one that [RELEASING.md](../../../RELEASING.md#evidence-record) or
+#101 requires. The demo workbook was built by `tools\Build-DemoWorkbook.cmd`,
+whose JSON build record names the commit, the imported files, the smoke-tested
+actions and the package hashes (#47, #72).
 
 | Evidence | Result |
 |---|---|
-| Candidate commit SHA | Pending |
-| Version and tag | Pending (`v1.4.1`); previous tag `v1.4.0` |
-| Static gate | Pending (count and JSON result on the candidate) |
-| Excel version and bitness | Pending |
-| Regression-suite result | Pending (cases, assertions, failures) |
-| Local Excel runner JSON (#11) | Pending |
-| Release package and member SHA-256 | Pending (`VBA-Performance-Manager-v1.4.1.zip`) |
-| Artifact filenames and sizes | Pending |
-| `tools/release_provenance.py` output | Pending |
-| Release-preparation pull request | Pending |
-| Validation timestamps | Pending |
-| Known deviations and approving reviewer | Office 32-bit execution remains unverified under [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29); others pending |
+| Candidate commit SHA | `189668851754ec10e4c86d02f2e12b16739a54a5` on `main`, from [#207](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/207) |
+| Version and tag | `1.4.1`; annotated tag `v1.4.1` (object `40b501bc6731dc3499139a6e98bcbcef83aa1cd2`), unsigned; previous tag `v1.4.0` |
+| Static gate | 31 of 31 checks with the tag present and wiki pin `d0c2b7e4a646820261483bee7451c26fda90716e`; hosted Static checks [run 46167180526](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/actions/runs/46167180526) passed on the candidate after the tag was pushed |
+| Excel version and bitness | Microsoft Excel 16.0 build 20527 (16.0.20527.20194), 64-bit |
+| Regression-suite result | 93 cases, 861 assertions, 0 failures; cleanup completed |
+| Local Excel runner JSON (#11) | `cpm-regression-1896688-20261128T163406Z.json` (suite) and `cpm-regression-1896688-20261128T163517Z.json` (suite plus the four measurement examples, all passed), both from a clean checkout of `main`, retained by the maintainer |
+| Imported source SHA-256 | `M_cPM_TIMEWASTERS.bas` `8976013788537fbf06041430c6d200f179353dc891f245ef3b25fe5b21a56429`; `cPerformanceManager.cls` `962c356d16e7f1606510bd8f11829bc406d3b806f367714f881904a764b59665`; identical to the tagged files |
+| Demo workbook build | `demo-build.json` at the candidate: compiled, eight demo actions smoke-tested with no failure, build metadata removed, reopened, no metadata problem |
+| Release package and member SHA-256 | `VBA-Performance-Manager-v1.4.1.zip` `0411b6e167cb4e9556b8ddd11adce462f2120fb83399ecb3b5f39a2fed8f29ec`: `PERFORMANCE MANAGER.xlsm` `60f999e65f86f4dfbd976eab66326424f5f07b8d05deda07458ac1b3ec02778c`, `LICENSE` `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4`, `NOTICE` `d616f18a99714ebc45dbb7033162a93bfdb0d3de27d1160f0cb9dcb5beae5cd8` |
+| Artifact filenames and sizes | `VBA-Performance-Manager-v1.4.1.zip`, 3,146,521 bytes; `release-manifest.json`, 1,837 bytes, SHA-256 `02d893480d0f7d98c590ef05359533415d8f41abbf041eebd3cd6b00e941c9d9`. Package members: workbook 3,637,579 bytes, `LICENSE` 11,357, `NOTICE` 283 |
+| `tools/release_provenance.py` output | Version 3.1.0, from a clean checkout of the tag; reproduced unchanged in the [release notes](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.1) |
+| Package smoke test | Extracted package held exactly the workbook, `LICENSE` and `NOTICE`; the extracted workbook opened and ran Run Benchmark, and was left unsaved (re-hashed unchanged) |
+| Post-publication check | Both assets downloaded from the release and re-hashed: identical to the values above; the release body matches the prepared notes; the GitHub source archive holds `VERSION` `1.4.1` |
+| Release-preparation pull request | [#206](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/206) into `release/v1.4.1`, aligned to `main` by [#207](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/207); workbook changes in [#195](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/195), [#204](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/204) and [#205](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/pull/205) |
+| Validation timestamps (UTC) | Suite 2026-11-28 16:33:27–16:34:06; suite with examples 16:34:39–16:35:17; workbook build 16:36:00–16:38:19; tag 16:46:11; release published 16:56:08 |
+| Known deviations and approving reviewer | See below. Approved by the maintainer, Daniele Penza |
+
+### Deviations
+
+- **Office 32-bit** execution remains unverified under
+  [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) (v1.5.0, contributor-dependent).
+- **The tag was recreated before publication.** The first `v1.4.1` tag object,
+  `48200c13f24311a4b03aec9d17b6d0c3c6b51cb6`, targeted the same commit but
+  recorded a tagger identity other than the project's noreply address. It was
+  deleted and replaced by `40b501bc…` about three minutes later, before the
+  GitHub Release existed and before any asset referred to it. RELEASING forbids
+  recreating a public tag to hide a mistake; this record states it instead.
+  The target commit, the manifest and the assets are unaffected.
+- **Changelog date.** The tagged `[1.4.1]` section is dated 2026-11-30, the
+  planned date; the release was published on 2026-11-28. The released section
+  stays as tagged; README and INSTALLATION give the publication date.
+- **Provenance wording.** The tool's generic statement that the modules are
+  imported by hand predates `tools\Build-DemoWorkbook.cmd`; the release notes
+  say so above the unchanged block. Building in CI is tracked in
+  [#87](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/87).
