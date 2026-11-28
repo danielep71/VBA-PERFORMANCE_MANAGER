@@ -330,7 +330,7 @@ Private Sub cPM_BuildDemoSheet( _
 '     button's macro; it is resolved only when the button is clicked)
 '
 ' UPDATED
-'   2026-10-21
+'   2026-11-28
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -347,10 +347,17 @@ Private Sub cPM_BuildDemoSheet( _
         WS.Columns("C:M").ColumnWidth = 12
     'Widen the control-panel label column
         WS.Columns("C").ColumnWidth = 18
+    'Fit the log's timestamp (yyyy-mm-dd hh:mm:ss) and scenario names
+        WS.Columns("D:E").ColumnWidth = 20
+    'Leave room for the header filter arrows of Method Name and Elapsed Seconds
+        WS.Columns("G").ColumnWidth = 18
+        WS.Columns("H").ColumnWidth = 16
+    'Give the T1 and T2 clock readings room for their digits
+        WS.Columns("J:K").ColumnWidth = 16
     'Widen the elapsed-time text column
-        WS.Columns("I").ColumnWidth = 30
+        WS.Columns("I").ColumnWidth = 20
     'Widen the notes column
-        WS.Columns("M").ColumnWidth = 34
+        WS.Columns("M").ColumnWidth = 30
 
 '------------------------------------------------------------------------------
 ' BUILD CONTROL PANEL
@@ -476,7 +483,7 @@ Private Sub cPM_BuildDemoSheet( _
                 Array("btn_cPM_Overhead", "Run Overhead Demo", "cPM_RunOverheadDemo"), _
                 Array("btn_cPM_Pause", "Run Pause Demo", "cPM_RunPauseDemo"), _
                 Array("btn_cPM_TW", "Run TW Comparison", "cPM_RunTWComparison"), _
-                Array("btn_cPM_Measured", "Run Measured Benchmark", "cPM_RunMeasuredBenchmark"), _
+                Array("btn_cPM_Measured", "Run Benchmark", "cPM_RunMeasuredBenchmark"), _
                 Array("btn_cPM_ClearLog", "Clear Results Log", "cPM_ClearResultsLog"))
 
     '--------------------------------------------------------------------------
@@ -552,8 +559,8 @@ Private Sub cPM_BuildDemoSheet( _
             Lo.ListColumns("Method ID").DataBodyRange.NumberFormat = "0"
         'Format elapsed / timer metrics with higher precision
             Lo.ListColumns("Elapsed Seconds").DataBodyRange.NumberFormat = "0.000000"
-            Lo.ListColumns("T1").DataBodyRange.NumberFormat = "0.000000"
-            Lo.ListColumns("T2").DataBodyRange.NumberFormat = "0.000000"
+            Lo.ListColumns("T1").DataBodyRange.NumberFormat = "General"
+            Lo.ListColumns("T2").DataBodyRange.NumberFormat = "General"
             Lo.ListColumns("ET").DataBodyRange.NumberFormat = "0.000000"
 
         On Error GoTo 0
@@ -852,7 +859,7 @@ Private Sub cPM_BuildHelpSheet(ByVal WS As Worksheet)
         WS.Range("D42").Value = "Those counts read -1 until a run publishes them: a negative count means nothing was recorded, not that nothing failed."
         WS.Range("D43").Value = "Report statistics only when both counts are zero; Stats_Median, Stats_Percentile and Stats_CoefficientOfVariation describe the vector."
         WS.Range("D44").Value = "Checkpoint, ReportAsArray and ReportAsText time named steps inside one session."
-        WS.Range("D45").Value = "Run Measured Benchmark on DEMO_cPM applies these rules: it measures a workload and a baseline, and logs the net median, P95 and CV only when every count is zero."
+        WS.Range("D45").Value = "Run Benchmark on DEMO_cPM applies these rules: it measures a workload and a baseline, and logs the net median, P95 and CV only when every count is zero."
 
 '------------------------------------------------------------------------------
 ' STRICT MODE
@@ -2552,19 +2559,22 @@ Public Sub cPM_ClearResultsLog()
 '   None
 '
 ' BEHAVIOR
-'   Deletes the current DataBodyRange when rows are present
+'   Deletes the current DataBodyRange when rows are present, then returns those
+'   worksheet rows to the header height, since wrapped notes make them taller
 '
 ' ERROR POLICY
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-04-15
+'   2026-11-28
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim Lo                  As ListObject       'Results-log table
+    Dim FirstRow            As Long             'First worksheet row of the log body
+    Dim RowCount            As Long             'Log body rows before the clear
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
@@ -2583,7 +2593,10 @@ Public Sub cPM_ClearResultsLog()
 '------------------------------------------------------------------------------
     'Delete the table body when rows are present
         If Not Lo.DataBodyRange Is Nothing Then
+            FirstRow = Lo.DataBodyRange.Row
+            RowCount = Lo.DataBodyRange.Rows.Count
             Lo.DataBodyRange.Delete
+            Lo.Parent.Rows(FirstRow).Resize(RowCount).RowHeight = Lo.HeaderRowRange.RowHeight
         End If
 
 CleanExit:
@@ -3558,11 +3571,17 @@ Private Sub cPM_Demo_AppendLog( _
 ' RETURNS
 '   None
 '
+' BEHAVIOR
+'   Wraps the method name, elapsed-time text and notes, and fits the row height
+'   to them, never below the header height, so long text stays readable in a
+'   narrow column. T1 and T2 use the General format, which adapts to the column
+'   width, because they are absolute clock readings that can exceed 1E+09
+'
 ' ERROR POLICY
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-04-15
+'   2026-11-28
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3622,10 +3641,24 @@ Private Sub cPM_Demo_AppendLog( _
 '------------------------------------------------------------------------------
     'Format the timestamp
         LR.Range(1, 2).NumberFormat = "yyyy-mm-dd hh:mm:ss"
-    'Format the numeric timing outputs
+    'Format the elapsed values with fixed precision
         LR.Range(1, 6).NumberFormat = "0.000000000"
-        LR.Range(1, 8).NumberFormat = "0.000000000"
-        LR.Range(1, 9).NumberFormat = "0.000000000"
         LR.Range(1, 10).NumberFormat = "0.000000000"
+    'T1 and T2 are absolute clock readings (Now() * 86400 is about 4E+09), which
+    'a fixed nine-decimal format cannot show in the column; General adapts (#47)
+        LR.Range(1, 8).NumberFormat = "General"
+        LR.Range(1, 9).NumberFormat = "General"
+
+    'Wrap the text columns and fit the row so nothing is cut off (#47)
+        LR.Range(1, 5).WrapText = True
+        LR.Range(1, 7).WrapText = True
+        LR.Range(1, 11).WrapText = True
+        LR.Range(1, 11).HorizontalAlignment = xlLeft
+        LR.Range.VerticalAlignment = xlCenter
+        LR.Range.EntireRow.AutoFit
+    'Never let a short row fall below the header height
+        If LR.Range.RowHeight < Lo.HeaderRowRange.RowHeight Then
+            LR.Range.RowHeight = Lo.HeaderRowRange.RowHeight
+        End If
 
 End Sub
