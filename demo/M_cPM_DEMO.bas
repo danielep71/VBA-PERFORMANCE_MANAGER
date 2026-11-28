@@ -350,7 +350,8 @@ Private Sub cPM_BuildDemoSheet( _
     'Fit the log's timestamp (yyyy-mm-dd hh:mm:ss) and scenario names
         WS.Columns("D:E").ColumnWidth = 20
     'Leave room for the header filter arrows of Method Name and Elapsed Seconds
-        WS.Columns("G:H").ColumnWidth = 14
+        WS.Columns("G").ColumnWidth = 14
+        WS.Columns("H").ColumnWidth = 16
     'Widen the elapsed-time text column
         WS.Columns("I").ColumnWidth = 20
     'Widen the notes column
@@ -2556,19 +2557,22 @@ Public Sub cPM_ClearResultsLog()
 '   None
 '
 ' BEHAVIOR
-'   Deletes the current DataBodyRange when rows are present
+'   Deletes the current DataBodyRange when rows are present, then returns those
+'   worksheet rows to the header height, since wrapped notes make them taller
 '
 ' ERROR POLICY
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-04-15
+'   2026-11-28
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim Lo                  As ListObject       'Results-log table
+    Dim FirstRow            As Long             'First worksheet row of the log body
+    Dim RowCount            As Long             'Log body rows before the clear
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
@@ -2587,7 +2591,10 @@ Public Sub cPM_ClearResultsLog()
 '------------------------------------------------------------------------------
     'Delete the table body when rows are present
         If Not Lo.DataBodyRange Is Nothing Then
+            FirstRow = Lo.DataBodyRange.Row
+            RowCount = Lo.DataBodyRange.Rows.Count
             Lo.DataBodyRange.Delete
+            Lo.Parent.Rows(FirstRow).Resize(RowCount).RowHeight = Lo.HeaderRowRange.RowHeight
         End If
 
 CleanExit:
@@ -3562,11 +3569,15 @@ Private Sub cPM_Demo_AppendLog( _
 ' RETURNS
 '   None
 '
+' BEHAVIOR
+'   Wraps the notes cell and fits the row height to it, never below the
+'   header height, so a long note stays readable in a narrow column
+'
 ' ERROR POLICY
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-04-15
+'   2026-11-28
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3631,5 +3642,15 @@ Private Sub cPM_Demo_AppendLog( _
         LR.Range(1, 8).NumberFormat = "0.000000000"
         LR.Range(1, 9).NumberFormat = "0.000000000"
         LR.Range(1, 10).NumberFormat = "0.000000000"
+
+    'Wrap the notes and fit the row so the whole note is visible (#47)
+        LR.Range(1, 11).WrapText = True
+        LR.Range(1, 11).HorizontalAlignment = xlLeft
+        LR.Range.VerticalAlignment = xlCenter
+        LR.Range.EntireRow.AutoFit
+    'Never let a short row fall below the header height
+        If LR.Range.RowHeight < Lo.HeaderRowRange.RowHeight Then
+            LR.Range.RowHeight = Lo.HeaderRowRange.RowHeight
+        End If
 
 End Sub
