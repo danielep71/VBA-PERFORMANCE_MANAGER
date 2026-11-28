@@ -84,8 +84,9 @@ class DemoBuildContractTests(unittest.TestCase):
                        "absPath", "(odd|even|first)(Header|Footer)"):
             self.assertIn(marker, text, marker)
         provenance = PROVENANCE.read_text(encoding="utf-8")
-        for marker in ("docmetadata/", "classificationlabels", "MSIP_Label_", "category|contentStatus",
-                       "absPath", "(odd|even|first)(Header|Footer)"):
+        for marker in ("docmetadata/", "classificationlabels", "MSIP_Label_",
+                       '("category", "contentStatus")', '"absPath"',
+                       '("odd", "even", "first")', '("Header", "Footer")'):
             self.assertIn(marker, provenance, marker)
 
     def test_safety_rules(self) -> None:

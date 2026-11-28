@@ -85,7 +85,12 @@ def load(text: str) -> Any:
 
 
 def _glob(pattern: str) -> re.Pattern[str]:
-    """Compile a GitHub branch filter pattern: ** spans '/', * and ? do not."""
+    """Compile a GitHub filter pattern, following its documented cheat sheet.
+
+    ``**`` matches any characters including '/', ``*`` any characters except
+    '/', ``?`` zero or one of the preceding character, ``+`` one or more of it,
+    and ``[...]`` one character from a set or range. Everything else is literal.
+    """
     out = ""
     i = 0
     while i < len(pattern):
@@ -94,7 +99,16 @@ def _glob(pattern: str) -> re.Pattern[str]:
             i += 2
             continue
         char = pattern[i]
-        out += {"*": "[^/]*", "?": "[^/]"}.get(char, re.escape(char))
+        if char == "[":
+            end = pattern.find("]", i + 1)
+            if end > i + 1:
+                out += "[" + pattern[i + 1:end].replace("\\", "\\\\") + "]"
+                i = end + 1
+                continue
+        if char in "?+" and out:
+            out += char
+        else:
+            out += "[^/]*" if char == "*" else re.escape(char)
         i += 1
     return re.compile(out)
 
@@ -145,12 +159,21 @@ def _trigger_problems(name: str, document: dict[str, Any], default_branch: str) 
     if listed != wanted or (isinstance(push, dict) and "branches-ignore" in push):
         problems.append(f"{name}: on.push must filter branches to exactly "
                         f"{sorted(wanted)}, got {sorted(listed)}")
+    other = sorted(set(push) - {"branches", "branches-ignore"}) if isinstance(push, dict) else []
+    if other:
+        problems.append(f"{name}: on.push must filter only branches; {other} would skip "
+                        "pushes the gate has to check")
     if "pull_request" not in triggers:
         problems.append(f"{name}: must run on pull_request")
-    elif isinstance(triggers["pull_request"], dict) and \
-            {"branches", "branches-ignore"} & set(triggers["pull_request"]):
-        problems.append(f"{name}: on.pull_request must not filter branches, so a pull "
-                        "request to any base is checked")
+    elif isinstance(triggers["pull_request"], dict):
+        filters = {"branches", "branches-ignore"} & set(triggers["pull_request"])
+        if filters:
+            problems.append(f"{name}: on.pull_request must not filter branches, so a pull "
+                            "request to any base is checked")
+        paths = sorted({"paths", "paths-ignore", "types"} & set(triggers["pull_request"]))
+        if paths:
+            problems.append(f"{name}: on.pull_request must not filter by {paths}, so "
+                            "every pull request change is checked")
     for job_id, job in (document.get("jobs") or {}).items():
         if isinstance(job, dict) and "if" in job:
             problems.append(f"{name}: job {job_id}: a job-level if would skip the gate, "

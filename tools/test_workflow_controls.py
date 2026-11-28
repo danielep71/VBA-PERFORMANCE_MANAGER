@@ -163,7 +163,11 @@ class WorkflowControlTests(unittest.TestCase):
                                            ("release/**", "release/v1.4.1", True),
                                            (["**", "!main"], "main", False),
                                            (["!main", "main"], "main", True),
-                                           ("ma?n", "main", True), ("mai", "main", False)):
+                                           ("ma?n", "main", False), ("mai?n", "main", True),
+                                           ("main?", "main", True), ("mains?", "main", True),
+                                           ("mai+n", "maiin", True), ("mai+n", "man", False),
+                                           ("v[12].0", "v2.0", True), ("v[12].0", "v3.0", False),
+                                           ("mai", "main", False)):
             with self.subTest(patterns=patterns, branch=branch):
                 self.assertIs(wc.branch_matches(patterns, branch), expected)
 
@@ -199,6 +203,18 @@ class WorkflowControlTests(unittest.TestCase):
                            "static-checks.yml: must run on pull_request")
         filtered = STATIC.replace("  pull_request:\n", "  pull_request:\n    branches: [main]\n")
         self.assertRejects(run(static=filtered), "on.pull_request must not filter branches")
+        for key in ("paths", "paths-ignore", "types"):
+            narrowed = STATIC.replace("  pull_request:\n", f"  pull_request:\n    {key}: [src/**]\n")
+            with self.subTest(key=key):
+                self.assertRejects(run(static=narrowed),
+                                   f"on.pull_request must not filter by ['{key}']")
+
+    def test_gate_push_filters_only_branches(self) -> None:
+        for key in ("paths", "paths-ignore", "tags"):
+            narrowed = STATIC.replace('      - "release/**"\n', f'      - "release/**"\n    {key}: [src/**]\n')
+            with self.subTest(key=key):
+                self.assertRejects(run(static=narrowed),
+                                   f"static-checks.yml: on.push must filter only branches; ['{key}']")
 
     def test_gate_jobs_are_never_skipped(self) -> None:
         skipped = STATIC.replace("    timeout-minutes: 10\n",

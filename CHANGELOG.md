@@ -96,6 +96,27 @@ Use only the categories needed by a release.
 
 ## [Unreleased]
 
+### Fixed
+
+- `tools/release_provenance.py` 3.2.0 parses the workbook's XML parts instead
+  of searching their text. A sensitivity label, document category, saved-from
+  folder or print header or footer is refused whatever namespace prefix or
+  encoding (UTF-8 or UTF-16) the part uses. A package workbook that lacks the
+  parts of a macro-enabled workbook, has a malformed XML part or declares a
+  DOCTYPE is refused (#213).
+- The static gate's workflow check rejects a `paths`, `paths-ignore` or other
+  non-branch filter on the gate's `push`, and a `paths`, `paths-ignore` or
+  `types` filter on its `pull_request`. Branch filter patterns follow GitHub's
+  rules: `?` makes the preceding character optional, `+` repeats it, and
+  `[...]` matches one character of a set (#213).
+- `tools/Verify-SyncRefusals.cmd` refuses the repository root itself as its
+  work folder, reads optional manifest properties safely under strict mode,
+  and writes its evidence even when the sync leaves a visible Excel window
+  (#213).
+- The demo's Run Benchmark action reports the coefficient of variation as
+  undefined, instead of failing, when every workload sample is zero, as a
+  coarse clock such as `Now()` can produce (#213).
+
 ## [1.4.1] — 2026-11-30
 
 Boundary hardening and contract definition for the v1.4.0 runtime. No class
