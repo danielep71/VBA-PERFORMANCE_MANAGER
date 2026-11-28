@@ -12,7 +12,7 @@
 [![Excel VBA](https://img.shields.io/badge/Excel_VBA-source_support_32_%2F_64--bit-217346?style=for-the-badge&logo=microsoft-excel&logoColor=white)](#requirements)
 [![Windows](https://img.shields.io/badge/Platform-Windows_desktop-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#requirements)
 [![Version](https://img.shields.io/badge/Version-1.4.1-6f42c1?style=for-the-badge)](#release-status)
-[![Regression v1.4.0](https://img.shields.io/badge/Regression_v1.4.0-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
+[![Regression v1.4.1](https://img.shields.io/badge/Regression_v1.4.1-861_%2F_861-2ea44f?style=for-the-badge)](#regression-testing)
 [![Static checks](https://img.shields.io/badge/Static_checks-31_%2F_31-0969da?style=for-the-badge)](#static-source-analysis)
 [![License](https://img.shields.io/badge/License-Apache_2.0-2ea44f?style=for-the-badge)](LICENSE)
 <!-- /facts:badges -->
@@ -945,10 +945,29 @@ actually executed rather than inferring it from the source.
 
 ### Latest published tagged evidence
 
-v1.4.1's certification record, with its Excel build, regression counts and
-package hashes, is [docs/releases/v1.4.1/EVIDENCE.md](docs/releases/v1.4.1/EVIDENCE.md).
-It is added to the table below once the release is published, as for every
-earlier tag.
+<!-- facts:evidence:v1.4.1 -->
+| Evidence | v1.4.1 result |
+|---|---|
+| Tag target | [`189668851754ec10e4c86d02f2e12b16739a54a5`](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/commit/189668851754ec10e4c86d02f2e12b16739a54a5) |
+| Certified | 2026-11-28 |
+| Excel | Microsoft Excel 16.0 build 20527 (16.0.20527.20194) |
+| Office bitness | **64-bit** |
+| Regression | **93 cases · 861 assertions · 0 failures** |
+| Static checks | 31 checks · 0 failures |
+| Release workbook | `PERFORMANCE MANAGER.xlsm` |
+| Workbook SHA-256 | `60f999e65f86f4dfbd976eab66326424f5f07b8d05deda07458ac1b3ec02778c` |
+| Manifest SHA-256 | `02d893480d0f7d98c590ef05359533415d8f41abbf041eebd3cd6b00e941c9d9` |
+<!-- /facts:evidence:v1.4.1 -->
+
+From v1.4.1 the workbook is published only inside
+`VBA-Performance-Manager-v1.4.1.zip` (SHA-256
+`0411b6e167cb4e9556b8ddd11adce462f2120fb83399ecb3b5f39a2fed8f29ec`), with
+`LICENSE` and `NOTICE`. The package and the manifest were downloaded from the
+release and re-hashed, and each package member matches the build record. The
+full record, with the static-gate result, the Excel runner records and the
+workbook build, is [docs/releases/v1.4.1/EVIDENCE.md](docs/releases/v1.4.1/EVIDENCE.md).
+
+### Previous published tagged evidence
 
 <!-- facts:evidence:v1.4.0 -->
 | Evidence | v1.4.0 result |
@@ -983,7 +1002,7 @@ above. The originally published digests were `5eddd647…` (workbook) and
 > names. The manifest records `PERFORMANCE MANAGER.xlsm`; the actual published
 > asset name, which downloaders must use, is `PERFORMANCE.MANAGER.xlsm`.
 
-### Previous published tagged evidence
+### Earlier published tagged evidence
 
 <!-- facts:evidence:v1.3.0 -->
 | Evidence | v1.3.0 result |
@@ -1525,7 +1544,7 @@ Execution evidence: 64-bit only
 
 ## v1.4.1 — latest tagged release
 
-Published on **2026-11-30**, v1.4.1 hardens the v1.4.0 runtime at its
+Published on **2026-11-28**, v1.4.1 hardens the v1.4.0 runtime at its
 boundaries:
 
 - `ElapsedTime` formats 0 to 1E+15 seconds exactly and never overflows (#30);
@@ -1542,6 +1561,12 @@ runner (#11), and a demo workbook rebuilt from source and published with
 `LICENSE` and `NOTICE` (#47, #72). See [CHANGELOG.md](CHANGELOG.md), the
 [v1.4.1 Release](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.1)
 and its [evidence record](docs/releases/v1.4.1/EVIDENCE.md).
+
+<!-- facts:summary:v1.4.1 -->
+The release is bound to tag target `189668851754ec10e4c86d02f2e12b16739a54a5`
+and certified on 64-bit Excel with **93 cases, 861 assertions and 0 failures**,
+plus **31/31** static checks.
+<!-- /facts:summary:v1.4.1 -->
 
 ## v1.4.0 — previous tagged release
 

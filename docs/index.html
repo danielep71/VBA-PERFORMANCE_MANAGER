@@ -132,10 +132,10 @@
         <div class="actions">
           <a class="button primary" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER">Explore the source ↗</a>
           <a class="button" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/INSTALLATION.md">Install from source</a>
-          <a class="button" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/download/v1.4.0/PERFORMANCE.MANAGER.xlsm" data-direct-download>Demo workbook 1.4.0 ↓</a>
+          <a class="button" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/download/v1.4.1/VBA-Performance-Manager-v1.4.1.zip" data-direct-download>Demo workbook 1.4.1 (ZIP) ↓</a>
         </div>
-        <p class="status">Release 1.4.0 · Windows desktop Excel · Certified on 64-bit Microsoft 365 Excel</p>
-        <p class="status">The runtime is two source files you import. The workbook is an optional demo: check its SHA-256 against the <a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0">release notes</a> before you open it.</p>
+        <p class="status">Release 1.4.1 · Windows desktop Excel · Certified on 64-bit Microsoft 365 Excel</p>
+        <p class="status">The runtime is two source files you import. The workbook is an optional demo, packaged with its <code>LICENSE</code> and <code>NOTICE</code>: check the SHA-256 of the package and of each file against the <a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.1">release notes</a> before you open it.</p>
       </div>
       <aside class="example" aria-labelledby="example-title">
         <div class="eyebrow">Time a block of code</div>
@@ -203,7 +203,7 @@ cPM.ResetEnvironment</code></pre>
       <h2>Know what has been verified.</h2>
       <p class="intro">Every change passes a static gate before it merges. Each release is certified by running the regression suite in real Excel, at the exact tagged source.</p>
       <ul class="scope-list">
-        <li><strong>Release 1.4.0:</strong> 80 regression cases, 643 assertions, 0 failures, on Microsoft 365 Excel 64-bit (Version 2607), at the exact tag.</li>
+        <li><strong>Release 1.4.1:</strong> 93 regression cases, 861 assertions, 0 failures, on Microsoft 365 Excel 64-bit (build 16.0.20527.20194), at the exact tag.</li>
         <li><strong>32-bit Office:</strong> the source keeps its 32-bit branches, but no 32-bit host has been execution-certified yet.</li>
         <li><strong>Static gate:</strong> source consistency, compile safety, pinned workflow actions and release claims are checked on every pull request and on every push to <code>main</code> and the release branch.</li>
         <li><strong>Provenance:</strong> each release lists the SHA-256 of its source files and assets, and the source files are compared with the tag.</li>
@@ -220,7 +220,7 @@ cPM.ResetEnvironment</code></pre>
       <p class="intro">Import <code>M_cPM_TIMEWASTERS.bas</code>, then <code>cPerformanceManager.cls</code>, and compile. Test, demo and example modules are optional. Start with the installation guide, then the README and the wiki. Questions, defects and ideas go to the <a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues">issue tracker</a>; vulnerabilities go through the private route in the <a href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/SECURITY.md#reporting-a-vulnerability">security policy</a>.</p>
       <div class="resources">
         <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/INSTALLATION.md"><strong>Installation &amp; upgrade ↗</strong><span>Supported hosts, import order, validation, upgrade and removal.</span></a>
-        <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0"><strong>Release 1.4.0 ↗</strong><span>Release notes, the demo workbook and the SHA-256 of every file.</span></a>
+        <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.1"><strong>Release 1.4.1 ↗</strong><span>Release notes, the demo workbook package and the SHA-256 of every file.</span></a>
         <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/wiki"><strong>Project wiki ↗</strong><span>Guides to timing, measurement, Excel state and testing.</span></a>
         <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER#public-api"><strong>Public API ↗</strong><span>Members, named enums and errors, strict mode and read status.</span></a>
         <a class="resource" href="https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/blob/main/CHANGELOG.md"><strong>Changelog ↗</strong><span>What changed in each release, and what is coming in the next.</span></a>

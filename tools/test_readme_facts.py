@@ -60,6 +60,11 @@ class Copy:
         self.dir.cleanup()
 
 
+def newest_tag() -> str:
+    data = json.loads((rf.ROOT / rf.EVIDENCE).read_text(encoding="utf-8"))
+    return str(data["releases"][0]["tag"])
+
+
 def current_version() -> str:
     return (rf.ROOT / "VERSION").read_text(encoding="ascii").strip()
 
@@ -109,26 +114,31 @@ class RepositoryTests(unittest.TestCase):
         data["releases"][0]["assertions"] = 650
         self.copy.set_evidence(data)
         stale = [p.split("facts:")[1].split()[0] for p in self.copy.problems()]
-        self.assertEqual(stale, ["badges", "evidence:v1.4.0", "summary:v1.4.0"])
+        newest = data["releases"][0]["tag"]
+        self.assertEqual(stale, ["badges", f"evidence:{newest}", f"summary:{newest}"])
 
     def test_missing_and_unknown_blocks(self) -> None:
+        newest = newest_tag()
         readme = self.copy.text("README.md")
-        start = readme.index("<!-- facts:summary:v1.4.0 -->")
-        end = readme.index("<!-- /facts:summary:v1.4.0 -->") + len("<!-- /facts:summary:v1.4.0 -->")
+        start = readme.index(f"<!-- facts:summary:{newest} -->")
+        end = readme.index(f"<!-- /facts:summary:{newest} -->") + len(f"<!-- /facts:summary:{newest} -->")
         (self.copy.root / "README.md").write_text(
             readme[:start] + "<!-- facts:summary:v0.1.0 -->\n<!-- /facts:summary:v0.1.0 -->"
             + readme[end:], encoding="utf-8")
         self.assertEqual(self.copy.problems(), [
             "README.md: facts:summary:v0.1.0 has no renderer or certified record",
-            "README.md: facts:summary:v1.4.0 is missing"])
+            f"README.md: facts:summary:{newest} is missing"])
 
     def test_tag_binding(self) -> None:
+        newest = newest_tag()
         def moved(tag: str) -> str | None:
-            return "f" * 40 if tag == "v1.4.0" else None
+            return "f" * 40 if tag == newest else None
         problems, notes = rf.repository_problems(self.copy.root, moved)
-        self.assertEqual(problems, [f"{rf.EVIDENCE}: v1.4.0 records commit "
-                                    f"{recorded('v1.4.0')}, but the tag points at {'f' * 40}"])
-        self.assertEqual(notes, ["v1.3.0 is not present locally; its commit is not compared"])
+        self.assertEqual(problems, [f"{rf.EVIDENCE}: {newest} records commit "
+                                    f"{recorded(newest)}, but the tag points at {'f' * 40}"])
+        others = [r["tag"] for r in self.copy.evidence()["releases"] if r["tag"] != newest]
+        self.assertEqual(notes, [f"{tag} is not present locally; its commit is not compared"
+                                 for tag in others])
 
     def test_unusable_sources_fail(self) -> None:
         self.copy.edit("VERSION", current_version(), "next")
@@ -178,11 +188,13 @@ class CertifiedRecordTests(unittest.TestCase):
         self.setUp()
         self.assertEqual(self.problems(cases=True), [f"{where}: wrong type for cases"])
         self.setUp()
-        self.assertEqual(self.problems(failures=700),
+        self.assertEqual(self.problems(failures=self.data["releases"][0]["assertions"] + 1),
                          [f"{where}: failures must lie between 0 and the assertion count"])
         self.setUp()
-        self.assertEqual(self.problems(tag="v1.3.0"),
-                         [f"{rf.EVIDENCE}: release 1: v1.3.0 is recorded twice"])
+        last = len(self.data["releases"]) - 1
+        oldest = self.data["releases"][last]["tag"]
+        self.assertEqual(self.problems(tag=oldest),
+                         [f"{rf.EVIDENCE}: release {last}: {oldest} is recorded twice"])
         self.setUp()
         del self.data["releases"][0]["excel"]
         self.assertIn("needs exactly", rf.certified_problems(self.data)[0])

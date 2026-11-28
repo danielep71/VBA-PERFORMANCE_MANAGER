@@ -7,7 +7,7 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
-    target-branch: release/v1.4.1
+    target-branch: release/v1.5.0
     schedule:
       interval: weekly
       day: monday
@@ -27,7 +27,7 @@ updates:
           - "*"
   - package-ecosystem: pip
     directory: /tools
-    target-branch: release/v1.4.1
+    target-branch: release/v1.5.0
     schedule:
       interval: weekly
       day: monday
