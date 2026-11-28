@@ -60,6 +60,10 @@ class Copy:
         self.dir.cleanup()
 
 
+def current_version() -> str:
+    return (rf.ROOT / "VERSION").read_text(encoding="ascii").strip()
+
+
 class RepositoryTests(unittest.TestCase):
     def setUp(self) -> None:
         self.copy = Copy()
@@ -83,18 +87,18 @@ class RepositoryTests(unittest.TestCase):
 
     def test_derived_facts_follow_the_source(self) -> None:
         cases = rf.load_facts(rf.ROOT)[0].cases   # type: ignore[union-attr]
-        self.copy.edit("VERSION", "1.4.0", "1.4.1")
+        self.copy.edit("VERSION", current_version(), "9.9.9")
         self.copy.edit(rf.TEST_MODULE, "        Test_DefaultState\r\n", "")
         stale = [p.split("facts:")[1].split()[0] for p in self.copy.problems()]
         self.assertEqual(stale, ["badges", "source-cases"])
         rf.write(self.copy.root)
         readme = self.copy.text("README.md")
-        self.assertIn("Version-1.4.1-", readme)
+        self.assertIn("Version-9.9.9-", readme)
         self.assertIn(f"invokes **{cases - 1} cases**", readme)
 
     def test_certified_facts_ignore_the_source(self) -> None:
         before = self.copy.text("README.md")
-        self.copy.edit("VERSION", "1.4.0", "2.0.0")
+        self.copy.edit("VERSION", current_version(), "9.9.9")
         rf.write(self.copy.root)
         after = self.copy.text("README.md")
         for name in ("evidence:v1.4.0", "evidence:v1.3.0", "summary:v1.4.0"):
@@ -127,7 +131,7 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(notes, ["v1.3.0 is not present locally; its commit is not compared"])
 
     def test_unusable_sources_fail(self) -> None:
-        self.copy.edit("VERSION", "1.4.0", "next")
+        self.copy.edit("VERSION", current_version(), "next")
         self.assertEqual(self.copy.problems(), ["VERSION: expected X.Y.Z, found 'next'"])
 
     @staticmethod
