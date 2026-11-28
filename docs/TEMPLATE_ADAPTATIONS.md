@@ -1,6 +1,6 @@
 # Template adaptations
 
-This repository adopts practices from the maintainer's own project template.
+This repository adopts practices from a project template by the same author.
 The template is licensed MPL-2.0, and some of its files are MIT; this
 repository is licensed Apache-2.0 with a [NOTICE](../NOTICE).
 
@@ -8,9 +8,6 @@ Each adaptation is written in this repository's own terms: its `src/`,
 `test/`, `demo/` and `tools/` layout and its `cPM_` / `M_cPM_` names. No
 template names, issue numbers or history are copied. Before a template file is
 adapted, its licence is decided and recorded here.
-
-The same record covers files adapted from the maintainer's other projects.
-The source column then names the project.
 
 | File in this repository | Template source | Template revision | Licence decision | Issue |
 |---|---|---|---|---|
@@ -37,4 +34,3 @@ The source column then names the project.
 | `tools/vba_format.py`, `tools/test_vba_format.py` | `tools/format_vba.py` | `91a57f2` | Rewritten, not copied: the rules were measured from this repository's source (indented module-level statements, one or two blank lines after `End`) rather than taken from the template's house style. Apache-2.0. | #83 |
 | `docs/releases/v1.4.1/EVIDENCE.md`, `CONTRIBUTING.md` (Maintainer workflow) | none (practice only) | `91a57f2` | No file adapted: the template's practice of planning in issues and keeping a short evidence record per release, written for this repository. Apache-2.0. | #90 |
 | `.github/workflows/static-checks.yml` (hardening) | `.github/workflows/repository-integrity.yml` | `91a57f2` | Practices only (pins, fixed runner, timeouts, `persist-credentials: false`, minimum-Python job); the workflow is this repository's own. Apache-2.0. | #80 |
-| `.github/workflows/daily-traffic.yml`, `tools/test_daily_traffic.py`, `docs/TRAFFIC_HISTORY.md` | K-SACCR: `.github/workflows/daily-traffic.yml`, `tools/test_daily_traffic.py`, the traffic section of `tools/README.md` | `df6492a` | Adapted from the maintainer's K-SACCR project (MPL-2.0), whose copyright the maintainer holds; licensed here under Apache-2.0. The collection steps are kept as they are. The alert job is left out, because it would open issues without the milestone and target date this repository requires. The tests are rewritten for that single job. | #165 |
