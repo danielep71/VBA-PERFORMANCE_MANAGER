@@ -58,12 +58,13 @@ import re
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ElementTree
 import zipfile
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-TOOL_VERSION = "3.1.0"
+TOOL_VERSION = "3.2.0"
 ROOT = Path(__file__).resolve().parent.parent
 
 REQUIRED = [
@@ -83,8 +84,13 @@ CORE_PROPERTIES = "docProps/core.xml"
 CUSTOM_PROPERTIES = "docProps/custom.xml"
 WORKBOOK_PART = "xl/workbook.xml"
 SHEET_PART = re.compile(r"xl/(?:worksheets|chartsheets|dialogsheets|macrosheets)/[^/]+\.xml")
-CLASSIFYING_PROPERTY = re.compile(r"<cp:(category|contentStatus)\b[^>]*>\s*([^<\s][^<]*)</cp:\1>")
-HEADER_FOOTER = re.compile(r"<(odd|even|first)(Header|Footer)\b[^>]*>\s*[^<\s]")
+RELATIONSHIPS_PART = "_rels/.rels"
+CONTENT_TYPES_PART = "[Content_Types].xml"
+VBA_PROJECT_PART = "xl/vbaProject.bin"
+REQUIRED_WORKBOOK_PARTS = (CONTENT_TYPES_PART, RELATIONSHIPS_PART, WORKBOOK_PART, VBA_PROJECT_PART)
+CLASSIFYING_PROPERTIES = ("category", "contentStatus")
+HEADER_FOOTER_ELEMENTS = {f"{page}{kind}" for page in ("odd", "even", "first")
+                          for kind in ("Header", "Footer")}
 
 
 def package_name(version: str) -> str:
@@ -286,6 +292,11 @@ def workbook_metadata_problems(data: bytes) -> list[str]:
     document category or content status, the folder it was saved from and a
     classification in the sheets' print headers or footers. None of it belongs
     in a public release. Problems name the part, never its content.
+
+    The XML parts are parsed, not searched as text, so a namespace prefix
+    other than the usual one, or a part encoded as UTF-16, is still checked
+    (#213). Elements are matched by local name in any namespace. A package
+    that lacks the parts every macro-enabled workbook has is refused as well.
     """
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as book:
@@ -293,22 +304,45 @@ def workbook_metadata_problems(data: bytes) -> list[str]:
     except (zipfile.BadZipFile, OSError, RuntimeError, ValueError) as exc:
         return [f"package workbook is not a readable Office Open XML file: {exc}"]
 
-    def text(name: str) -> str:
-        return parts.get(name, b"").decode("utf-8", "replace")
-
     problems: list[str] = []
+    missing = [name for name in REQUIRED_WORKBOOK_PARTS if name not in parts]
+    if missing:
+        return [f"package workbook is not a readable Office Open XML file: missing {missing}"]
+
+    def elements(name: str) -> list[ElementTree.Element]:
+        """Every element of an XML part; a part that does not parse is a problem."""
+        body = parts.get(name)
+        if body is None:
+            return []
+        if b"<!DOCTYPE" in body or b"<\x00!\x00D\x00O\x00C\x00T\x00Y\x00P\x00E" in body:
+            problems.append(f"workbook part {name} declares a DOCTYPE")
+            return []
+        try:
+            return list(ElementTree.fromstring(body).iter())
+        except ElementTree.ParseError:
+            problems.append(f"workbook part {name} is not well-formed XML")
+            return []
+
+    def local(element: ElementTree.Element) -> str:
+        return str(element.tag).rpartition("}")[2]
+
     labels = sorted(name for name in parts if name.lower().startswith("docmetadata/"))
     problems += [f"workbook carries a sensitivity label part: {name}" for name in labels]
-    if not labels and "classificationlabels" in text("_rels/.rels"):
+    if not labels and any("classificationlabels" in element.get("Type", "")
+                          for element in elements(RELATIONSHIPS_PART)):
         problems.append("workbook relates a sensitivity label part in _rels/.rels")
-    if "MSIP_Label_" in text(CUSTOM_PROPERTIES):
+    if any(element.get("name", "").startswith("MSIP_Label_")
+           for element in elements(CUSTOM_PROPERTIES)):
         problems.append(f"workbook carries sensitivity-label properties in {CUSTOM_PROPERTIES}")
-    for element, _ in CLASSIFYING_PROPERTY.findall(text(CORE_PROPERTIES)):
-        problems.append(f"workbook sets the document {element} in {CORE_PROPERTIES}")
-    if "absPath" in text(WORKBOOK_PART):
+    for element in elements(CORE_PROPERTIES):
+        if local(element) in CLASSIFYING_PROPERTIES and (element.text or "").strip():
+            problems.append(f"workbook sets the document {local(element)} in {CORE_PROPERTIES}")
+    if any(local(element) == "absPath" for element in elements(WORKBOOK_PART)):
         problems.append(f"workbook records the folder it was saved from in {WORKBOOK_PART}")
     for name in sorted(parts):
-        if SHEET_PART.fullmatch(name) and HEADER_FOOTER.search(text(name)):
+        if SHEET_PART.fullmatch(name) and any(
+                local(element) in HEADER_FOOTER_ELEMENTS and (element.text or "").strip()
+                for element in elements(name)):
             problems.append(f"workbook has a print header or footer in {name}")
     return problems
 

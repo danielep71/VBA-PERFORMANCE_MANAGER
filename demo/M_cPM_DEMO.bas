@@ -2355,6 +2355,8 @@ Public Sub cPM_RunMeasuredBenchmark()
 '     is zero; otherwise logs the counts and says that no statistic is shown
 '   - Appends one log row: Elapsed Seconds holds the net median (workload
 '     median minus baseline median), Notes holds the evidence and statistics
+'   - Reports the CV as undefined, without failing, when every workload sample
+'     is zero, as a coarse clock can produce
 '
 ' ERROR POLICY
 '   Restores the cPerformanceManager environment, then reports the error on
@@ -2376,7 +2378,7 @@ Public Sub cPM_RunMeasuredBenchmark()
 '   failed, so the test is "not zero" rather than "greater than zero"
 '
 ' UPDATED
-'   2026-11-27
+'   2026-11-28
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -2403,6 +2405,7 @@ Public Sub cPM_RunMeasuredBenchmark()
     Dim NetMedian           As Double                'Workload minus baseline median
     Dim WorkP95             As Double                'Workload 95th percentile
     Dim WorkCv              As Double                'Workload coefficient of variation
+    Dim CvText              As String                'Formatted CV, or why it is undefined
     Dim Evidence            As String                'Evidence part of the notes
     Dim Verdict             As String                'Variance verdict
 
@@ -2475,13 +2478,21 @@ Public Sub cPM_RunMeasuredBenchmark()
         Else
             WorkMedian = cPM.Stats_Median(Work)
             WorkP95 = cPM.Stats_Percentile(Work, 95#)
-            WorkCv = cPM.Stats_CoefficientOfVariation(Work)
             BaseMedian = cPM.Stats_Median(Baseline)
             NetMedian = WorkMedian - BaseMedian
-            If cPM.Stats_IsContaminated(Work) Then
-                Verdict = "high variance, run again"
+        'The CV is undefined when every sample is zero, which a coarse clock
+        'such as method 6 (Now) can produce for a short workload (#213)
+            If cPM.Stats_Mean(Work) > 0# Then
+                WorkCv = cPM.Stats_CoefficientOfVariation(Work)
+                CvText = Format$(WorkCv, "0.000")
+                If cPM.Stats_IsContaminated(Work) Then
+                    Verdict = "high variance, run again"
+                Else
+                    Verdict = "clean"
+                End If
             Else
-                Verdict = "clean"
+                CvText = "undefined"
+                Verdict = "every sample is zero: the clock is too coarse for this workload"
             End If
             cPM_Demo_AppendLog "Measured Benchmark", _
                                MethodID, _
@@ -2495,7 +2506,7 @@ Public Sub cPM_RunMeasuredBenchmark()
                                "; Median=" & Format$(WorkMedian, "0.000000") & _
                                "; P95=" & Format$(WorkP95, "0.000000") & _
                                "; Baseline=" & Format$(BaseMedian, "0.000000") & _
-                               "; CV=" & Format$(WorkCv, "0.000") & _
+                               "; CV=" & CvText & _
                                "; " & Verdict
         End If
 

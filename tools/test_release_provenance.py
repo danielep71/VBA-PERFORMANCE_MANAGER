@@ -32,17 +32,20 @@ SOURCES = [
     "demo/M_DEMO_BUILDER.bas",
 ]
 WORKBOOK = "PERFORMANCE MANAGER.xlsm"
-CLEAN_PARTS = {
+CORE_NS = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+X15AC_NS = "http://schemas.microsoft.com/office/spreadsheetml/2010/11/ac"
+CLEAN_PARTS: dict[str, str | bytes | None] = {
     "[Content_Types].xml": '<?xml version="1.0"?><Types/>',
     "_rels/.rels": '<?xml version="1.0"?><Relationships/>',
     "docProps/core.xml": ('<?xml version="1.0"?><cp:coreProperties '
-                          'xmlns:cp="cp"><cp:category></cp:category></cp:coreProperties>'),
+                          f'xmlns:cp="{CORE_NS}"><cp:category></cp:category></cp:coreProperties>'),
     "xl/workbook.xml": '<?xml version="1.0"?><workbook><sheets/></workbook>',
     "xl/worksheets/sheet1.xml": '<?xml version="1.0"?><worksheet><headerFooter/></worksheet>',
+    "xl/vbaProject.bin": b"fixture vba project",
 }
 
 
-def make_workbook(**changes: str | None) -> bytes:
+def make_workbook(**changes: str | bytes | None) -> bytes:
     """A minimal Office Open XML workbook; changes add, replace or (None) drop parts."""
     parts = {**CLEAN_PARTS, **changes}
     buffer = io.BytesIO()
@@ -364,7 +367,7 @@ def _package_cases(m: Matrix, tmp: Path) -> None:
                     members=[wb, lic, notice], include_license=False)
 
     # #191: the packaged workbook carries no managed-machine metadata.
-    rejected_metadata = {
+    rejected_metadata: dict[str, tuple[dict[str, str | bytes | None], str]] = {
         "label": ({"docMetadata/LabelInfo.xml": '<labelList/>'},
                   "sensitivity label part: docMetadata/LabelInfo.xml"),
         "label-rel": ({"_rels/.rels": '<Relationships><Relationship Type="x/classificationlabels"/>'
@@ -373,14 +376,37 @@ def _package_cases(m: Matrix, tmp: Path) -> None:
         "msip": ({"docProps/custom.xml": '<Properties><property name="MSIP_Label_x_Enabled"/>'
                                          '</Properties>'},
                  "sensitivity-label properties in docProps/custom.xml"),
-        "category": ({"docProps/core.xml": '<cp:coreProperties xmlns:cp="cp">'
+        "category": ({"docProps/core.xml": f'<cp:coreProperties xmlns:cp="{CORE_NS}">'
                                            '<cp:category>Internal</cp:category></cp:coreProperties>'},
                      "sets the document category in docProps/core.xml"),
-        "status": ({"docProps/core.xml": '<cp:coreProperties xmlns:cp="cp">'
+        "status": ({"docProps/core.xml": f'<cp:coreProperties xmlns:cp="{CORE_NS}">'
                                          '<cp:contentStatus>Restricted</cp:contentStatus></cp:coreProperties>'},
                    "sets the document contentStatus in docProps/core.xml"),
-        "abspath": ({"xl/workbook.xml": '<workbook><x15ac:absPath url="C:/Users/someone/"/></workbook>'},
+        # #213: another prefix for the same namespace is still the same element.
+        "category-prefix": ({"docProps/core.xml": f'<p:coreProperties xmlns:p="{CORE_NS}">'
+                                                  '<p:category>Internal</p:category></p:coreProperties>'},
+                            "sets the document category in docProps/core.xml"),
+        # #213: a UTF-16 part is decoded from its byte-order mark, not as UTF-8.
+        "category-utf16": ({"docProps/core.xml": (f'<?xml version="1.0" encoding="UTF-16"?>'
+                                                  f'<cp:coreProperties xmlns:cp="{CORE_NS}">'
+                                                  '<cp:category>Internal</cp:category>'
+                                                  '</cp:coreProperties>').encode("utf-16")},
+                           "sets the document category in docProps/core.xml"),
+        "abspath": ({"xl/workbook.xml": f'<workbook xmlns:x15ac="{X15AC_NS}">'
+                                        '<x15ac:absPath url="C:/Users/someone/"/></workbook>'},
                     "folder it was saved from in xl/workbook.xml"),
+        "footer-prefix": ({"xl/worksheets/sheet1.xml": '<s:worksheet xmlns:s="urn:s"><s:headerFooter>'
+                                                       '<s:oddFooter>&amp;CText</s:oddFooter>'
+                                                       '</s:headerFooter></s:worksheet>'},
+                          "print header or footer in xl/worksheets/sheet1.xml"),
+        "malformed": ({"xl/workbook.xml": '<workbook><sheets></workbook>'},
+                      "workbook part xl/workbook.xml is not well-formed XML"),
+        "doctype": ({"xl/workbook.xml": '<!DOCTYPE workbook [<!ENTITY a "a">]><workbook/>'},
+                    "workbook part xl/workbook.xml declares a DOCTYPE"),
+        # #213: a readable ZIP that is not a workbook is refused.
+        "not-a-workbook": ({"[Content_Types].xml": None, "xl/workbook.xml": None,
+                            "xl/vbaProject.bin": None},
+                           "package workbook is not a readable Office Open XML file: missing"),
         "footer": ({"xl/worksheets/sheet1.xml": '<worksheet><headerFooter><oddFooter>&amp;CText'
                                                 '</oddFooter></headerFooter></worksheet>'},
                    "print header or footer in xl/worksheets/sheet1.xml"),

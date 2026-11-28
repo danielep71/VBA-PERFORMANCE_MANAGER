@@ -38,7 +38,10 @@ $tool = Join-Path $PSScriptRoot 'Manage-PerformanceManagerVBA.ps1'
 $vbomKey = 'HKCU:\Software\Microsoft\Office\16.0\Excel\Security'
 if (-not $WorkDir) { $WorkDir = Join-Path (Split-Path -Parent $repo) 'cpm-sync-refusals' }
 $WorkDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($WorkDir)
-if ($WorkDir.TrimEnd('\').StartsWith($repo.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+$workRoot = $WorkDir.TrimEnd('\')
+$repoRoot = $repo.TrimEnd('\')
+if ($workRoot.Equals($repoRoot, [StringComparison]::OrdinalIgnoreCase) -or
+    $workRoot.StartsWith($repoRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
     throw '-WorkDir must be outside the repository.'
 }
 
@@ -65,6 +68,13 @@ function Get-Vbom {
 function Restore-Vbom([string] $State) {
     if ($State -eq 'absent') { Remove-ItemProperty -Path $vbomKey -Name AccessVBOM -ErrorAction SilentlyContinue }
     else { Set-ItemProperty -Path $vbomKey -Name AccessVBOM -Value ([int]$State) -Type DWord }
+}
+
+function Get-ManifestValue($Manifest, [string] $Name) {
+    # The manifest lacks a property when the sync stopped before setting it,
+    # and StrictMode 2 throws on reading a missing property (#213).
+    if ($null -eq $Manifest -or -not $Manifest.PSObject.Properties[$Name]) { return $null }
+    return $Manifest.$Name
 }
 
 function Stop-WindowlessExcel {
@@ -220,9 +230,9 @@ foreach ($case in $cases) {
     $checks = [ordered]@{
         exit_nonzero      = ($exitCode -ne 0)
         result_fail       = ($output -match 'RESULT=FAIL')
-        expected_error    = ($null -ne $manifest -and [string]$manifest.error -like "*$($case.Expected)*")
-        not_passed        = ($null -ne $manifest -and -not $manifest.passed)
-        cleanup_completed = ($null -ne $manifest -and $manifest.cleanup -eq 'completed')
+        expected_error    = ($null -ne $manifest -and [string](Get-ManifestValue $manifest 'error') -like "*$($case.Expected)*")
+        not_passed        = ($null -ne $manifest -and -not (Get-ManifestValue $manifest 'passed'))
+        cleanup_completed = ($null -ne $manifest -and (Get-ManifestValue $manifest 'cleanup') -eq 'completed')
         input_unchanged   = ($hashBefore -eq $hashAfter)
         vbom_restored     = ($vbomBefore -eq $vbomAfter)
         no_excel_left     = ($excelLeft -eq 0)
@@ -232,16 +242,25 @@ foreach ($case in $cases) {
         case = $case.Name; workbook = $case.Workbook; expected_error = $case.Expected
         exit_code = $exitCode; vbom_before = $vbomBefore; vbom_after = $vbomAfter
         input_sha256 = $hashBefore; excel_processes_after = $excelLeft
-        manifest_error = $(if ($manifest) { $manifest.error } else { $null })
-        manifest_cleanup = $(if ($manifest) { $manifest.cleanup } else { $null })
-        excel_build = $(if ($manifest) { $manifest.excel_build } else { $null })
+        manifest_error = Get-ManifestValue $manifest 'error'
+        manifest_cleanup = Get-ManifestValue $manifest 'cleanup'
+        excel_build = Get-ManifestValue $manifest 'excel_build'
         bundle = $bundle; checks = $checks; verdict = $(if ($passed) { 'PASS' } else { 'FAIL' })
     }
     foreach ($check in $checks.GetEnumerator()) {
         Write-Host ("  {0,-18} {1}" -f $check.Key, $(if ($check.Value) { 'ok' } else { 'FAILED' }))
     }
     Write-Host "$($case.Name): $(if ($passed) { 'PASS' } else { 'FAIL' })"
-    Stop-WindowlessExcel
+    try {
+        Stop-WindowlessExcel
+    } catch {
+        # A visible Excel window left by the sync fails the run, but the evidence
+        # is still written below; the window is never closed for the user (#213).
+        $results[-1].verdict = 'FAIL'
+        $results[-1].excel_left_visible = $_.Exception.Message
+        Write-Host $_.Exception.Message
+        break
+    }
 }
 
 $verdict = $(if (@($results | Where-Object { $_.verdict -ne 'PASS' }).Count -eq 0) { 'PASS' } else { 'FAIL' })

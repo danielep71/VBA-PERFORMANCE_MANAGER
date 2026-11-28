@@ -64,6 +64,17 @@ class SyncRefusalContractTests(unittest.TestCase):
         for verb in ("checkout", "reset", "push", "commit", "stash", "clean"):
             self.assertNotRegex(script, rf"git[^\r\n]*\s{verb}\b", verb)
 
+    def test_review_findings_stay_fixed(self) -> None:
+        script = text(SCRIPT)
+        # #213: the repository root itself is refused, not only paths below it.
+        self.assertIn("$workRoot.Equals($repoRoot, [StringComparison]::OrdinalIgnoreCase)", script)
+        # #213: manifest properties are read through a StrictMode-safe helper.
+        self.assertIn("$Manifest.PSObject.Properties[$Name]", script)
+        self.assertNotRegex(script, r"\$manifest\.(error|cleanup|passed|excel_build)\b")
+        # #213: a visible Excel window fails the run but the evidence is still written.
+        loop = script.split("foreach ($case in $cases) {", 1)[1].split("$verdict =", 1)[0]
+        self.assertRegex(loop, r"(?s)try \{\s*Stop-WindowlessExcel\s*\} catch \{.*?break")
+
     def test_documented(self) -> None:
         self.assertIn("`Verify-SyncRefusals.cmd`", DOC.read_text(encoding="utf-8"))
         self.assertIn("`Verify-SyncRefusals.cmd`", (ROOT / "README.md").read_text(encoding="utf-8"))
