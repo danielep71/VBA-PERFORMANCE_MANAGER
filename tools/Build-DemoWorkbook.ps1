@@ -51,7 +51,7 @@ $LogSheet = 'DEMO_cPM'
 $LogTable = 'Tbl_cPM_Log'
 $SmokeActions = @('cPM_RunBasicTiming', 'cPM_RunAllMethods', 'cPM_RunAlignedDemo',
                   'cPM_RunDiagnostics', 'cPM_RunOverheadDemo', 'cPM_RunPauseDemo',
-                  'cPM_RunTWComparison')
+                  'cPM_RunTWComparison', 'cPM_RunMeasuredBenchmark')
 $ClearAction = 'cPM_ClearResultsLog'
 $WorkbookName = 'PERFORMANCE MANAGER.xlsm'
 $CompileControlId = 578         # Debug > Compile VBAProject
@@ -295,7 +295,7 @@ try {
         $failed = [int]$excel.Run($prefix + 'cPM_Demo_FailureCount') - $failuresBefore
         $record.actions += [ordered]@{ action = $action; rows_added = $added; failed = ($failed -gt 0)
                                        seconds = [math]::Round($clock.Elapsed.TotalSeconds, 2) }
-        Write-Host ("  {0,-22} rows {1,3}  {2}" -f $action, $added, $(if ($failed -gt 0 -or $added -lt 1) { 'FAILED' } else { 'ok' }))
+        Write-Host ("  {0,-26} rows {1,3}  {2}" -f $action, $added, $(if ($failed -gt 0 -or $added -lt 1) { 'FAILED' } else { 'ok' }))
     }
     $record.failure_count = [int]$excel.Run($prefix + 'cPM_Demo_FailureCount')
     [void]$excel.Run($prefix + $ClearAction)
