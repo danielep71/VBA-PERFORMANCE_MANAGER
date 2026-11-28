@@ -133,7 +133,7 @@ Attribute VB_Name = "M_cPM_TimeWasters"
 '     benchmark runs
 '
 ' VERSION
-'   1.4.0
+'   1.4.1
 '
 ' UPDATED
 '   2026-10-21 - Comment accuracy pass (contract list, banners, headers)

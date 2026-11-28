@@ -96,6 +96,15 @@ Use only the categories needed by a release.
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-11-30
+
+Boundary hardening and contract definition for the v1.4.0 runtime. No class
+member is added or removed, and every v1.4.0 call shape still compiles; one
+error value, `ERR_TW_KEY_SPACE_EXHAUSTED`, is added (#35). The behavior
+changes below are bounded corrections. The demo workbook is now published
+only inside `VBA-Performance-Manager-v1.4.1.zip`, together with `LICENSE`
+and `NOTICE` (#72).
+
 ### Compatibility
 
 - **Office/VBA compatibility (#34):** retain pre-VBA7 legacy 32-bit, VBA7 Win32
@@ -1152,7 +1161,8 @@ Initial public release.
 
 ---
 
-[Unreleased]: https://github.com/danielep71/vba-performance_manager/compare/v1.4.0...main
+[Unreleased]: https://github.com/danielep71/vba-performance_manager/compare/v1.4.1...main
+[1.4.1]: https://github.com/danielep71/vba-performance_manager/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.1.0...v1.2.0

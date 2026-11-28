@@ -1,7 +1,10 @@
 # v1.4.1 release evidence
 
-v1.4.1 is in development. No v1.4.1 release certification is claimed. The
-latest published release is v1.4.0, whose evidence is recorded in
+This is the certification and release record of v1.4.1. The candidate is the
+`main` commit that the `v1.4.1` tag targets; the record below is completed from
+that commit's static, Excel and package evidence after publication, in the
+first pull request of the next cycle (RELEASING step 12). Until a field is
+filled in, it claims nothing. v1.4.0's evidence is recorded in
 [docs/releases/v1.4.0](../v1.4.0/IMPLEMENTATION_AND_RELEASE_PLAN.md).
 
 ## Where the work is tracked
@@ -59,8 +62,11 @@ failed. The evidence is on
 
 ## Release record
 
-This section is completed under #101 from the frozen candidate. Each field is
-one that [RELEASING.md](../../../RELEASING.md#evidence-record) or #101 requires.
+This section is completed under #101 from the frozen candidate on `main`. Each
+field is one that [RELEASING.md](../../../RELEASING.md#evidence-record) or #101
+requires. The demo workbook is built by `tools\Build-DemoWorkbook.cmd`, whose
+JSON build record names the commit, the smoke-tested actions and the package
+hashes (#47, #72).
 
 | Evidence | Result |
 |---|---|

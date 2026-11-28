@@ -11,7 +11,7 @@
 <!-- facts:badges -->
 [![Excel VBA](https://img.shields.io/badge/Excel_VBA-source_support_32_%2F_64--bit-217346?style=for-the-badge&logo=microsoft-excel&logoColor=white)](#requirements)
 [![Windows](https://img.shields.io/badge/Platform-Windows_desktop-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#requirements)
-[![Version](https://img.shields.io/badge/Version-1.4.0-6f42c1?style=for-the-badge)](#release-status)
+[![Version](https://img.shields.io/badge/Version-1.4.1-6f42c1?style=for-the-badge)](#release-status)
 [![Regression v1.4.0](https://img.shields.io/badge/Regression_v1.4.0-643_%2F_643-2ea44f?style=for-the-badge)](#regression-testing)
 [![Static checks](https://img.shields.io/badge/Static_checks-31_%2F_31-0969da?style=for-the-badge)](#static-source-analysis)
 [![License](https://img.shields.io/badge/License-Apache_2.0-2ea44f?style=for-the-badge)](LICENSE)
@@ -71,20 +71,20 @@
 > [!IMPORTANT]
 > **The primary deployment model is source-first.** Import the exported VBA
 > source into the workbook or add-in that needs the component. For the current
-> `v1.4.0` release, the production package is
+> `v1.4.1` release, the production package is
 > exactly two files, imported in the documented order.
 >
-> The macro-enabled workbook published with GitHub Releases is a convenience
-> artifact for evaluation, demonstration, and package-level validation. The
-> tagged source remains the authoritative implementation.
+> The macro-enabled workbook published with GitHub Releases, inside the
+> release package with `LICENSE` and `NOTICE`, is a convenience artifact for
+> evaluation, demonstration, and package-level validation. The tagged source
+> remains the authoritative implementation.
 
 > [!NOTE]
-> The latest tagged release is **v1.4.0**. Development for **v1.4.1** happens on
-> the `release/v1.4.1` branch and is squash-merged to `main` on request. Its work
-> is tracked in the
-> [v1.4.1 milestone](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/milestone/4),
-> and its evidence in [docs/releases/v1.4.1/EVIDENCE.md](docs/releases/v1.4.1/EVIDENCE.md).
-> Unreleased changes do not alter the exact-tag v1.4.0 certification record below.
+> The latest tagged release is **v1.4.1**. Its certification record is
+> [docs/releases/v1.4.1/EVIDENCE.md](docs/releases/v1.4.1/EVIDENCE.md), and
+> [Execution evidence](#execution-evidence) keeps the record of every earlier
+> tag. Development for **v1.5.0** is tracked in the
+> [v1.5.0 milestone](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/milestone/5).
 
 ## ✨ What this project is
 
@@ -162,7 +162,7 @@ benchmark repetition, statistics, and Excel-state cleanup.
 | Diagnostics | Timing environment | QPC frequency, system tick interval, backend overhead, active method and read status |
 | Failure policy | Strict by default | Raise on invalid measurement; optional non-strict fallback/zero with explicit status |
 | Deployment | Source-first | Two required production files; no official `.xlam` distribution |
-| Assurance | Static plus real Excel evidence | v1.4.0 exact-tag certification on 64-bit Excel, recorded under [Execution evidence](#execution-evidence); Office 32-bit remains unverified |
+| Assurance | Static plus real Excel evidence | Exact-tag certification on 64-bit Excel for each release, recorded under [Execution evidence](#execution-evidence); Office 32-bit remains unverified |
 
 ---
 
@@ -221,7 +221,7 @@ Set cPM = Nothing
 ```
 
 Supplying `ElapsedSecondsIn` formats the value already captured; it does not
-take a second timing sample. From v1.4.1 (unreleased; #30), `ElapsedTime`
+take a second timing sample. From v1.4.1 (#30), `ElapsedTime`
 formats any duration from 0 to 1E+15 seconds (about 31.7 million years)
 exactly, with hours that never wrap at 24. Negative values are clamped to 0
 and larger values to 1E+15, so no supplied value raises an overflow. In v1.4.0
@@ -533,8 +533,8 @@ validation gate with `ERR_CPM_STATS_OUT_OF_DOMAIN`, naming the offending index.
 Within the bound no statistic can overflow: the mean, the median's midpoint,
 the standard deviation's squared deviations and the coefficient of variation
 all stay far inside the `Double` range. The 1E+15 bound is v1.4.1 behavior
-(unreleased; #32): v1.4.0 accepts values up to 1E+300, and a large value can
-then overflow `Stats_StdDev`.
+(#32): v1.4.0 accepts values up to 1E+300, and a large value can then overflow
+`Stats_StdDev`.
 
 | Member | Result |
 |---|---|
@@ -613,7 +613,7 @@ xlCalculationAutomatic
 The documented invariant is that the open-workbook set remains stable while
 Calculation suppression is active. If Calculation control cannot be honored,
 `TW_CalculationExempted` exposes that outcome rather than inventing a baseline.
-On the v1.4.1 development line the exemption lasts for the rest of the shared
+From v1.4.1 the exemption lasts for the rest of the shared
 scope: a workbook that opens later does not reactivate Calculation control, and
 final teardown leaves Calculation as the host has it (#33).
 
@@ -646,7 +646,7 @@ properties. The `StrictMode` Get/Let pair is one property, not two members.
 
 v1.4.0 adds no new public member. It widens three existing signatures with
 trailing optional parameters, so the count is unchanged and every v1.3.0 call
-shape still compiles.
+shape still compiles. v1.4.1 changes no public member or signature.
 
 <details open>
 <summary><strong>⏱️ Core timing</strong></summary>
@@ -741,8 +741,8 @@ shape still compiles.
 
 The production source therefore centralizes **31 named error values**. No bare
 `vbObjectError + N` offsets appear in the shipped class or support module. The
-seventh `cPM_TWError` value, `ERR_TW_KEY_SPACE_EXHAUSTED`, is v1.4.1 behavior
-(unreleased; #35); v1.4.0 has 6 shared-state values and 30 in total.
+seventh `cPM_TWError` value, `ERR_TW_KEY_SPACE_EXHAUSTED`, is new in v1.4.1
+(#35); v1.4.0 has 6 shared-state values and 30 in total.
 
 The enum names are an API readability contract. They do not override VBA's
 underlying `Long` calling semantics.
@@ -945,6 +945,11 @@ actually executed rather than inferring it from the source.
 
 ### Latest published tagged evidence
 
+v1.4.1's certification record, with its Excel build, regression counts and
+package hashes, is [docs/releases/v1.4.1/EVIDENCE.md](docs/releases/v1.4.1/EVIDENCE.md).
+It is added to the table below once the release is published, as for every
+earlier tag.
+
 <!-- facts:evidence:v1.4.0 -->
 | Evidence | v1.4.0 result |
 |---|---|
@@ -995,13 +1000,13 @@ above. The originally published digests were `5eddd647…` (workbook) and
 
 ### Architecture scope
 
-v1.4.0 is executed and certified on Microsoft 365 Excel **64-bit**. The source
-retains its Office 32-bit compatibility branches, but this release has not been
-executed or certified on a real 32-bit Office host, so 32-bit behavior remains
+v1.3.0, v1.4.0 and v1.4.1 are executed and certified on Microsoft 365 Excel
+**64-bit**. The source retains its Office 32-bit compatibility branches, but no
+release has been executed or certified on a real 32-bit Office host, so 32-bit behavior remains
 **unverified rather than unsupported**. That assurance gap is tracked in
 [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29), now in v1.5.0
 as contributor-dependent work. The maintainer has no 32-bit Office test host;
-this gap does not block v1.4.1 or an otherwise complete release while qualified
+this gap does not block an otherwise complete release while qualified
 contributor evidence is unavailable. No 32-bit execution certification is inferred.
 
 The suite covers, among other areas:
@@ -1220,9 +1225,10 @@ being skipped. Run its fixtures with `python tools/test_workflow_pins.py`.
 The macro-enabled demo workbook is distributed from
 [GitHub Releases](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases)
 rather than maintained as an opaque binary in the source tree. From v1.4.1
-(not yet released; #72) it will be published only inside
-`VBA-Performance-Manager-vX.Y.Z.zip`, as `PERFORMANCE MANAGER.xlsm` together
-with `LICENSE` and `NOTICE`; keep all three together when redistributing it.
+(#72) it is published only inside `VBA-Performance-Manager-vX.Y.Z.zip`, as
+`PERFORMANCE MANAGER.xlsm` together with `LICENSE` and `NOTICE`; keep all
+three together when redistributing it. The workbook is built from the tagged
+commit by `tools\Build-DemoWorkbook.cmd`.
 v1.4.0 and earlier published the bare `PERFORMANCE.MANAGER.xlsm`. See
 [verifying a release package](INSTALLATION.md#release-workbook-package).
 
@@ -1336,8 +1342,8 @@ it is not a promise that every older Office release works.
 | VBA7, 64-bit | Retained | Only the exact builds and source SHAs in [Execution evidence](#execution-evidence) are certified |
 
 **Minimum-version boundary:** no numeric oldest Office release is certified.
-The supported source families above are explicit; the published v1.4.0 evidence
-is Microsoft 365 Excel 64-bit Version 2607, Build 16.0.20228.20188, not a blanket
+The supported source families above are explicit; each release's evidence
+names the exact Microsoft 365 Excel 64-bit build it ran on, not a blanket
 certification of all VBA7 hosts. Static review does not establish a minimum
 working Office version.
 
@@ -1362,22 +1368,20 @@ the source in your own add-in, but that host is built and maintained by you.
 ### Platform and bitness
 
 - The supported host is Windows desktop Excel. Backends 2–5 use Windows APIs.
-- The source contains 32-/64-bit conditional branches, but v1.3.0 and v1.4.0
-  were executed and certified only on 64-bit Office, so 32-bit behavior remains
-  unverified.
+- The source contains 32-/64-bit conditional branches, but v1.3.0, v1.4.0 and
+  v1.4.1 were executed and certified only on 64-bit Office, so 32-bit behavior
+  remains unverified.
 - Shared unsigned arithmetic tests reduce the untested 32-bit surface; they do
   not replace a real 32-bit Excel run. Support is unchanged;
   contributor-provided verification is tracked in
-  [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) for v1.5.0,
-  independently of v1.4.1's 64-bit certification.
+  [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29) for v1.5.0.
 
-### Changed in v1.4.1 (unreleased)
+### Changed in v1.4.1
 
-Behavior on the v1.4.1 development line that differs from v1.4.0. It is not in
-any published release yet; the authoritative ledger is the `[Unreleased]`
-section of [CHANGELOG.md](CHANGELOG.md).
+Behavior that differs from v1.4.0, consolidated. The authoritative ledger is
+[CHANGELOG.md](CHANGELOG.md).
 
-| Area | v1.4.0 | v1.4.1 (unreleased) |
+| Area | v1.4.0 | v1.4.1 |
 |---|---|---|
 | `ElapsedTime` range | A supplied value above 2,147,483,647 seconds raises a VBA overflow | 0 to 1E+15 seconds formatted exactly; values outside are clamped to that range ([#30](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/30)) |
 | Statistics domain | Values up to 1E+300 accepted, so a large value can overflow `Stats_StdDev` | Values above 1E+15 seconds raise `ERR_CPM_STATS_OUT_OF_DOMAIN` ([#32](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/32)) |
@@ -1421,11 +1425,10 @@ working code does.
   Prefer `MeasureOverhead_Samples` with `Stats_Text` for anything you will act
   on.
 - `ElapsedTime` formats exactly only from 0 to 1E+15 seconds; a supplied value
-  outside that range is clamped to it, not reported as an error (v1.4.1,
-  unreleased; #30).
+  outside that range is clamped to it, not reported as an error (v1.4.1; #30).
 - Statistics accept timing observations up to 1E+15 seconds only. That bound
   keeps every statistic free of overflow, but a larger value is rejected rather
-  than computed (v1.4.1, unreleased; #32).
+  than computed (v1.4.1; #32).
 
 ### Excel and Windows state
 
@@ -1450,10 +1453,11 @@ working code does.
 - Hosted CI currently performs static source analysis only; it does not run
   Excel. An automated Excel gate is tracked in
   [#156](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/156).
-- The v1.3.0 and v1.4.0 tags and tagged commits are unsigned.
-- The release workbook is manually assembled; no deterministic
-  source-to-workbook build exists. Building it from the exact commit is tracked
-  in [#87](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/87).
+- The v1.3.0, v1.4.0 and v1.4.1 tags and tagged commits are unsigned.
+- From v1.4.1 the release workbook is built from the tagged commit by a local
+  launcher on the maintainer's Excel, not in CI, and the build is not
+  byte-reproducible. Building the workbook under test in CI is tracked in
+  [#87](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/87).
 - Published hashes establish file identity, not cryptographic authorship or reproducible build provenance.
 - GitHub Release assets are technically mutable; stronger signing, attestation,
   and immutability controls are tracked in
@@ -1512,14 +1516,34 @@ are the immediate reference for changes made after its last reviewed baseline.
 # 🧭 Release status
 
 <!-- release-state -->
-Latest release: v1.4.0
+Latest release: v1.4.1
 Release status: published
 Development static checks: 31
 Execution evidence: 64-bit only
 32-bit follow-up: #29, v1.5.0, contributor-dependent
 <!-- /release-state -->
 
-## v1.4.0 — latest tagged release
+## v1.4.1 — latest tagged release
+
+Published on **2026-11-30**, v1.4.1 hardens the v1.4.0 runtime at its
+boundaries:
+
+- `ElapsedTime` formats 0 to 1E+15 seconds exactly and never overflows (#30);
+- an aligned method-3 start releases its timer period on a strict timeout (#31);
+- statistics reject observations above 1E+15 seconds instead of overflowing (#32);
+- a Calculation exemption lasts for the rest of the shared scope (#33);
+- the shared TW key space counts to 1E+15 and then raises
+  `ERR_TW_KEY_SPACE_EXHAUSTED` (#35);
+- next-tick alignment faults are covered in strict and non-strict mode (#44).
+
+The assurance chain grew with it: fail-closed release provenance (#51),
+compile-safety checks (#45), pinned workflow actions (#46), a local real-Excel
+runner (#11), and a demo workbook rebuilt from source and published with
+`LICENSE` and `NOTICE` (#47, #72). See [CHANGELOG.md](CHANGELOG.md), the
+[v1.4.1 Release](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.1)
+and its [evidence record](docs/releases/v1.4.1/EVIDENCE.md).
+
+## v1.4.0 — previous tagged release
 
 Published on **2026-08-31**, v1.4.0 delivered backend-homogeneous measurement,
 complete failure/rejection evidence across all three measurement APIs, validated
@@ -1538,7 +1562,7 @@ Real Office 32-bit execution remains unverified and is tracked in
 [#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29); this is
 an assurance limitation, not a claim that 32-bit source support was removed.
 
-## v1.3.0 — previous tagged release
+## v1.3.0 — earlier tagged release
 
 Published on **2026-08-16**, v1.3.0 focused on enforceable consistency, named
 API values, failure observability, honest statistics, and release provenance.
@@ -1559,29 +1583,15 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete released record and the
 [v1.3.0 Release](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.3.0)
 for the published workbook and manifest.
 
-## v1.4.1 — active development cycle
+## v1.5.0 — next development cycle
 
-The v1.4.1 milestone hardens the v1.4.0 runtime, documentation and assurance
-chain. The release ledger is reconciled (#49); fail-closed provenance (#51)
-and compile-safety checks (#45) are implemented, and workflow actions are
-pinned to immutable commits (#46). The bounded timing, statistics and
-shared-state corrections are merged (see
-[Changed in v1.4.1](#changed-in-v141-unreleased)), and a local real-Excel
-runner exists (#11). These controls do not constitute a new Excel
-certification. Remaining work:
-
-- rebuild and recertify the demo workbook against the current API (#47);
-- include `LICENSE` and `NOTICE` with the downloadable workbook (#72);
-- align legacy call-shape assertions and case labels with what the suite runs
-  (#78);
-- local example certification and VBA sync/export launchers (#138);
-- certify and publish v1.4.1 (#101).
-
-The automated CI Excel gate
-([#156](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/156)) and
+v1.5.0 covers modularization and release trust: the automated CI Excel gate
+([#156](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/156)),
 contributor-provided Office 32-bit evidence
-([#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)) are
-v1.5.0 work, as is the official add-in artifact.
+([#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)) and
+the official add-in artifact
+([#48](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/48)). See the
+[v1.5.0 milestone](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/milestone/5).
 
 ---
 
