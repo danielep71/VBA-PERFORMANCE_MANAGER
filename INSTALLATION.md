@@ -39,7 +39,7 @@ This guide covers installation, validation, upgrade, recovery, and removal of
 | Licence | Apache 2.0 (v1.4.0 and earlier: MIT) |
 | Current deployment status | Two-file source-first runtime with an optional evaluation workbook. |
 
-The current published package is **v1.4.1**, released on 30 November 2026.
+The current published package is **v1.4.1**, released on 28 November 2026.
 Import `src/modules/M_cPM_TIMEWASTERS.bas` and
 `src/classes/cPerformanceManager.cls` from the same tag. The optional
 `VBA-Performance-Manager-v1.4.1.zip` package, holding the demo workbook with
