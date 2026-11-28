@@ -49,12 +49,14 @@ Attribute VB_Name = "M_cPM_DEMO"
 '   - cPM_RunOverheadDemo
 '   - cPM_RunPauseDemo
 '   - cPM_RunTWComparison
+'   - cPM_RunMeasuredBenchmark
 '   - cPM_ClearResultsLog
 '
 ' DEPENDENCIES
 '   - cPerformanceManager
 '   - M_DEMO_BUILDER
 '   - M_cPM_TimeWasters
+'   - M_cPM_USAGE_EXAMPLES (the procedures the measured benchmark runs)
 '
 ' NOTES
 '   - Place this code in a STANDARD MODULE
@@ -62,7 +64,7 @@ Attribute VB_Name = "M_cPM_DEMO"
 '     Option Private Module
 '
 ' UPDATED
-'   2026-04-15
+'   2026-11-27
 '
 ' AUTHOR
 '   Daniele Penza
@@ -80,8 +82,15 @@ Attribute VB_Name = "M_cPM_DEMO"
     Private Const cPM_SHEET_DEMO            As String = "DEMO_cPM"
     Private Const cPM_SHEET_DATA            As String = "DATA_cPM"
     Private Const cPM_SHEET_HELP            As String = "HELP_cPM"
+    Private Const cPM_SHEET_HOME            As String = "Home"
 
     Private Const cPM_TABLE_LOG             As String = "Tbl_cPM_Log"
+
+    'Procedures measured by cPM_RunMeasuredBenchmark. They live in
+    'M_cPM_USAGE_EXAMPLES because Application.Run reaches only Public
+    'procedures in a module without Option Private Module.
+    Private Const cPM_MEASURED_WORKLOAD     As String = "cPM_Usage_Workload_Compute"
+    Private Const cPM_MEASURED_BASELINE     As String = "cPM_Usage_BaselineEmpty"
 
     Private Const cPM_DEMO_TITLE            As String = "CLASS PERFORMANCE MANAGER"
 
@@ -93,6 +102,9 @@ Attribute VB_Name = "M_cPM_DEMO"
 
     Private Const cPM_SUBTITLE_HELP         As String = _
                     "Help Sheet: Quick in-workbook guidance for the demo layout"
+
+    Private Const cPM_SUBTITLE_HOME         As String = _
+                    "Start here: what this workbook is, where to begin, and what it does not claim"
 
     Private Const cPM_NAME_METHOD           As String = "cPM_MethodID"
     Private Const cPM_NAME_ALIGN            As String = "cPM_AlignToNextTick"
@@ -107,6 +119,12 @@ Attribute VB_Name = "M_cPM_DEMO"
     Private Const cPM_NAME_VALUEFILLVALUE   As String = "cPM_ValueFillValue"
     Private Const cPM_NAME_FORMULAFILL      As String = "cPM_FormulaFill"
     Private Const cPM_NAME_FORMULAFILLEXPR  As String = "cPM_FormulaFillExpr"
+
+'------------------------------------------------------------------------------
+' MODULE STATE
+'------------------------------------------------------------------------------
+    Private m_Unattended                    As Boolean  'TRUE: report failures without a message box
+    Private m_FailureCount                  As Long     'Demo actions that failed since the last reset
 
 Public Sub cPM_CreateDemoSheets()
 '
@@ -132,7 +150,7 @@ Public Sub cPM_CreateDemoSheets()
 '   - Delegates generic sheet preparation to DEMO_Build_DemoTemplate
 '   - Resolves the prepared worksheets from ThisWorkbook
 '   - Builds the sheet-specific content for DEMO_cPM, DATA_cPM, and HELP_cPM
-'   - Activates the main demo sheet at the end
+'   - Builds the Home start page, places it first and activates it
 '
 ' ERROR POLICY
 '   Restores Application state and then re-raises the original error
@@ -144,13 +162,14 @@ Public Sub cPM_CreateDemoSheets()
 '   - cPM_BuildDemoSheet
 '   - cPM_BuildDataSheet
 '   - cPM_BuildHelpSheet
+'   - cPM_BuildHomeSheet
 '
 ' NOTES
 '   Generic worksheet lifecycle concerns such as create / get / reset are
 '   delegated to DEMO_Build_DemoTemplate and are therefore not repeated here
 '
-'   This routine rebuilds the three demo sheets and then activates DEMO_cPM
-'   as the user-facing landing sheet
+'   This routine rebuilds the three demo sheets and the Home start page, and
+'   activates Home as the user-facing landing sheet
 '
 ' UPDATED
 '   2026-04-18
@@ -163,6 +182,7 @@ Public Sub cPM_CreateDemoSheets()
     Dim WS_Demo             As Worksheet            'Demo / control sheet
     Dim WS_Data             As Worksheet            'Data / benchmark sheet
     Dim WS_Help             As Worksheet            'Embedded help sheet
+    Dim WS_Home             As Worksheet            'Start page
 
     Dim FastModeState       As tDemoFastModeState   'Saved Application-state snapshot
     Dim FastModeOn          As Boolean              'TRUE when fast mode was entered
@@ -223,6 +243,16 @@ Public Sub cPM_CreateDemoSheets()
     'Build the embedded help / documentation sheet content
         cPM_BuildHelpSheet WS_Help
 
+    'Build the start page and place it first
+        DEMO_Build_DemoTemplate _
+            cPM_SHEET_HOME, _
+            cPM_DEMO_TITLE, _
+            cPM_SUBTITLE_HOME
+        Set WS_Home = WB.Worksheets(cPM_SHEET_HOME)
+        cPM_BuildHomeSheet WS_Home
+        WS_Home.Move Before:=WB.Worksheets(1)
+        WS_Home.Activate
+
 Clean_Exit:
 '------------------------------------------------------------------------------
 ' CLEANUP
@@ -280,7 +310,7 @@ Private Sub cPM_BuildDemoSheet( _
 ' BEHAVIOR
 '   - Builds the control panel
 '   - Builds the action-button area
-'   - Adds the "Run Regression Tests" button, which runs
+'   - Adds the "Regression Suite" button in a separate MAINTAINER box, which runs
 '     Run_cPerformanceManager_RegressionSuite
 '   - Builds the structured results-log table
 '   - Applies lightweight number-format refinements to the results log
@@ -300,7 +330,7 @@ Private Sub cPM_BuildDemoSheet( _
 '     button's macro; it is resolved only when the button is clicked)
 '
 ' UPDATED
-'   2026-10-21
+'   2026-11-28
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -313,12 +343,21 @@ Private Sub cPM_BuildDemoSheet( _
 '------------------------------------------------------------------------------
 ' ADJUST COLUMNS
 '------------------------------------------------------------------------------
-    'Adjust the main visible columns for the demo sheet layout
-        WS.Columns("C:M").ColumnWidth = 18
+    'Keep the sheet within one screen: narrow columns by default (#47)
+        WS.Columns("C:M").ColumnWidth = 12
+    'Widen the control-panel label column
+        WS.Columns("C").ColumnWidth = 18
+    'Fit the log's timestamp (yyyy-mm-dd hh:mm:ss) and scenario names
+        WS.Columns("D:E").ColumnWidth = 20
+    'Leave room for the header filter arrows of Method Name and Elapsed Seconds
+        WS.Columns("G").ColumnWidth = 18
+        WS.Columns("H").ColumnWidth = 16
+    'Give the T1 and T2 clock readings room for their digits
+        WS.Columns("J:K").ColumnWidth = 16
     'Widen the elapsed-time text column
-        WS.Columns("I").ColumnWidth = 50
+        WS.Columns("I").ColumnWidth = 20
     'Widen the notes column
-        WS.Columns("M").ColumnWidth = 40
+        WS.Columns("M").ColumnWidth = 30
 
 '------------------------------------------------------------------------------
 ' BUILD CONTROL PANEL
@@ -430,7 +469,7 @@ Private Sub cPM_BuildDemoSheet( _
     ' PREPARE ACTION SECTION
     '--------------------------------------------------------------------------
         'Write the actions section header band
-            DEMO_Write_BandHeader WS.Range("J4:L4"), "DEMO ACTIONS"
+            DEMO_Write_BandHeader WS.Range("F4:I4"), "DEMO ACTIONS"
 
     '--------------------------------------------------------------------------
     ' DEFINE BUTTON GRID
@@ -444,36 +483,40 @@ Private Sub cPM_BuildDemoSheet( _
                 Array("btn_cPM_Overhead", "Run Overhead Demo", "cPM_RunOverheadDemo"), _
                 Array("btn_cPM_Pause", "Run Pause Demo", "cPM_RunPauseDemo"), _
                 Array("btn_cPM_TW", "Run TW Comparison", "cPM_RunTWComparison"), _
+                Array("btn_cPM_Measured", "Run Benchmark", "cPM_RunMeasuredBenchmark"), _
                 Array("btn_cPM_ClearLog", "Clear Results Log", "cPM_ClearResultsLog"))
 
     '--------------------------------------------------------------------------
     ' CREATE BUTTONS
     '--------------------------------------------------------------------------
-        'Create the standard two-column demo button grid
+        'Create a three-column grid so nine buttons fit the box in three rows
             DEMO_Add_ButtonGrid _
                 WS, _
-                WS.Range("J5"), _
+                WS.Range("F5"), _
                 ButtonSpecs, _
-                2, _
-                135, _
+                3, _
+                110, _
                 25, _
-                18, _
-                15, _
-                4, _
+                12, _
+                25, _
+                6, _
                 5
 
     '--------------------------------------------------------------------------
     ' APPLY VISUAL FRAME
     '--------------------------------------------------------------------------
         'Apply a border around the full action-button area
-            DEMO_Set_RangeBorder WS.Range("J4:L12")
+            DEMO_Set_RangeBorder WS.Range("F4:I12")
 
     '--------------------------------------------------------------------------
     ' CREATE REGRESSION TEST BUTTON
     '--------------------------------------------------------------------------
-        DEMO_Add_DemoButton WS, "Btn_cPM_Regression", "Run Regression Tests", _
-            WS.Range("M8").Left + 40, WS.Range("I8").Top + 10, _
-            135, 25, "Run_cPerformanceManager_RegressionSuite"
+        'Keep the maintainer tool apart from the demo actions (#47)
+            DEMO_Write_BandHeader WS.Range("K4:L4"), "MAINTAINER"
+            DEMO_Add_DemoButton WS, "Btn_cPM_Regression", "Regression Suite", _
+                WS.Range("K5").Left + 6, WS.Range("K5").Top + 5, _
+                WS.Range("K5:L5").Width - 12, 25, "Run_cPerformanceManager_RegressionSuite"
+            DEMO_Set_RangeBorder WS.Range("K4:L6")
 
 '------------------------------------------------------------------------------
 ' BUILD RESULTS LOG
@@ -516,8 +559,8 @@ Private Sub cPM_BuildDemoSheet( _
             Lo.ListColumns("Method ID").DataBodyRange.NumberFormat = "0"
         'Format elapsed / timer metrics with higher precision
             Lo.ListColumns("Elapsed Seconds").DataBodyRange.NumberFormat = "0.000000"
-            Lo.ListColumns("T1").DataBodyRange.NumberFormat = "0.000000"
-            Lo.ListColumns("T2").DataBodyRange.NumberFormat = "0.000000"
+            Lo.ListColumns("T1").DataBodyRange.NumberFormat = "General"
+            Lo.ListColumns("T2").DataBodyRange.NumberFormat = "General"
             Lo.ListColumns("ET").DataBodyRange.NumberFormat = "0.000000"
 
         On Error GoTo 0
@@ -742,7 +785,8 @@ Private Sub cPM_BuildHelpSheet(ByVal WS As Worksheet)
     'Write the workbook-overview guidance lines
         WS.Range("D5").Value = "DEMO_cPM contains the control panel, action buttons, and the results log."
         WS.Range("D6").Value = "DATA_cPM contains worksheet areas suitable for write / fill / calculate demonstrations."
-        WS.Range("D7").Value = "HELP_cPM contains a short embedded guide."
+        WS.Range("D7").Value = "HELP_cPM is this guide; Home is the start page."
+        WS.Range("D8").Value = "REGRESSION_cPM holds the regression-suite log once the maintainer has run it."
 
 '------------------------------------------------------------------------------
 ' RECOMMENDED FIRST STEPS
@@ -779,7 +823,7 @@ Private Sub cPM_BuildHelpSheet(ByVal WS As Worksheet)
     'Write the pause-method guidance lines
         WS.Range("D24").Value = "1 = Sleep API: millisecond-style kernel wait; lowest overhead; does not yield via DoEvents."
         WS.Range("D25").Value = "2 = Timer + DoEvents loop: coarser wait; yields to Excel / UI; higher overhead."
-        WS.Range("D26").Value = "3 = Application.Wait: whole-second granularity; simple and deterministic; may overshoot slightly."
+        WS.Range("D26").Value = "3 = Application.Wait for coarse waits, bounded by the same elapsed check as the final guard; below about two seconds it behaves like method 2."
         WS.Range("D27").Value = "4 = Now + DoEvents loop: Date-based yielding wait; useful as a fallback / comparison path."
 
 '------------------------------------------------------------------------------
@@ -791,7 +835,7 @@ Private Sub cPM_BuildHelpSheet(ByVal WS As Worksheet)
     'Write the TW guidance lines
         WS.Range("D30").Value = "TW means Time-Wasters suppression."
         WS.Range("D31").Value = "The demo control supports modes such as All Off and selected exemptions."
-        WS.Range("D32").Value = "The current project design requires the companion module M_cPM_TimeWasters.bas."
+        WS.Range("D32").Value = "The current project design requires the companion module M_cPM_TIMEWASTERS.bas."
 
 '------------------------------------------------------------------------------
 ' IMPORTANT NOTES
@@ -803,6 +847,116 @@ Private Sub cPM_BuildHelpSheet(ByVal WS As Worksheet)
         WS.Range("D35").Value = "Use method 5 for the main benchmark path."
         WS.Range("D36").Value = "Use ElapsedSeconds for numeric comparisons and ElapsedTime for readable output."
         WS.Range("D37").Value = "Always call ResetEnvironment in real demo / benchmark macros."
+
+'------------------------------------------------------------------------------
+' MEASUREMENT AND EVIDENCE
+'------------------------------------------------------------------------------
+    'Write the section header
+        DEMO_Write_BandHeader WS.Range("C39:D39"), "MEASUREMENT AND EVIDENCE", , , , , , False
+    'Write the measurement-contract guidance lines
+        WS.Range("D40").Value = "MeasureProcedure runs a Public Sub repeatedly and returns every retained sample; MeasureBaseline measures an empty procedure through the same path."
+        WS.Range("D41").Value = "Samples whose read failed, or that fell back to another backend, are excluded and counted in FailedReadsOut and RejectedSamplesOut."
+        WS.Range("D42").Value = "Those counts read -1 until a run publishes them: a negative count means nothing was recorded, not that nothing failed."
+        WS.Range("D43").Value = "Report statistics only when both counts are zero; Stats_Median, Stats_Percentile and Stats_CoefficientOfVariation describe the vector."
+        WS.Range("D44").Value = "Checkpoint, ReportAsArray and ReportAsText time named steps inside one session."
+        WS.Range("D45").Value = "Run Benchmark on DEMO_cPM applies these rules: it measures a workload and a baseline, and logs the net median, P95 and CV only when every count is zero."
+
+'------------------------------------------------------------------------------
+' STRICT MODE
+'------------------------------------------------------------------------------
+    'Write the section header
+        DEMO_Write_BandHeader WS.Range("C47:D47"), "STRICT MODE", , , , , , False
+    'Write the strict-mode guidance line
+        WS.Range("D48").Value = "StrictMode = TRUE (the default) raises when a measurement is invalid; FALSE falls back and reports the reason in LastReadStatus."
+
+'------------------------------------------------------------------------------
+' DEMO, EXAMPLES AND REGRESSION
+'------------------------------------------------------------------------------
+    'Write the section header
+        DEMO_Write_BandHeader WS.Range("C50:D50"), "DEMO, EXAMPLES AND REGRESSION", , , , , , False
+    'Write the responsibility guidance lines
+        WS.Range("D51").Value = "DEMO_cPM shows behaviour interactively; M_cPM_USAGE_EXAMPLES holds code examples; the regression suite is the evidence."
+        WS.Range("D52").Value = "Demo results are illustrative and depend on the machine; they are not benchmarks of the component."
+        WS.Range("D53").Value = "A failed demo action is written to the results log and reported in a message, without opening the VBA editor."
+
+End Sub
+
+Private Sub cPM_BuildHomeSheet(ByVal WS As Worksheet)
+'
+'==============================================================================
+'                             BUILD HOME SHEET
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Builds the Home start page of the demo workbook
+'
+' WHY THIS EXISTS
+'   The workbook needs one landing page that says what it is, where to begin
+'   and what it does not claim. It is built from source so that a rebuild
+'   reproduces the distributed workbook (#47)
+'
+' INPUTS
+'   WS
+'     Home worksheet to populate
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Writes the start-here steps
+'   - States what the workbook is and how it relates to the source
+'   - States the execution-evidence boundary
+'   - Adds hyperlinks to DEMO_cPM and HELP_cPM
+'
+' ERROR POLICY
+'   Raises errors normally
+'
+' DEPENDENCIES
+'   - DEMO_Write_BandHeader
+'
+' UPDATED
+'   2026-11-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' START HERE
+'------------------------------------------------------------------------------
+    'Write the section header
+        DEMO_Write_BandHeader WS.Range("C4:D4"), "START HERE", , , , , , False
+    'Write the first steps
+        WS.Range("D5").Value = "1. Open DEMO_cPM and press Run Basic Timing: it times a worksheet value fill with the QPC clock (method 5)."
+        WS.Range("D6").Value = "2. Change the control panel (method, StrictMode, TW Mode) and run again; every run adds a row to the results log."
+        WS.Range("D7").Value = "3. Read HELP_cPM for the timing methods, the pause methods and the measurement contract."
+
+'------------------------------------------------------------------------------
+' WHAT THIS WORKBOOK IS
+'------------------------------------------------------------------------------
+    'Write the section header
+        DEMO_Write_BandHeader WS.Range("C9:D9"), "WHAT THIS WORKBOOK IS", , , , , , False
+    'Write the scope lines
+        WS.Range("D10").Value = "A demonstration of cPerformanceManager, a timing and execution-control class for Excel VBA."
+        WS.Range("D11").Value = "The runtime is two source files; this workbook is a convenience copy. Where they disagree, the tagged source is right."
+        WS.Range("D12").Value = "Demo actions show behaviour; the regression suite is the evidence, and REGRESSION_cPM holds its log."
+
+'------------------------------------------------------------------------------
+' PLATFORM
+'------------------------------------------------------------------------------
+    'Write the section header
+        DEMO_Write_BandHeader WS.Range("C14:D14"), "PLATFORM", , , , , , False
+    'Write the execution-evidence boundary
+        WS.Range("D15").Value = "Windows desktop Excel. Releases are executed and certified on 64-bit Excel; 32-bit Office is kept in the source but not execution-certified."
+
+'------------------------------------------------------------------------------
+' GO TO
+'------------------------------------------------------------------------------
+    'Write the section header
+        DEMO_Write_BandHeader WS.Range("C17:D17"), "GO TO", , , , , , False
+    'Link the demo and help sheets
+        WS.Hyperlinks.Add Anchor:=WS.Range("D18"), Address:=vbNullString, _
+                          SubAddress:="'" & cPM_SHEET_DEMO & "'!A1", _
+                          TextToDisplay:="DEMO_cPM: control panel, demo actions and results log"
+        WS.Hyperlinks.Add Anchor:=WS.Range("D19"), Address:=vbNullString, _
+                          SubAddress:="'" & cPM_SHEET_HELP & "'!A1", _
+                          TextToDisplay:="HELP_cPM: methods, measurement contract and boundaries"
 
 End Sub
 
@@ -843,8 +997,8 @@ Public Sub cPM_RunBasicTiming()
 '   - Appends one log row
 '
 ' ERROR POLICY
-'   Restores the cPerformanceManager environment before re-raising the
-'   original error
+'   Restores the cPerformanceManager environment, then reports the error on
+'   the results log and in a message through cPM_Demo_ReportFailure
 '
 ' DEPENDENCIES
 '   - Btn_Click
@@ -855,6 +1009,7 @@ Public Sub cPM_RunBasicTiming()
 '   - cPM_Demo_ApplyTWMode
 '   - cPM_Demo_GetTWMode
 '   - cPM_Demo_AppendLog
+'   - cPM_Demo_ReportFailure
 '   - Demo_SB_SetProgress
 '
 ' NOTES
@@ -998,9 +1153,10 @@ CleanExit:
         End If
     'Return control of the status bar to Excel
         Application.StatusBar = False
-    'Re-raise the original error after cleanup when needed
+    'Report a failure on the results log and in a message after cleanup
         If SavedErrNumber <> 0 Then
-            Err.Raise SavedErrNumber, SavedErrSource, SavedErrDescription
+            cPM_Demo_ReportFailure "Basic Timing", SavedErrNumber, SavedErrSource, _
+                                   SavedErrDescription
         End If
     Exit Sub
 
@@ -1049,7 +1205,8 @@ Public Sub cPM_RunAllMethods()
 '   - Appends one log row per method
 '
 ' ERROR POLICY
-'   Restores the cPerformanceManager environment before re-raising errors
+'   Restores the cPerformanceManager environment, then reports the error on
+'   the results log and in a message through cPM_Demo_ReportFailure
 '
 ' DEPENDENCIES
 '   - Btn_Click
@@ -1061,6 +1218,7 @@ Public Sub cPM_RunAllMethods()
 '   - cPM_Demo_GetTWMode
 '   - cPM_Demo_ApplyTWMode
 '   - cPM_Demo_AppendLog
+'   - cPM_Demo_ReportFailure
 '   - Demo_SB_SetProgress
 '   - cPM_Demo_MethodName
 '
@@ -1208,9 +1366,10 @@ CleanExit:
         End If
     'Return control of the status bar to Excel
         Application.StatusBar = False
-    'Re-raise the original error after cleanup when needed
+    'Report a failure on the results log and in a message after cleanup
         If SavedErrNumber <> 0 Then
-            Err.Raise SavedErrNumber, SavedErrSource, SavedErrDescription
+            cPM_Demo_ReportFailure "All Methods", SavedErrNumber, SavedErrSource, _
+                                   SavedErrDescription
         End If
     Exit Sub
 
@@ -1264,7 +1423,8 @@ Public Sub cPM_RunAlignedDemo()
 '   - Appends one log row for each pass
 '
 ' ERROR POLICY
-'   Restores the cPerformanceManager environment before re-raising errors
+'   Restores the cPerformanceManager environment, then reports the error on
+'   the results log and in a message through cPM_Demo_ReportFailure
 '
 ' DEPENDENCIES
 '   - Btn_Click
@@ -1276,6 +1436,7 @@ Public Sub cPM_RunAlignedDemo()
 '   - cPM_Demo_GetTWMode
 '   - cPM_Demo_ApplyTWMode
 '   - cPM_Demo_AppendLog
+'   - cPM_Demo_ReportFailure
 '   - Demo_SB_SetProgress
 '   - cPM_Demo_MethodName
 '
@@ -1446,9 +1607,10 @@ CleanExit:
         End If
     'Return control of the status bar to Excel
         Application.StatusBar = False
-    'Re-raise the original error after cleanup when needed
+    'Report a failure on the results log and in a message after cleanup
         If SavedErrNumber <> 0 Then
-            Err.Raise SavedErrNumber, SavedErrSource, SavedErrDescription
+            cPM_Demo_ReportFailure "Aligned Demo", SavedErrNumber, SavedErrSource, _
+                                   SavedErrDescription
         End If
 
     Exit Sub
@@ -1491,12 +1653,14 @@ Public Sub cPM_RunDiagnostics()
 '   - Logs QPC tick / frequency information
 '
 ' ERROR POLICY
-'   Restores the cPerformanceManager environment before re-raising errors
+'   Restores the cPerformanceManager environment, then reports the error on
+'   the results log and in a message through cPM_Demo_ReportFailure
 '
 ' DEPENDENCIES
 '   - Btn_Click
 '   - cPM_Demo_PrepareInstance
 '   - cPM_Demo_AppendLog
+'   - cPM_Demo_ReportFailure
 '
 ' UPDATED
 '   2026-04-15
@@ -1549,9 +1713,10 @@ CleanExit:
             On Error GoTo 0
         End If
 
-    'Re-raise the original error after cleanup when needed
+    'Report a failure on the results log and in a message after cleanup
         If SavedErrNumber <> 0 Then
-            Err.Raise SavedErrNumber, SavedErrSource, SavedErrDescription
+            cPM_Demo_ReportFailure "Diagnostics", SavedErrNumber, SavedErrSource, _
+                                   SavedErrDescription
         End If
 
     Exit Sub
@@ -1604,7 +1769,8 @@ Public Sub cPM_RunOverheadDemo()
 '   - Appends one log row
 '
 ' ERROR POLICY
-'   Restores the cPerformanceManager environment before re-raising errors
+'   Restores the cPerformanceManager environment, then reports the error on
+'   the results log and in a message through cPM_Demo_ReportFailure
 '
 ' DEPENDENCIES
 '   - Btn_Click
@@ -1612,6 +1778,7 @@ Public Sub cPM_RunOverheadDemo()
 '   - cPM_Demo_GetMethodID
 '   - cPM_Demo_GetIterations
 '   - cPM_Demo_AppendLog
+'   - cPM_Demo_ReportFailure
 '   - Demo_SB_SetProgress
 '
 ' NOTES
@@ -1711,9 +1878,10 @@ CleanExit:
         End If
     'Return control of the status bar to Excel
         Application.StatusBar = False
-    'Re-raise the original error after cleanup when needed
+    'Report a failure on the results log and in a message after cleanup
         If SavedErrNumber <> 0 Then
-            Err.Raise SavedErrNumber, SavedErrSource, SavedErrDescription
+            cPM_Demo_ReportFailure "Overhead Demo", SavedErrNumber, SavedErrSource, _
+                                   SavedErrDescription
         End If
 
     Exit Sub
@@ -1761,7 +1929,8 @@ Public Sub cPM_RunPauseDemo()
 '   - Appends one log row
 '
 ' ERROR POLICY
-'   Restores the cPerformanceManager environment before re-raising errors
+'   Restores the cPerformanceManager environment, then reports the error on
+'   the results log and in a message through cPM_Demo_ReportFailure
 '
 ' DEPENDENCIES
 '   - Btn_Click
@@ -1769,6 +1938,7 @@ Public Sub cPM_RunPauseDemo()
 '   - cPM_Demo_GetPauseSeconds
 '   - cPM_Demo_GetPauseMethod
 '   - cPM_Demo_AppendLog
+'   - cPM_Demo_ReportFailure
 '   - Demo_SB_SetProgress
 '
 ' NOTES
@@ -1872,9 +2042,10 @@ CleanExit:
         End If
     'Return control of the status bar to Excel
         Application.StatusBar = False
-    'Re-raise the original error after cleanup when needed
+    'Report a failure on the results log and in a message after cleanup
         If SavedErrNumber <> 0 Then
-            Err.Raise SavedErrNumber, SavedErrSource, SavedErrDescription
+            cPM_Demo_ReportFailure "Pause Demo", SavedErrNumber, SavedErrSource, _
+                                   SavedErrDescription
         End If
 
     Exit Sub
@@ -1929,8 +2100,8 @@ Public Sub cPM_RunTWComparison()
 '   - Appends one structured log row for each pass
 '
 ' ERROR POLICY
-'   Restores the cPerformanceManager environment before re-raising the
-'   original error
+'   Restores the cPerformanceManager environment, then reports the error on
+'   the results log and in a message through cPM_Demo_ReportFailure
 '
 ' DEPENDENCIES
 '   - Btn_Click
@@ -1943,6 +2114,7 @@ Public Sub cPM_RunTWComparison()
 '   - cPM_Demo_GetIterations
 '   - cPM_Demo_ApplyTWMode
 '   - cPM_Demo_AppendLog
+'   - cPM_Demo_ReportFailure
 '   - Demo_SB_SetProgress
 '   - cPM_Demo_MethodName
 '
@@ -2130,9 +2302,10 @@ CleanExit:
         End If
     'Return control of the status bar to Excel
         Application.StatusBar = False
-    'Re-raise the original error after cleanup when needed
+    'Report a failure on the results log and in a message after cleanup
         If SavedErrNumber <> 0 Then
-            Err.Raise SavedErrNumber, SavedErrSource, SavedErrDescription
+            cPM_Demo_ReportFailure "TW Comparison", SavedErrNumber, SavedErrSource, _
+                                   SavedErrDescription
         End If
 
     Exit Sub
@@ -2145,6 +2318,223 @@ CleanFail:
         SavedErrNumber = Err.Number
         SavedErrSource = Err.Source
         SavedErrDescription = Err.Description
+    'Continue through the centralized cleanup path
+        Resume CleanExit
+
+End Sub
+
+Public Sub cPM_RunMeasuredBenchmark()
+'
+'==============================================================================
+'                          RUN MEASURED BENCHMARK
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Measures a fixed workload repeatedly, subtracts a dispatch-matched baseline
+'   and logs the distribution of the retained samples
+'
+' WHY THIS EXISTS
+'   One timing is one observation. This action shows the measurement harness:
+'   repeated runs after warm-up, a baseline measured through the same
+'   Application.Run path, the evidence counts, and the statistics a reader
+'   should use (median, P95 and coefficient of variation)
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Reads the selected timing method and iteration count
+'   - Uses the iteration count as the number of measured runs, kept within
+'     cMinRuns to cMaxRuns, after cWarmupRuns discarded warm-up runs
+'   - Measures cPM_Usage_Workload_Compute with MeasureProcedure and
+'     cPM_Usage_BaselineEmpty with MeasureBaseline, with the same method and
+'     run count
+'   - Reports statistics only when every failed-read and rejected-sample count
+'     is zero; otherwise logs the counts and says that no statistic is shown
+'   - Appends one log row: Elapsed Seconds holds the net median (workload
+'     median minus baseline median), Notes holds the evidence and statistics
+'
+' ERROR POLICY
+'   Restores the cPerformanceManager environment, then reports the error on
+'   the results log and in a message through cPM_Demo_ReportFailure
+'
+' DEPENDENCIES
+'   - Btn_Click
+'   - cPM_Demo_PrepareInstance
+'   - cPM_Demo_GetMethodID
+'   - cPM_Demo_GetIterations
+'   - cPM_Demo_AppendLog
+'   - cPM_Demo_ReportFailure
+'   - Demo_SB_SetProgress
+'   - cPM_Usage_Workload_Compute and cPM_Usage_BaselineEmpty in
+'     M_cPM_USAGE_EXAMPLES
+'
+' NOTES
+'   A count below zero means the run published nothing, not that nothing
+'   failed, so the test is "not zero" rather than "greater than zero"
+'
+' UPDATED
+'   2026-11-27
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim cPM                 As cPerformanceManager   'Timer instance
+
+    Dim SavedErrNumber      As Long                  'Captured error number
+    Dim SavedErrSource      As String                'Captured error source
+    Dim SavedErrDescription As String                'Captured error description
+
+    Dim MethodID            As Integer               'Selected timing method
+    Dim Runs                As Long                  'Measured runs per vector
+    Dim Work()              As Double                'Workload samples
+    Dim Baseline()          As Double                'Baseline samples
+    Dim WorkFailed          As Long                  'Workload failed reads
+    Dim WorkStatus          As cPM_ReadStatus        'Workload last failure status
+    Dim WorkRejected        As Long                  'Workload rejected samples
+    Dim BaseFailed          As Long                  'Baseline failed reads
+    Dim BaseStatus          As cPM_ReadStatus        'Baseline last failure status
+    Dim BaseRejected        As Long                  'Baseline rejected samples
+    Dim WorkMedian          As Double                'Workload median
+    Dim BaseMedian          As Double                'Baseline median
+    Dim NetMedian           As Double                'Workload minus baseline median
+    Dim WorkP95             As Double                'Workload 95th percentile
+    Dim WorkCv              As Double                'Workload coefficient of variation
+    Dim Evidence            As String                'Evidence part of the notes
+    Dim Verdict             As String                'Variance verdict
+
+    Dim CurrentStep         As Long                  'Current stage progress step
+    Const TotalSteps As Long = 4                     'Total number of visible execution stages
+    Const cWarmupRuns As Long = 3                    'Discarded warm-up runs
+    Const cMinRuns As Long = 5                       'Fewest measured runs
+    Const cMaxRuns As Long = 1000                    'Most measured runs
+
+'------------------------------------------------------------------------------
+' INITIALIZE
+'------------------------------------------------------------------------------
+    'Enable structured cleanup on failure
+        On Error GoTo CleanFail
+    'Simulate a pressed button when the routine was launched by a shape
+        Btn_Click
+    'Initialize stage progress
+        CurrentStep = 0
+        Demo_SB_SetProgress CurrentStep, TotalSteps, "Preparing measured benchmark"
+    'Read the selected timing method
+        MethodID = cPM_Demo_GetMethodID()
+    'Read the selected iteration count and keep it within the run limits
+        Runs = cPM_Demo_GetIterations()
+        If Runs < cMinRuns Then Runs = cMinRuns
+        If Runs > cMaxRuns Then Runs = cMaxRuns
+    'Prepare a timer instance using the current strict-mode setting
+        Set cPM = cPM_Demo_PrepareInstance()
+
+'------------------------------------------------------------------------------
+' MEASURE WORKLOAD AND BASELINE
+'------------------------------------------------------------------------------
+    'Measure the workload
+        CurrentStep = 1
+        Demo_SB_SetProgress CurrentStep, _
+                            TotalSteps, _
+                            "Measuring workload - " & cPM.MethodName(MethodID)
+        Work = cPM.MeasureProcedure(cPM_MEASURED_WORKLOAD, Runs, cWarmupRuns, MethodID, _
+                                    WorkFailed, WorkStatus, WorkRejected)
+    'Measure the empty procedure through the same dispatch path
+        CurrentStep = 2
+        Demo_SB_SetProgress CurrentStep, _
+                            TotalSteps, _
+                            "Measuring baseline - " & cPM.MethodName(MethodID)
+        Baseline = cPM.MeasureBaseline(cPM_MEASURED_BASELINE, Runs, cWarmupRuns, MethodID, _
+                                   BaseFailed, BaseStatus, BaseRejected)
+
+'------------------------------------------------------------------------------
+' LOG RESULT
+'------------------------------------------------------------------------------
+    'Describe the evidence first, as workload / baseline
+        CurrentStep = 3
+        Demo_SB_SetProgress CurrentStep, _
+                            TotalSteps, _
+                            "Summarizing measured benchmark - " & cPM.MethodName(MethodID)
+        Evidence = "Runs=" & CStr(Runs) & _
+                   "; Warmup=" & CStr(cWarmupRuns) & _
+                   "; FailedReads=" & CStr(WorkFailed) & "/" & CStr(BaseFailed) & _
+                   "; Rejected=" & CStr(WorkRejected) & "/" & CStr(BaseRejected)
+    'Report statistics only from complete evidence
+        If WorkFailed <> 0 Or WorkRejected <> 0 Or BaseFailed <> 0 Or BaseRejected <> 0 Then
+            cPM_Demo_AppendLog "Measured Benchmark", _
+                               MethodID, _
+                               cPM.MethodName(MethodID), _
+                               0#, _
+                               "not reported", _
+                               0#, _
+                               0#, _
+                               0#, _
+                               Evidence & "; incomplete evidence, no statistics reported"
+        Else
+            WorkMedian = cPM.Stats_Median(Work)
+            WorkP95 = cPM.Stats_Percentile(Work, 95#)
+            WorkCv = cPM.Stats_CoefficientOfVariation(Work)
+            BaseMedian = cPM.Stats_Median(Baseline)
+            NetMedian = WorkMedian - BaseMedian
+            If cPM.Stats_IsContaminated(Work) Then
+                Verdict = "high variance, run again"
+            Else
+                Verdict = "clean"
+            End If
+            cPM_Demo_AppendLog "Measured Benchmark", _
+                               MethodID, _
+                               cPM.MethodName(MethodID), _
+                               NetMedian, _
+                               Format$(NetMedian * 1000#, "0.000") & " ms net median", _
+                               0#, _
+                               0#, _
+                               0#, _
+                               Evidence & _
+                               "; Median=" & Format$(WorkMedian, "0.000000") & _
+                               "; P95=" & Format$(WorkP95, "0.000000") & _
+                               "; Baseline=" & Format$(BaseMedian, "0.000000") & _
+                               "; CV=" & Format$(WorkCv, "0.000") & _
+                               "; " & Verdict
+        End If
+
+    'Mark completion in the status bar
+        CurrentStep = 4
+        Demo_SB_SetProgress CurrentStep, _
+                            TotalSteps, _
+                            "Measured benchmark complete - " & cPM.MethodName(MethodID)
+
+CleanExit:
+'------------------------------------------------------------------------------
+' CLEANUP
+'------------------------------------------------------------------------------
+    'Release environment changes deterministically
+        If Not cPM Is Nothing Then
+            On Error Resume Next
+            cPM.ResetEnvironment
+            Set cPM = Nothing
+            On Error GoTo 0
+        End If
+    'Return control of the status bar to Excel
+        Application.StatusBar = False
+    'Report a failure on the results log and in a message after cleanup
+        If SavedErrNumber <> 0 Then
+            cPM_Demo_ReportFailure "Measured Benchmark", SavedErrNumber, SavedErrSource, _
+                                   SavedErrDescription
+        End If
+
+    Exit Sub
+
+CleanFail:
+'------------------------------------------------------------------------------
+' ERROR HANDLER
+'------------------------------------------------------------------------------
+    'Capture the original error details before cleanup
+        SavedErrNumber = Err.Number
+        SavedErrSource = Err.Source
+        SavedErrDescription = Err.Description
+
     'Continue through the centralized cleanup path
         Resume CleanExit
 
@@ -2169,19 +2559,22 @@ Public Sub cPM_ClearResultsLog()
 '   None
 '
 ' BEHAVIOR
-'   Deletes the current DataBodyRange when rows are present
+'   Deletes the current DataBodyRange when rows are present, then returns those
+'   worksheet rows to the header height, since wrapped notes make them taller
 '
 ' ERROR POLICY
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-04-15
+'   2026-11-28
 '==============================================================================
 
 '------------------------------------------------------------------------------
 ' DECLARE
 '------------------------------------------------------------------------------
     Dim Lo                  As ListObject       'Results-log table
+    Dim FirstRow            As Long             'First worksheet row of the log body
+    Dim RowCount            As Long             'Log body rows before the clear
 
 '------------------------------------------------------------------------------
 ' INITIALIZE
@@ -2200,7 +2593,10 @@ Public Sub cPM_ClearResultsLog()
 '------------------------------------------------------------------------------
     'Delete the table body when rows are present
         If Not Lo.DataBodyRange Is Nothing Then
+            FirstRow = Lo.DataBodyRange.Row
+            RowCount = Lo.DataBodyRange.Rows.Count
             Lo.DataBodyRange.Delete
+            Lo.Parent.Rows(FirstRow).Resize(RowCount).RowHeight = Lo.HeaderRowRange.RowHeight
         End If
 
 CleanExit:
@@ -2991,6 +3387,137 @@ End Function
 '                         PRIVATE: LOG APPEND HELPERS
 '==============================================================================
 
+Public Sub cPM_Demo_SetUnattended(ByVal Unattended As Boolean)
+'
+'==============================================================================
+'                            SET UNATTENDED MODE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Switches failure reporting between a message box and the results log only
+'
+' WHY THIS EXISTS
+'   A scripted build runs every demo action as a smoke test. A message box
+'   would block it, so the build sets unattended mode and reads the failure
+'   count instead. It also resets that count
+'
+' INPUTS
+'   Unattended
+'     TRUE: report failures on the results log only
+'     FALSE: also show a message box (the default for interactive use)
+'
+' RETURNS
+'   None
+'
+' ERROR POLICY
+'   Raises no errors
+'
+' UPDATED
+'   2026-11-16
+'==============================================================================
+
+    'Store the reporting mode and start a new failure count
+        m_Unattended = Unattended
+        m_FailureCount = 0
+
+End Sub
+
+Public Function cPM_Demo_FailureCount() As Long
+'
+'==============================================================================
+'                              FAILURE COUNT
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Returns the number of demo actions that failed since the last call to
+'   cPM_Demo_SetUnattended
+'
+' WHY THIS EXISTS
+'   A scripted smoke test reads it after running every demo action
+'
+' INPUTS
+'   None
+'
+' RETURNS
+'   The failure count
+'
+' ERROR POLICY
+'   Raises no errors
+'
+' UPDATED
+'   2026-11-16
+'==============================================================================
+
+    'Return the module-level failure count
+        cPM_Demo_FailureCount = m_FailureCount
+
+End Function
+
+Private Sub cPM_Demo_ReportFailure( _
+    ByVal ScenarioText As String, _
+    ByVal ErrNumber As Long, _
+    ByVal ErrSource As String, _
+    ByVal ErrDescription As String)
+'
+'==============================================================================
+'                              REPORT FAILURE
+'------------------------------------------------------------------------------
+' PURPOSE
+'   Reports a failed demo action on the results log and, when attended, in a
+'   message box
+'
+' WHY THIS EXISTS
+'   A demo action started from a button must not end in a VBA runtime-error
+'   dialog: the failure is shown where the user is looking, without opening
+'   the VBA editor (#47)
+'
+' INPUTS
+'   ScenarioText
+'     Scenario label of the failed action
+'
+'   ErrNumber, ErrSource, ErrDescription
+'     The original error, captured before cleanup
+'
+' RETURNS
+'   None
+'
+' BEHAVIOR
+'   - Increments the failure count
+'   - Appends a "FAILED: <scenario>" row whose notes carry the error
+'   - Shows a message box unless unattended mode is on
+'
+' ERROR POLICY
+'   Never raises: a failure to log is ignored so the message still appears
+'
+' DEPENDENCIES
+'   - cPM_Demo_AppendLog
+'
+' UPDATED
+'   2026-11-16
+'==============================================================================
+
+'------------------------------------------------------------------------------
+' DECLARE
+'------------------------------------------------------------------------------
+    Dim Detail              As String           'Error text for the log and the message
+
+'------------------------------------------------------------------------------
+' REPORT
+'------------------------------------------------------------------------------
+    'Count the failure and compose its description
+        m_FailureCount = m_FailureCount + 1
+        Detail = "Error " & CStr(ErrNumber) & " (" & ErrSource & "): " & ErrDescription
+    'Write the failure to the results log on a best-effort basis
+        On Error Resume Next
+        cPM_Demo_AppendLog "FAILED: " & ScenarioText, 0, vbNullString, 0#, vbNullString, _
+                           0#, 0#, 0#, Detail
+        On Error GoTo 0
+    'Show the failure unless a scripted build is running
+        If Not m_Unattended Then
+            MsgBox ScenarioText & " did not complete." & vbCrLf & vbCrLf & Detail, _
+                   vbExclamation, cPM_DEMO_TITLE
+        End If
+
+End Sub
+
 Private Sub cPM_Demo_AppendLog( _
     ByVal ScenarioText As String, _
     ByVal MethodID As Integer, _
@@ -3044,11 +3571,17 @@ Private Sub cPM_Demo_AppendLog( _
 ' RETURNS
 '   None
 '
+' BEHAVIOR
+'   Wraps the method name, elapsed-time text and notes, and fits the row height
+'   to them, never below the header height, so long text stays readable in a
+'   narrow column. T1 and T2 use the General format, which adapts to the column
+'   width, because they are absolute clock readings that can exceed 1E+09
+'
 ' ERROR POLICY
 '   Raises errors normally
 '
 ' UPDATED
-'   2026-04-15
+'   2026-11-28
 '==============================================================================
 
 '------------------------------------------------------------------------------
@@ -3108,10 +3641,24 @@ Private Sub cPM_Demo_AppendLog( _
 '------------------------------------------------------------------------------
     'Format the timestamp
         LR.Range(1, 2).NumberFormat = "yyyy-mm-dd hh:mm:ss"
-    'Format the numeric timing outputs
+    'Format the elapsed values with fixed precision
         LR.Range(1, 6).NumberFormat = "0.000000000"
-        LR.Range(1, 8).NumberFormat = "0.000000000"
-        LR.Range(1, 9).NumberFormat = "0.000000000"
         LR.Range(1, 10).NumberFormat = "0.000000000"
+    'T1 and T2 are absolute clock readings (Now() * 86400 is about 4E+09), which
+    'a fixed nine-decimal format cannot show in the column; General adapts (#47)
+        LR.Range(1, 8).NumberFormat = "General"
+        LR.Range(1, 9).NumberFormat = "General"
+
+    'Wrap the text columns and fit the row so nothing is cut off (#47)
+        LR.Range(1, 5).WrapText = True
+        LR.Range(1, 7).WrapText = True
+        LR.Range(1, 11).WrapText = True
+        LR.Range(1, 11).HorizontalAlignment = xlLeft
+        LR.Range.VerticalAlignment = xlCenter
+        LR.Range.EntireRow.AutoFit
+    'Never let a short row fall below the header height
+        If LR.Range.RowHeight < Lo.HeaderRowRange.RowHeight Then
+            LR.Range.RowHeight = Lo.HeaderRowRange.RowHeight
+        End If
 
 End Sub

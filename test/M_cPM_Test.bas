@@ -70,7 +70,7 @@ Option Explicit     'Force explicit declaration of all variables
 '         value (Stats_Count alone tolerates an uninitialized array)
 '
 ' VERSION
-'   1.4.0
+'   1.4.1
 '
 ' UPDATED
 '   2026-10-21 - Comment accuracy pass

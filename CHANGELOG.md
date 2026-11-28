@@ -96,6 +96,15 @@ Use only the categories needed by a release.
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-11-30
+
+Boundary hardening and contract definition for the v1.4.0 runtime. No class
+member is added or removed, and every v1.4.0 call shape still compiles; one
+error value, `ERR_TW_KEY_SPACE_EXHAUSTED`, is added (#35). The behavior
+changes below are bounded corrections. The demo workbook is now published
+only inside `VBA-Performance-Manager-v1.4.1.zip`, together with `LICENSE`
+and `NOTICE` (#72).
+
 ### Compatibility
 
 - **Office/VBA compatibility (#34):** retain pre-VBA7 legacy 32-bit, VBA7 Win32
@@ -105,6 +114,22 @@ Use only the categories needed by a release.
   are documented separately from retained source compatibility.
 
 ### Added
+
+- Added `tools/Build-DemoWorkbook.cmd`, which builds the demo workbook from the
+  checked-out commit: it imports and compiles the components, builds the
+  sheets, smoke-tests every demo action, removes the build machine's metadata,
+  reopens the workbook and packages it with `LICENSE` and `NOTICE`, with a
+  JSON build record (#47, #72).
+
+- Added a **Run Benchmark** action to the demo sheet. It measures a
+  fixed in-memory workload with `MeasureProcedure` and an empty procedure with
+  `MeasureBaseline`, and logs the net median, P95, coefficient of variation
+  and contamination verdict only when every failed-read and rejected-sample
+  count is zero; otherwise it logs the counts and reports no statistic. The
+  demo actions now sit in three columns. The results-log columns are wide
+  enough for the timestamp, the scenario and the header filters. Long method
+  names, elapsed-time text and notes wrap within their row, and T1 and T2 use
+  a format that fits large clock readings (#47).
 
 - Added two independent compile-safety checks for same-procedure error-handler
   labels and declared assignment targets across production, test and demo VBA.
@@ -191,6 +216,14 @@ Use only the categories needed by a release.
   has one more assertion (#74).
 
 ### Changed
+
+- The demo workbook reports a failed action on the results log and in a
+  message, instead of a VBA runtime-error dialog. A Home start page is built
+  from source in place of the illustration. The help sheet corrects pause
+  method 3 and the TimeWasters file name, and explains the measurement
+  harness, its evidence counts and strict mode. The regression button sits in
+  its own MAINTAINER box, and the demo sheet is narrowed to fit one screen
+  (#47).
 
 - `tools/release_provenance.py` 3.1.0 opens the packaged workbook and refuses
   one that carries a sensitivity label, a document category or content
@@ -1128,7 +1161,8 @@ Initial public release.
 
 ---
 
-[Unreleased]: https://github.com/danielep71/vba-performance_manager/compare/v1.4.0...main
+[Unreleased]: https://github.com/danielep71/vba-performance_manager/compare/v1.4.1...main
+[1.4.1]: https://github.com/danielep71/vba-performance_manager/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/danielep71/vba-performance_manager/compare/v1.1.0...v1.2.0

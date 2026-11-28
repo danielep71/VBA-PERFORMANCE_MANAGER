@@ -33,22 +33,24 @@ This guide covers installation, validation, upgrade, recovery, and removal of
 | Item | Requirement |
 |---|---|
 | Host | Desktop Microsoft Excel for Windows |
-| Office bitness | 32-bit compatibility branches retained; v1.4.0 execution-certified on 64-bit only |
+| Office bitness | 32-bit compatibility branches retained; v1.4.1 execution-certified on 64-bit only |
 | Version identity | Root `VERSION` file and the selected tag/commit |
 | Source policy | Exported repository source is authoritative |
 | Licence | Apache 2.0 (v1.4.0 and earlier: MIT) |
 | Current deployment status | Two-file source-first runtime with an optional evaluation workbook. |
 
-The current published package is **v1.4.0**, released on 31 August 2026. Import
-`src/modules/M_cPM_TIMEWASTERS.bas` and `src/classes/cPerformanceManager.cls`
-from the same tag. The optional `PERFORMANCE.MANAGER.xlsm` workbook and
-`release-manifest.json` are on the [official release page](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.0);
-[README execution evidence](README.md#execution-evidence) records their hashes
-and the exact tag target.
+The current published package is **v1.4.1**, released on 30 November 2026.
+Import `src/modules/M_cPM_TIMEWASTERS.bas` and
+`src/classes/cPerformanceManager.cls` from the same tag. The optional
+`VBA-Performance-Manager-v1.4.1.zip` package, holding the demo workbook with
+`LICENSE` and `NOTICE`, and `release-manifest.json` are on the
+[official release page](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/releases/tag/v1.4.1);
+the [v1.4.1 evidence record](docs/releases/v1.4.1/EVIDENCE.md) records their
+hashes and the exact tag target.
 
-Source compatibility and execution certification are separate claims. v1.4.0
+Source compatibility and execution certification are separate claims. v1.4.1
 is execution-certified on Microsoft 365 Excel **64-bit** only, as recorded in
-[README execution evidence](README.md#execution-evidence); real Office
+its [evidence record](docs/releases/v1.4.1/EVIDENCE.md); real Office
 **32-bit remains unverified**
 ([#29](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/29)). The
 retained source families, and what is and is not certified for older hosts,
@@ -76,9 +78,9 @@ or copied workbooks.
 
 ### Release workbook package
 
-From v1.4.1 (not yet released;
-[#72](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/72)) the
-optional workbook will be published only inside
+From v1.4.1
+([#72](https://github.com/danielep71/VBA-PERFORMANCE_MANAGER/issues/72)) the
+optional workbook is published only inside
 `VBA-Performance-Manager-vX.Y.Z.zip`. The package holds exactly
 `PERFORMANCE MANAGER.xlsm`, `LICENSE` and `NOTICE`. To verify a download:
 
