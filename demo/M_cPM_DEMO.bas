@@ -350,8 +350,10 @@ Private Sub cPM_BuildDemoSheet( _
     'Fit the log's timestamp (yyyy-mm-dd hh:mm:ss) and scenario names
         WS.Columns("D:E").ColumnWidth = 20
     'Leave room for the header filter arrows of Method Name and Elapsed Seconds
-        WS.Columns("G").ColumnWidth = 14
+        WS.Columns("G").ColumnWidth = 18
         WS.Columns("H").ColumnWidth = 16
+    'Give the T1 and T2 clock readings room for their digits
+        WS.Columns("J:K").ColumnWidth = 16
     'Widen the elapsed-time text column
         WS.Columns("I").ColumnWidth = 20
     'Widen the notes column
